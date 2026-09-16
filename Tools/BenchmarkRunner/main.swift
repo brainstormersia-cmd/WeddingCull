@@ -2,6 +2,9 @@ import Foundation
 #if canImport(WeddingCullCore)
 import WeddingCullCore
 #endif
+#if canImport(TestDatasetGeneratorLibrary)
+import TestDatasetGeneratorLibrary
+#endif
 #if canImport(Darwin)
 import Darwin
 #endif
@@ -108,22 +111,19 @@ struct BenchmarkRunner {
 
         print("🚀 Executing actual AnalysisPipeline on \(targetCount) photos...")
         let hardware = HardwareCapabilities()
-        print("Hardware detected: \(hardware.processorName), \(hardware.physicalCoreCount) cores (\(hardware.recommendedConcurrency) concurrent workers)")
+        print("Hardware detected: \(hardware.cpuArchitecture), \(hardware.logicalProcessors) logical cores (\(hardware.recommendedConcurrency) concurrent workers)")
 
         let pipeline = AnalysisPipeline(hardware: hardware)
         let startTime = Date()
-
-        var phaseTimes: [AnalysisPhase: TimeInterval] = [:]
-        var lastPhaseTime = startTime
 
         do {
             let session = try await pipeline.runAnalysis(
                 sourceFolder: datasetFolder,
                 targetCount: min(targetCount / 2, 700)
             ) { progress in
-                let now = Date()
-                phaseTimes[progress.phase] = now.timeIntervalSince(lastPhaseTime)
-                lastPhaseTime = now
+                if progress.completedUnits % 50 == 0 || progress.completedUnits == progress.totalUnits {
+                    print("  [\(progress.phase.rawValue)] \(progress.completedUnits)/\(progress.totalUnits) - \(progress.message)")
+                }
             }
 
             memorySamplingTask.cancel()
@@ -132,6 +132,7 @@ struct BenchmarkRunner {
             let processedPhotos = session.photos.count
             let throughput = Double(processedPhotos) / totalTime
             let peakMB = Int(round(Double(peakMemoryBytes) / (1024.0 * 1024.0)))
+            let selectedCount = session.photos.filter { $0.selectionState.isIncludedInFinal }.count
 
             print("\n====================================================")
             print("📊 BENCHMARK EXECUTION RESULTS (100% MEASURED)")
@@ -140,7 +141,7 @@ struct BenchmarkRunner {
             print(String(format: "Total Pipeline Processing Time: %.2f seconds", totalTime))
             print(String(format: "Throughput: %.2f photos / second", throughput))
             print("Peak Resident Memory (RSS): \(peakMB) MB")
-            print("Selected Count: \(session.selectedPhotos.count) / \(session.targetSelectionCount)")
+            print("Selected Count: \(selectedCount) / \(session.targetSelectionCount)")
             print("Burst Groups Detected: \(session.burstGroups.count)")
             print("Person Clusters Formed: \(session.personClusters.count)")
             print("====================================================")
@@ -190,13 +191,13 @@ struct BenchmarkRunner {
             | **Peak Resident Memory (RSS)** | \(peakMB) MB (budget: < 2500 MB) |
             | **Burst Groups Identified** | \(session.burstGroups.count) |
             | **Person Identity Clusters** | \(session.personClusters.count) |
-            | **Diversity Target Met** | \(session.selectedPhotos.count) / \(session.targetSelectionCount) |
+            | **Diversity Target Met** | \(selectedCount) / \(session.targetSelectionCount) |
 
             """
 
             let mdURL = URL(fileURLWithPath: outputMDPath)
             try? fileManager.createDirectory(at: mdURL.deletingLastPathComponent(), withIntermediateDirectories: true)
-            try? mdContent.data(using: .utf8)?.write(to: mdURL)
+            try? Data(mdContent.utf8).write(to: mdURL)
             print("✅ Written benchmark Markdown to \(outputMDPath)")
 
             // Check budget constraints: memory must not exceed 2.5 GB (2560 MB)
