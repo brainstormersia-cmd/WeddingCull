@@ -64,11 +64,27 @@ public struct AnalysisView: View {
             .background(Color.secondary.opacity(0.08))
             .cornerRadius(12)
 
-            Button("Annulla", role: .cancel) {
-                appState.cancelAnalysis()
+            HStack(spacing: 16) {
+                if appState.isPaused {
+                    Button("Riprendi") {
+                        appState.resumeAnalysis()
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .accessibilityIdentifier(AccessibilityIdentifiers.analysisResumeButton)
+                } else {
+                    Button("Pausa") {
+                        appState.pauseAnalysis()
+                    }
+                    .buttonStyle(.bordered)
+                    .accessibilityIdentifier(AccessibilityIdentifiers.analysisPauseButton)
+                }
+
+                Button("Annulla", role: .cancel) {
+                    appState.cancelAnalysis()
+                }
+                .buttonStyle(.bordered)
+                .accessibilityIdentifier(AccessibilityIdentifiers.analysisCancelButton)
             }
-            .buttonStyle(.bordered)
-            .accessibilityIdentifier(AccessibilityIdentifiers.analysisCancelButton)
 
             Spacer()
         }

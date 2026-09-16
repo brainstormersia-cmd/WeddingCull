@@ -11,6 +11,7 @@ public enum AccessibilityIdentifiers {
     public static let analysisPhaseLabel = "analysis_phase_label"
     public static let analysisCancelButton = "analysis_cancel_button"
     public static let analysisPauseButton = "analysis_pause_button"
+    public static let analysisResumeButton = "analysis_resume_button"
 
     // Main Review Screen
     public static let sidebarList = "sidebar_list"

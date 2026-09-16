@@ -45,6 +45,7 @@ final class HeadlessPipelineIntegrationTests: XCTestCase {
         XCTAssertGreaterThan(session.photos.count, 0)
         XCTAssertFalse(session.burstGroups.isEmpty, "Burst groups must be detected")
         XCTAssertFalse(session.segments.isEmpty, "Temporal segments must be detected")
+        XCTAssertFalse(session.personClusters.isEmpty, "Person clusters must be detected via face recognition")
 
         // Step 4: Verify duplicate detection & corrupt handling
         let corruptItem = session.photos.first(where: { $0.fileName == "CORRUPT_IMAGE.jpg" })

@@ -22,6 +22,9 @@ public struct WeddingCullApp: App {
                 }
             }
             .frame(minWidth: 900, minHeight: 600)
+            .onAppear {
+                handleCommandLineArguments()
+            }
         }
         .windowStyle(.hiddenTitleBar)
         .commands {
@@ -52,6 +55,25 @@ public struct WeddingCullApp: App {
                     }
                 }
                 .keyboardShortcut("3", modifiers: [])
+            }
+        }
+    }
+
+    private func handleCommandLineArguments() {
+        let args = ProcessInfo.processInfo.arguments
+        let env = ProcessInfo.processInfo.environment
+
+        if args.contains("--ui-testing") || env["UI_TESTING"] == "YES" {
+            var folderPath: String? = env["UI_TEST_SOURCE_FOLDER"]
+            if let idx = args.firstIndex(of: "--source-folder"), idx + 1 < args.count {
+                folderPath = args[idx + 1]
+            }
+
+            if let path = folderPath, FileManager.default.fileExists(atPath: path) {
+                let url = URL(fileURLWithPath: path)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                    appState.startAnalysis(folderURL: url, targetCount: 120)
+                }
             }
         }
     }

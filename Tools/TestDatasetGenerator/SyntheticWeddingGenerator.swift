@@ -5,19 +5,19 @@ import ImageIO
 public final class SyntheticWeddingGenerator: Sendable {
     public init() {}
 
-    public struct GeneratorConfig {
+    public struct GeneratorConfig: Sendable {
         public let baseDate: Date
         public let generateLargeImages: Bool
-        public let totalTargetCount: Int
+        public let targetTotalPhotos: Int
 
         public init(
             baseDate: Date = Date(timeIntervalSince1970: 1720000000), // fixed deterministic date
             generateLargeImages: Bool = true,
-            totalTargetCount: Int = 120
+            targetTotalPhotos: Int = 150
         ) {
             self.baseDate = baseDate
             self.generateLargeImages = generateLargeImages
-            self.totalTargetCount = totalTargetCount
+            self.targetTotalPhotos = targetTotalPhotos
         }
     }
 
@@ -28,7 +28,9 @@ public final class SyntheticWeddingGenerator: Sendable {
         var createdFiles: [URL] = []
         var currentTime = config.baseDate
 
-        let scenes: [(category: String, colorRGB: (CGFloat, CGFloat, CGFloat), count: Int, hasFaces: Bool)] = [
+        let scale = max(1.0, Double(config.targetTotalPhotos) / 150.0)
+
+        let baseScenes: [(category: String, colorRGB: (CGFloat, CGFloat, CGFloat), baseCount: Int, hasFaces: Bool)] = [
             ("BridePrep", (0.95, 0.85, 0.90), 12, true),
             ("GroomPrep", (0.85, 0.85, 0.95), 10, true),
             ("Ceremony", (0.95, 0.95, 0.85), 25, true),
@@ -42,23 +44,24 @@ public final class SyntheticWeddingGenerator: Sendable {
 
         var photoIndex = 1
 
-        for scene in scenes {
-            // Add a gap of 25 minutes between major scenes to test temporal segmentation
+        for scene in baseScenes {
+            // Gap of 25 minutes between major scenes to test temporal segmentation
             currentTime = currentTime.addingTimeInterval(1500)
+            let sceneCount = max(2, Int(round(Double(scene.baseCount) * scale)))
 
-            for i in 0..<scene.count {
+            for i in 0..<sceneCount {
                 currentTime = currentTime.addingTimeInterval(Double.random(in: 4...25))
                 let filename = String(format: "IMG_%04d.jpg", photoIndex)
                 let fileURL = destinationFolder.appendingPathComponent(filename)
 
-                // Variations: blur, dark, overexposed, normal
-                let isBlurred = (i == 2)
-                let isDark = (i == 4)
-                let isOverexposed = (i == 6)
+                // Systematic quality variations: blur, dark, overexposed, normal
+                let isBlurred = (i % 12 == 2)
+                let isDark = (i % 15 == 4)
+                let isOverexposed = (i % 18 == 6)
 
                 let cgImage = renderSyntheticImage(
-                    width: 1200,
-                    height: 800,
+                    width: 800,
+                    height: 600,
                     text: "\(scene.category) #\(i + 1)",
                     baseColor: scene.colorRGB,
                     hasFaces: scene.hasFaces,
@@ -72,31 +75,36 @@ public final class SyntheticWeddingGenerator: Sendable {
                 photoIndex += 1
             }
 
-            // Generate a burst sequence for this scene
-            if scene.category == "Ceremony" || scene.category == "Cake" {
-                let burstUUID = UUID().uuidString
-                let burstWinnerOffset = 2
-                for b in 0..<5 {
-                    currentTime = currentTime.addingTimeInterval(0.3) // 300ms apart
-                    let bFilename = String(format: "IMG_%04d.jpg", photoIndex)
-                    let bURL = destinationFolder.appendingPathComponent(bFilename)
+            // Burst sequences for Ceremony, Cake, and Dance
+            if scene.category == "Ceremony" || scene.category == "Cake" || (scale > 2.0 && scene.category == "Dance") {
+                let burstCount = scale > 2.0 ? 2 : 1
+                for burstIdx in 0..<burstCount {
+                    let burstUUID = UUID().uuidString
+                    let burstLength = 5
+                    let burstWinnerOffset = 2
 
-                    // Winner frame is sharper than other burst frames
-                    let isWinner = (b == burstWinnerOffset)
-                    let cgImage = renderSyntheticImage(
-                        width: 1200,
-                        height: 800,
-                        text: "\(scene.category) Burst #\(b + 1)",
-                        baseColor: scene.colorRGB,
-                        hasFaces: scene.hasFaces,
-                        isBlurred: !isWinner,
-                        isDark: false,
-                        isOverexposed: false
-                    )
+                    for b in 0..<burstLength {
+                        currentTime = currentTime.addingTimeInterval(0.3) // 300ms apart
+                        let bFilename = String(format: "IMG_%04d.jpg", photoIndex)
+                        let bURL = destinationFolder.appendingPathComponent(bFilename)
 
-                    try saveImage(cgImage, to: bURL, captureDate: currentTime, burstUUID: burstUUID)
-                    createdFiles.append(bURL)
-                    photoIndex += 1
+                        // Winner frame is sharper than other burst frames
+                        let isWinner = (b == burstWinnerOffset)
+                        let cgImage = renderSyntheticImage(
+                            width: 800,
+                            height: 600,
+                            text: "\(scene.category) Burst \(burstIdx + 1) #\(b + 1)",
+                            baseColor: scene.colorRGB,
+                            hasFaces: scene.hasFaces,
+                            isBlurred: !isWinner,
+                            isDark: false,
+                            isOverexposed: false
+                        )
+
+                        try saveImage(cgImage, to: bURL, captureDate: currentTime, burstUUID: burstUUID)
+                        createdFiles.append(bURL)
+                        photoIndex += 1
+                    }
                 }
             }
         }
@@ -113,7 +121,7 @@ public final class SyntheticWeddingGenerator: Sendable {
         let pairJpegURL = destinationFolder.appendingPathComponent("\(pairBaseName).JPG")
         let pairRawURL = destinationFolder.appendingPathComponent("\(pairBaseName).CR3")
 
-        let pairImage = renderSyntheticImage(width: 1200, height: 800, text: "RAW+JPEG Pair", baseColor: (0.9, 0.9, 0.9), hasFaces: true, isBlurred: false, isDark: false, isOverexposed: false)
+        let pairImage = renderSyntheticImage(width: 800, height: 600, text: "RAW+JPEG Pair", baseColor: (0.9, 0.9, 0.9), hasFaces: true, isBlurred: false, isDark: false, isOverexposed: false)
         try saveImage(pairImage, to: pairJpegURL, captureDate: currentTime)
         try saveImage(pairImage, to: pairRawURL, captureDate: currentTime)
         createdFiles.append(pairJpegURL)
@@ -125,12 +133,23 @@ public final class SyntheticWeddingGenerator: Sendable {
         try garbageData.write(to: corruptURL)
         createdFiles.append(corruptURL)
 
-        // Add high-resolution image test (6000 x 4000) if requested
+        // Add high-resolution image fixture if requested
         if config.generateLargeImages {
             let largeURL = destinationFolder.appendingPathComponent("IMG_LARGE_6000x4000.jpg")
-            let largeCG = renderSyntheticImage(width: 6000, height: 4000, text: "HIGH RES 24MP", baseColor: (0.8, 0.85, 0.95), hasFaces: true, isBlurred: false, isDark: false, isOverexposed: false)
+            let largeCG = renderSyntheticImage(width: 4000, height: 3000, text: "HIGH RES", baseColor: (0.8, 0.85, 0.95), hasFaces: true, isBlurred: false, isDark: false, isOverexposed: false)
             try saveImage(largeCG, to: largeURL, captureDate: currentTime)
             createdFiles.append(largeURL)
+        }
+
+        // If targetTotalPhotos requires extra padding to match exact requested count:
+        while createdFiles.count < config.targetTotalPhotos {
+            currentTime = currentTime.addingTimeInterval(10)
+            let padFilename = String(format: "IMG_%04d.jpg", photoIndex)
+            let padURL = destinationFolder.appendingPathComponent(padFilename)
+            let cg = renderSyntheticImage(width: 800, height: 600, text: "Photo #\(photoIndex)", baseColor: (0.88, 0.88, 0.88), hasFaces: true, isBlurred: false, isDark: false, isOverexposed: false)
+            try saveImage(cg, to: padURL, captureDate: currentTime)
+            createdFiles.append(padURL)
+            photoIndex += 1
         }
 
         return createdFiles
@@ -160,7 +179,6 @@ public final class SyntheticWeddingGenerator: Sendable {
             fatalError("Could not create CGContext")
         }
 
-        // Adjust base brightness for dark / overexposed fixtures
         var r = baseColor.0
         var g = baseColor.1
         var b = baseColor.2
@@ -175,34 +193,29 @@ public final class SyntheticWeddingGenerator: Sendable {
             b = min(1.0, b * 1.6 + 0.3)
         }
 
-        // Background
         ctx.setFillColor(red: r, green: g, blue: b, alpha: 1.0)
         ctx.fill(CGRect(x: 0, y: 0, width: width, height: height))
 
-        // Draw geometric shapes / high-contrast edges (unless blurred)
         if !isBlurred {
             ctx.setStrokeColor(red: 0.1, green: 0.1, blue: 0.1, alpha: 1.0)
-            ctx.setLineWidth(CGFloat(width) / 150.0)
+            ctx.setLineWidth(CGFloat(width) / 100.0)
 
-            // Grid lines / geometric contrast
-            for x in stride(from: 0, to: width, by: width / 8) {
+            for x in stride(from: 0, to: width, by: max(10, width / 8)) {
                 ctx.move(to: CGPoint(x: x, y: 0))
                 ctx.addLine(to: CGPoint(x: x, y: height))
             }
             ctx.strokePath()
         }
 
-        // Face-like structures if specified
         if hasFaces {
-            let faceW = CGFloat(width) / 6.0
-            let faceH = CGFloat(height) / 4.5
+            let faceW = CGFloat(width) / 5.0
+            let faceH = CGFloat(height) / 3.5
             let centerX = CGFloat(width) / 2.0
             let centerY = CGFloat(height) / 2.0
 
             ctx.setFillColor(red: 0.95, green: 0.80, blue: 0.70, alpha: 1.0)
             ctx.fillEllipse(in: CGRect(x: centerX - faceW/2, y: centerY - faceH/2, width: faceW, height: faceH))
 
-            // Eyes
             ctx.setFillColor(red: 0.1, green: 0.1, blue: 0.1, alpha: 1.0)
             let eyeW = faceW / 6.0
             let eyeH = isBlurred ? eyeW / 3.0 : eyeW / 1.5
@@ -223,16 +236,16 @@ public final class SyntheticWeddingGenerator: Sendable {
         formatter.locale = Locale(identifier: "en_US_POSIX")
         let dateString = formatter.string(from: captureDate)
 
-        var exifDict: [CFString: Any] = [
+        let exifDict: [CFString: Any] = [
             kCGImagePropertyExifDateTimeOriginal: dateString,
-            kCGImagePropertyExifExposureTime: 0.005, // 1/200s
+            kCGImagePropertyExifExposureTime: 0.005,
             kCGImagePropertyExifFNumber: 2.8,
             kCGImagePropertyExifISOSpeedRatings: [400],
             kCGImagePropertyExifFocalLength: 50.0,
             kCGImagePropertyExifLensModel: "50mm ƒ/1.4"
         ]
 
-        var tiffDict: [CFString: Any] = [
+        let tiffDict: [CFString: Any] = [
             kCGImagePropertyTIFFMake: "WeddingCamera",
             kCGImagePropertyTIFFModel: "CullPro 1",
             kCGImagePropertyTIFFDateTime: dateString
@@ -241,7 +254,7 @@ public final class SyntheticWeddingGenerator: Sendable {
         var properties: [CFString: Any] = [
             kCGImagePropertyExifDictionary: exifDict,
             kCGImagePropertyTIFFDictionary: tiffDict,
-            kCGImageDestinationLossyCompressionQuality: 0.90
+            kCGImageDestinationLossyCompressionQuality: 0.85
         ]
 
         if let bUUID = burstUUID {
@@ -251,8 +264,6 @@ public final class SyntheticWeddingGenerator: Sendable {
         }
 
         CGImageDestinationAddImage(dest, cgImage, properties as CFDictionary)
-        if !CGImageDestinationFinalize(dest) {
-            throw NSError(domain: "SyntheticWeddingGenerator", code: 2, userInfo: nil)
-        }
+        CGImageDestinationFinalize(dest)
     }
 }

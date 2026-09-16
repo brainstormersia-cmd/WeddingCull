@@ -17,9 +17,14 @@ jobs:
 
       - name: System Architecture Information
         run: |
-          echo "=== ARCHITECTURE AUDIT ==="
-          uname -m
+          echo "=== APPLE SILICON ARCHITECTURE AUDIT ==="
+          ARCH=$(uname -m)
+          echo "Detected architecture: $ARCH"
           sw_vers
+          if [ "$ARCH" != "arm64" ]; then
+            echo "❌ FATAL: Expected arm64 Apple Silicon runner, got $ARCH!"
+            exit 1
+          fi
 
       - name: Setup Environment
         run: |
@@ -32,7 +37,7 @@ jobs:
 
   test-intel:
     name: Test (Intel x86_64)
-    runs-on: macos-14
+    runs-on: macos-15-intel
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -40,17 +45,22 @@ jobs:
       - name: System Architecture Information
         run: |
           echo "=== INTEL ARCHITECTURE AUDIT ==="
-          arch -x86_64 uname -m
+          ARCH=$(uname -m)
+          echo "Detected architecture: $ARCH"
           sw_vers
+          if [ "$ARCH" != "x86_64" ]; then
+            echo "❌ FATAL: Expected x86_64 native Intel hardware runner, got $ARCH!"
+            exit 1
+          fi
 
       - name: Setup Environment
         run: |
           chmod +x ./scripts/*.sh
           ./scripts/bootstrap.sh
 
-      - name: Run Tests on Intel Architecture
+      - name: Run Tests on Real Intel Architecture
         run: |
-          arch -x86_64 ./scripts/test.sh
+          ./scripts/test.sh
 
   universal-build-and-verify:
     name: Universal Build & Verification (macOS)
@@ -69,9 +79,9 @@ jobs:
       - name: Make Scripts Executable
         run: chmod +x ./scripts/*.sh
 
-      - name: Execute Full Verification Suite
+      - name: Execute Full Verification Suite (250 Photos Commit Benchmark)
         run: |
-          ./scripts/verify.sh
+          ./scripts/verify.sh --count 250
 
       - name: Upload Universal App Package
         uses: actions/upload-artifact@v4

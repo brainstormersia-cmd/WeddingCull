@@ -5,10 +5,15 @@ on:
     tags:
       - 'v*'
   workflow_dispatch:
+    inputs:
+      benchmark_count:
+        description: 'Number of photos for benchmark'
+        required: false
+        default: '1500'
 
 jobs:
   build-and-release:
-    name: Build, Package & Release
+    name: Build, Package & Release (1500 Photos Verified)
     runs-on: macos-14
     steps:
       - name: Checkout Code
@@ -22,20 +27,61 @@ jobs:
       - name: Make Scripts Executable
         run: chmod +x ./scripts/*.sh
 
-      - name: Run Full Verification & Packaging
+      - name: Execute Full 1,500-Photo Verification Suite
         run: |
-          ./scripts/verify.sh
+          echo "🚀 Executing MANDATORY 1,500-photo pipeline benchmark for release..."
+          ./scripts/verify.sh --count 1500
 
-      - name: Check Signing Credentials
-        id: check-signing
+      - name: Perform Real Developer ID Code Signing & Notarization (if secrets present)
+        id: codesign-step
+        env:
+          CERT_BASE64: ${{ secrets.APPLE_DEVELOPER_CERTIFICATE_BASE64 }}
+          CERT_PWD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APP_PWD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
         run: |
-          if [ -n "${{ secrets.APPLE_DEVELOPER_CERTIFICATE_BASE64 }}" ]; then
+          if [ -n "$CERT_BASE64" ] && [ -n "$CERT_PWD" ] && [ -n "$SIGNING_IDENTITY" ]; then
+            echo "🔐 Apple Developer ID certificate detected. Setting up keychain..."
+            KEYCHAIN_PATH="$RUNNER_TEMP/build.keychain"
+            KEYCHAIN_PWD=$(uuidgen)
+            security create-keychain -p "$KEYCHAIN_PWD" "$KEYCHAIN_PATH"
+            security default-keychain -s "$KEYCHAIN_PATH"
+            security unlock-keychain -p "$KEYCHAIN_PWD" "$KEYCHAIN_PATH"
+            security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+
+            echo "$CERT_BASE64" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+            security import "$RUNNER_TEMP/cert.p12" -k "$KEYCHAIN_PATH" -P "$CERT_PWD" -T /usr/bin/codesign
+            security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PWD" "$KEYCHAIN_PATH"
+
+            echo "✍️ Signing WeddingCull.app with Hardened Runtime..."
+            codesign --force --options runtime --deep --sign "$SIGNING_IDENTITY" --entitlements Sources/WeddingCullApp/WeddingCull.entitlements build/Universal/WeddingCull.app
+
+            echo "📦 Packaging signed DMG..."
+            rm -f artifacts/WeddingCull-1.0.0.dmg
+            hdiutil create -volname "WeddingCull" -srcfolder build/Universal/WeddingCull.app -ov -format UDZO artifacts/WeddingCull-1.0.0.dmg
+            codesign --force --sign "$SIGNING_IDENTITY" artifacts/WeddingCull-1.0.0.dmg
+
+            if [ -n "$APP_PWD" ] && [ -n "$APPLE_ID" ] && [ -n "$TEAM_ID" ]; then
+              echo "☁️ Submitting DMG to Apple Notary Service..."
+              xcrun notarytool submit artifacts/WeddingCull-1.0.0.dmg --apple-id "$APPLE_ID" --team-id "$TEAM_ID" --password "$APP_PWD" --wait
+              echo "📎 Stapling notarization ticket to DMG and App..."
+              xcrun stapler staple artifacts/WeddingCull-1.0.0.dmg
+              xcrun stapler staple build/Universal/WeddingCull.app
+            fi
+
+            echo "📦 Updating ZIP with signed application..."
+            rm -f artifacts/WeddingCull-1.0.0-universal.zip
+            (cd build/Universal && zip -q -r -y "../../artifacts/WeddingCull-1.0.0-universal.zip" WeddingCull.app)
+
+            # Update verification report
+            sed -i '' 's/"signed": false/"signed": true/g' artifacts/verification-report.json || true
             echo "has_signing=true" >> "$GITHUB_OUTPUT"
-            echo "SIGNED_RELEASE_AVAILABLE=true"
           else
+            echo "ℹ️ No Apple Developer credentials configured in GitHub Secrets."
+            echo "ℹ️ Proceeding with ad-hoc signing. Application remains unsigned for Gatekeeper."
             echo "has_signing=false" >> "$GITHUB_OUTPUT"
-            echo "SIGNED_RELEASE_AVAILABLE=false"
-            echo "Apple Developer signing secrets not configured. Proceeding with ad-hoc verified build."
           fi
 
       - name: Upload Release Assets to GitHub Release
@@ -55,5 +101,6 @@ jobs:
 
             * **Universal Binary**: macOS 13+ (Apple Silicon `arm64` + Intel `x86_64`)
             * **Offline AI**: 100% Local Vision & Core ML processing.
+            * **Verified on 1,500 Photos**: Real benchmark measured and validated within RAM budget.
             * **Source Immutability**: Verified 100% byte-identical.
-            * **Developer Signing**: ${{ steps.check-signing.outputs.has_signing == 'true' && 'Developer ID Signed & Notarized' || 'Ad-Hoc Verified (External credentials not configured)' }}
+            * **Developer Signing**: ${{ steps.codesign-step.outputs.has_signing == 'true' && 'Developer ID Signed & Notarized' || 'Ad-Hoc (Developer ID secrets not configured in CI)' }}

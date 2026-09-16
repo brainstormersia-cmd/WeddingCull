@@ -68,3 +68,13 @@ targets:
     platform: macOS
     sources:
       - path: Tools/TestDatasetGenerator
+
+  BenchmarkRunner:
+    type: tool
+    platform: macOS
+    sources:
+      - path: Tools/BenchmarkRunner
+      - path: Tools/TestDatasetGenerator/SyntheticWeddingGenerator.swift
+    dependencies:
+      - target: WeddingCull
+

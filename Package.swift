@@ -10,7 +10,8 @@ let package = Package(
     products: [
         .executable(name: "WeddingCull", targets: ["WeddingCullAppTarget"]),
         .library(name: "WeddingCullCore", targets: ["WeddingCullCore"]),
-        .executable(name: "TestDatasetGenerator", targets: ["TestDatasetGenerator"])
+        .executable(name: "TestDatasetGenerator", targets: ["TestDatasetGenerator"]),
+        .executable(name: "BenchmarkRunner", targets: ["BenchmarkRunner"])
     ],
     targets: [
         .target(
@@ -33,6 +34,11 @@ let package = Package(
             dependencies: ["TestDatasetGeneratorLibrary"],
             path: "Tools/TestDatasetGenerator",
             sources: ["main.swift"]
+        ),
+        .executableTarget(
+            name: "BenchmarkRunner",
+            dependencies: ["WeddingCullCore", "TestDatasetGeneratorLibrary"],
+            path: "Tools/BenchmarkRunner"
         ),
         .testTarget(
             name: "WeddingCullTests",

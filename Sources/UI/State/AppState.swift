@@ -66,9 +66,30 @@ public final class AppState: ObservableObject {
         }
     }
 
+    @Published public var isPaused: Bool = false
+
+    public func pauseAnalysis() {
+        guard isAnalyzing && !isPaused else { return }
+        isPaused = true
+        statusMessage = "Analisi in pausa."
+        Task {
+            await pipeline.pause()
+        }
+    }
+
+    public func resumeAnalysis() {
+        guard isAnalyzing && isPaused else { return }
+        isPaused = false
+        statusMessage = "Analisi ripresa."
+        Task {
+            await pipeline.resume()
+        }
+    }
+
     public func startAnalysis(folderURL: URL, targetCount: Int = 700) {
         navigationState = .analyzing
         isAnalyzing = true
+        isPaused = false
         statusMessage = "Starting analysis..."
 
         analysisTask = Task {
@@ -83,10 +104,18 @@ public final class AppState: ObservableObject {
                 self.session = result
                 self.selectedPhotoID = result.photos.first?.id
                 self.isAnalyzing = false
+                self.isPaused = false
                 self.navigationState = .review
                 self.statusMessage = "Analysis complete: \(result.photos.count) photos processed."
+            } catch is CancellationError {
+                self.isAnalyzing = false
+                self.isPaused = false
+                self.analysisProgress = nil
+                self.statusMessage = "Analisi annullata dall'utente."
+                self.navigationState = .start
             } catch {
                 self.isAnalyzing = false
+                self.isPaused = false
                 self.statusMessage = "Analysis failed: \(error.localizedDescription)"
                 self.navigationState = .start
             }
@@ -97,6 +126,8 @@ public final class AppState: ObservableObject {
         analysisTask?.cancel()
         analysisTask = nil
         isAnalyzing = false
+        isPaused = false
+        analysisProgress = nil
         navigationState = .start
         statusMessage = "Analysis cancelled."
     }
