@@ -1,7 +1,7 @@
 import Foundation
 import ImageIO
 
-public actor PhotoImporter {
+public final class PhotoImporter: Sendable {
     public static let standardExtensions: Set<String> = [
         "jpg", "jpeg", "png", "heic", "heif", "tiff", "tif"
     ]
