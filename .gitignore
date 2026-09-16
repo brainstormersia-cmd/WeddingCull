@@ -1,0 +1,19 @@
+# macOS
+.DS_Store
+*.swp
+
+# Xcode & Swift
+build/
+.build/
+*.xcodeproj
+xcuserdata/
+DerivedData/
+*.xcworkspace
+*.xcuserstate
+
+# WeddingCull Caches & Artifacts
+artifacts/*.zip
+artifacts/*.dmg
+artifacts/*.xcresult
+artifacts/benchmark_dataset/
+*.weddingcull

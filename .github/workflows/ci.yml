@@ -1,0 +1,88 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  test-matrix:
+    name: Test (${{ matrix.os }} / ${{ matrix.name }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14
+            name: "Apple Silicon (arm64)"
+          - os: macos-13
+            name: "Intel (x86_64)"
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: System Architecture Information
+        run: |
+          echo "=== ARCHITECTURE AUDIT ==="
+          uname -m
+          sw_vers
+          sysctl -n machdep.cpu.brand_string || true
+
+      - name: Setup Environment
+        run: |
+          chmod +x ./scripts/*.sh
+          ./scripts/bootstrap.sh
+
+      - name: Run Tests & Verification
+        run: |
+          ./scripts/test.sh
+
+  universal-build-and-verify:
+    name: Universal Build & Verification (macOS)
+    runs-on: macos-14
+    needs: test-matrix
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: System Architecture Information
+        run: |
+          echo "=== ARCHITECTURE AUDIT ==="
+          uname -m
+          sw_vers
+
+      - name: Make Scripts Executable
+        run: chmod +x ./scripts/*.sh
+
+      - name: Execute Full Verification Suite
+        run: |
+          ./scripts/verify.sh
+
+      - name: Upload Universal App Package
+        uses: actions/upload-artifact@v4
+        with:
+          name: WeddingCull-1.0.0-universal
+          path: |
+            artifacts/WeddingCull-1.0.0-universal.zip
+            artifacts/WeddingCull-1.0.0.dmg
+
+      - name: Upload Verification & Benchmark Reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: WeddingCull-Reports
+          path: |
+            artifacts/verification-report.json
+            artifacts/benchmark.json
+            BENCHMARKS.md
+
+      - name: Upload Test Results and Screenshots
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: WeddingCull-Test-Artifacts
+          path: |
+            artifacts/screenshots/
+            artifacts/*.xcresult

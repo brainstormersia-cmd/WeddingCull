@@ -1,0 +1,15 @@
+/* English Localizable Strings */
+"app_title" = "WeddingCull";
+"import_button" = "Import Wedding";
+"open_session_button" = "Open Session";
+"all_photos" = "All Photos";
+"selected_photos" = "Selected";
+"alternative_photos" = "Alternatives";
+"rejected_photos" = "Rejected";
+"duplicates" = "Duplicates";
+"low_quality" = "Low Quality";
+"export_selection" = "Export Selection";
+"recalculate" = "Recalculate";
+"originals" = "Originals";
+"target" = "Target";
+"selected" = "Selected";
