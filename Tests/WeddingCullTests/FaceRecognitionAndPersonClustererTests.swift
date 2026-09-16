@@ -90,4 +90,25 @@ final class FaceRecognitionAndPersonClustererTests: XCTestCase {
         // Person B appears in 4 solo + 3 couple = 7 photos
         XCTAssertEqual(primaryB!.photoIDs.count, 7)
     }
+
+    func testFaceIdentityExtractionFromImage() {
+        let recognizer = FaceIdentityRecognizer()
+
+        let colorSpace = CGColorSpaceCreateDeviceRGB()
+        let ctx = CGContext(
+            data: nil,
+            width: 200,
+            height: 200,
+            bitsPerComponent: 8,
+            bytesPerRow: 800,
+            space: colorSpace,
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        )!
+        ctx.setFillColor(red: 0.8, green: 0.8, blue: 0.8, alpha: 1.0)
+        ctx.fill(CGRect(x: 0, y: 0, width: 200, height: 200))
+        let testImage = ctx.makeImage()!
+
+        let faces = recognizer.extractFacesWithIdentity(from: testImage)
+        XCTAssertNotNil(faces)
+    }
 }

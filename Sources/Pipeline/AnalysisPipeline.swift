@@ -123,6 +123,16 @@ public actor AnalysisPipeline {
             return SessionData(sourceFolderPath: sourceFolder.path, targetSelectionCount: targetCount)
         }
 
+        // Ensure deterministic chronological ordering by capture date
+        items.sort {
+            let dateA = $0.metadata.captureDate ?? $0.fileModificationDate
+            let dateB = $1.metadata.captureDate ?? $1.fileModificationDate
+            if dateA == dateB {
+                return $0.fileName < $1.fileName
+            }
+            return dateA < dateB
+        }
+
         let totalPhotos = items.count
 
         // Phase 2, 3 & 4: Concurrent Preview, Technical Quality, Faces & FeaturePrints

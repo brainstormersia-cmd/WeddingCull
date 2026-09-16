@@ -57,8 +57,6 @@ public final class FaceIdentityRecognizer: @unchecked Sendable {
         var results: [FaceInstance] = []
         results.reserveCapacity(observations.count)
 
-        let imageWidth = CGFloat(cgImage.width)
-        let imageHeight = CGFloat(cgImage.height)
 
         for obs in observations {
             let bbox = obs.boundingBox
@@ -76,20 +74,7 @@ public final class FaceIdentityRecognizer: @unchecked Sendable {
             // Estimate face capture quality
             let quality = Double(obs.confidence)
 
-            // Crop face with 15% margin
-            let cropRect = CGRect(
-                x: max(0, bbox.origin.x - bbox.width * 0.15) * imageWidth,
-                y: max(0, (1.0 - bbox.origin.y - bbox.height) - bbox.height * 0.15) * imageHeight,
-                width: min(imageWidth, bbox.width * 1.3 * imageWidth),
-                height: min(imageHeight, bbox.height * 1.3 * imageHeight)
-            )
-
-            var embedding: [Float] = []
-            if let faceCrop = cgImage.cropping(to: cropRect) {
-                embedding = computeIdentityEmbedding(faceCrop: faceCrop, landmarks: obs.landmarks)
-            } else {
-                embedding = computeLandmarkGeometryVector(landmarks: obs.landmarks)
-            }
+            let embedding = computeIdentityEmbedding(landmarks: obs.landmarks, bbox: bbox)
 
             results.append(FaceInstance(
                 boundingBox: bbox,
@@ -123,45 +108,150 @@ public final class FaceIdentityRecognizer: @unchecked Sendable {
         return max(0.0, 1.0 - similarity)
     }
 
-    private func computeIdentityEmbedding(faceCrop: CGImage, landmarks: VNFaceLandmarks2D?) -> [Float] {
-        // If Core ML model is loaded, run neural inference
-        if let model = coreMLModel {
-            if let vector = runCoreMLInference(model: model, faceCrop: faceCrop) {
-                return vector
+    private func computeIdentityEmbedding(landmarks: VNFaceLandmarks2D?, bbox: CGRect) -> [Float] {
+        return computeBiometricDescriptor(landmarks: landmarks, bbox: bbox)
+    }
+
+    private func computeBiometricDescriptor(landmarks: VNFaceLandmarks2D?, bbox: CGRect) -> [Float] {
+        var vector: [Float] = Array(repeating: 0.0, count: 64)
+        guard let lm = landmarks else {
+            // Deterministic geometric fallback from bounding box proportions
+            vector[0] = Float(bbox.width)
+            vector[1] = Float(bbox.height)
+            vector[2] = Float(bbox.width / max(0.001, bbox.height))
+            let norm = sqrt(vector[0]*vector[0] + vector[1]*vector[1] + vector[2]*vector[2])
+            if norm > 1e-6 {
+                return vector.map { $0 / norm }
+            }
+            return vector
+        }
+
+        // Extract landmark point sets safely
+        let leftEyePts = lm.leftEye?.normalizedPoints ?? []
+        let rightEyePts = lm.rightEye?.normalizedPoints ?? []
+        let leftPupilPts = lm.leftPupil?.normalizedPoints ?? []
+        let rightPupilPts = lm.rightPupil?.normalizedPoints ?? []
+        let nosePts = lm.nose?.normalizedPoints ?? []
+        let noseCrestPts = lm.noseCrest?.normalizedPoints ?? []
+        let outerLipsPts = lm.outerLips?.normalizedPoints ?? []
+        let faceContourPts = lm.faceContour?.normalizedPoints ?? []
+        let leftEyebrowPts = lm.leftEyebrow?.normalizedPoints ?? []
+        let rightEyebrowPts = lm.rightEyebrow?.normalizedPoints ?? []
+
+        // Centers
+        let leftEyeCenter: CGPoint
+        if !leftPupilPts.isEmpty {
+            leftEyeCenter = leftPupilPts[0]
+        } else if !leftEyePts.isEmpty {
+            leftEyeCenter = CGPoint(
+                x: leftEyePts.map(\.x).reduce(0, +) / CGFloat(leftEyePts.count),
+                y: leftEyePts.map(\.y).reduce(0, +) / CGFloat(leftEyePts.count)
+            )
+        } else {
+            leftEyeCenter = CGPoint(x: bbox.minX + bbox.width * 0.3, y: bbox.minY + bbox.height * 0.65)
+        }
+
+        let rightEyeCenter: CGPoint
+        if !rightPupilPts.isEmpty {
+            rightEyeCenter = rightPupilPts[0]
+        } else if !rightEyePts.isEmpty {
+            rightEyeCenter = CGPoint(
+                x: rightEyePts.map(\.x).reduce(0, +) / CGFloat(rightEyePts.count),
+                y: rightEyePts.map(\.y).reduce(0, +) / CGFloat(rightEyePts.count)
+            )
+        } else {
+            rightEyeCenter = CGPoint(x: bbox.minX + bbox.width * 0.7, y: bbox.minY + bbox.height * 0.65)
+        }
+
+        let eyeDist = max(0.001, hypot(rightEyeCenter.x - leftEyeCenter.x, rightEyeCenter.y - leftEyeCenter.y))
+
+        // 1. Inter-ocular distance normalized
+        vector[0] = Float(eyeDist / max(0.001, bbox.width))
+
+        // 2. Eye widths and heights relative to eye distance
+        if leftEyePts.count >= 4 {
+            let w = hypot(leftEyePts.first!.x - leftEyePts[leftEyePts.count/2].x, leftEyePts.first!.y - leftEyePts[leftEyePts.count/2].y)
+            vector[1] = Float(w / eyeDist)
+        }
+        if rightEyePts.count >= 4 {
+            let w = hypot(rightEyePts.first!.x - rightEyePts[rightEyePts.count/2].x, rightEyePts.first!.y - rightEyePts[rightEyePts.count/2].y)
+            vector[2] = Float(w / eyeDist)
+        }
+
+        // 3. Nose landmarks
+        let noseTip = nosePts.last ?? CGPoint(x: (leftEyeCenter.x + rightEyeCenter.x)/2.0, y: (leftEyeCenter.y + rightEyeCenter.y)/2.0 - eyeDist*0.7)
+        let noseCrest = noseCrestPts.first ?? CGPoint(x: (leftEyeCenter.x + rightEyeCenter.x)/2.0, y: (leftEyeCenter.y + rightEyeCenter.y)/2.0 - eyeDist*0.25)
+
+        vector[3] = Float(hypot(noseTip.x - leftEyeCenter.x, noseTip.y - leftEyeCenter.y) / eyeDist)
+        vector[4] = Float(hypot(noseTip.x - rightEyeCenter.x, noseTip.y - rightEyeCenter.y) / eyeDist)
+        vector[5] = Float(hypot(noseTip.x - noseCrest.x, noseTip.y - noseCrest.y) / eyeDist)
+
+        if nosePts.count >= 3 {
+            let noseWidth = hypot(nosePts.first!.x - nosePts.last!.x, nosePts.first!.y - nosePts.last!.y)
+            vector[6] = Float(noseWidth / eyeDist)
+        }
+
+        // 4. Mouth geometry
+        if outerLipsPts.count >= 4 {
+            let mouthCenter = CGPoint(
+                x: outerLipsPts.map(\.x).reduce(0, +) / CGFloat(outerLipsPts.count),
+                y: outerLipsPts.map(\.y).reduce(0, +) / CGFloat(outerLipsPts.count)
+            )
+            let mouthWidth = hypot(outerLipsPts[0].x - outerLipsPts[outerLipsPts.count/2].x, outerLipsPts[0].y - outerLipsPts[outerLipsPts.count/2].y)
+            vector[7] = Float(mouthWidth / eyeDist)
+            vector[8] = Float(hypot(mouthCenter.x - noseTip.x, mouthCenter.y - noseTip.y) / eyeDist)
+            vector[9] = Float(hypot(mouthCenter.x - leftEyeCenter.x, mouthCenter.y - leftEyeCenter.y) / eyeDist)
+            vector[10] = Float(hypot(mouthCenter.x - rightEyeCenter.x, mouthCenter.y - rightEyeCenter.y) / eyeDist)
+
+            let mouthH = hypot(outerLipsPts[outerLipsPts.count/4].x - outerLipsPts[outerLipsPts.count*3/4].x,
+                               outerLipsPts[outerLipsPts.count/4].y - outerLipsPts[outerLipsPts.count*3/4].y)
+            vector[11] = Float(mouthH / max(0.001, mouthWidth))
+        }
+
+        // 5. Eyebrow distances
+        if !leftEyebrowPts.isEmpty {
+            let ebCenter = CGPoint(
+                x: leftEyebrowPts.map(\.x).reduce(0, +) / CGFloat(leftEyebrowPts.count),
+                y: leftEyebrowPts.map(\.y).reduce(0, +) / CGFloat(leftEyebrowPts.count)
+            )
+            vector[12] = Float(hypot(ebCenter.x - leftEyeCenter.x, ebCenter.y - leftEyeCenter.y) / eyeDist)
+        }
+        if !rightEyebrowPts.isEmpty {
+            let ebCenter = CGPoint(
+                x: rightEyebrowPts.map(\.x).reduce(0, +) / CGFloat(rightEyebrowPts.count),
+                y: rightEyebrowPts.map(\.y).reduce(0, +) / CGFloat(rightEyebrowPts.count)
+            )
+            vector[13] = Float(hypot(ebCenter.x - rightEyeCenter.x, ebCenter.y - rightEyeCenter.y) / eyeDist)
+        }
+
+        // 6. Face contour (jaw, cheeks, chin)
+        if faceContourPts.count >= 8 {
+            let chin = faceContourPts[faceContourPts.count / 2]
+            vector[14] = Float(hypot(chin.x - noseTip.x, chin.y - noseTip.y) / eyeDist)
+
+            let templeWidth = hypot(faceContourPts.first!.x - faceContourPts.last!.x, faceContourPts.first!.y - faceContourPts.last!.y)
+            vector[15] = Float(templeWidth / eyeDist)
+
+            let leftJaw = faceContourPts[faceContourPts.count / 4]
+            let rightJaw = faceContourPts[faceContourPts.count * 3 / 4]
+            let jawWidth = hypot(rightJaw.x - leftJaw.x, rightJaw.y - leftJaw.y)
+            vector[16] = Float(jawWidth / eyeDist)
+
+            vector[17] = Float(hypot(chin.x - leftJaw.x, chin.y - leftJaw.y) / max(0.001, jawWidth))
+            vector[18] = Float(hypot(chin.x - rightJaw.x, chin.y - rightJaw.y) / max(0.001, jawWidth))
+
+            for i in 0..<min(faceContourPts.count, 24) {
+                let pt = faceContourPts[i]
+                vector[19 + i] = Float(hypot(pt.x - noseTip.x, pt.y - noseTip.y) / eyeDist)
             }
         }
 
-        // Fallback: Combine landmark spatial biometric geometry with facial multi-region texture moments
-        return computeBiometricDescriptor(faceCrop: faceCrop, landmarks: landmarks)
-    }
+        // 7. Facial symmetry indicators
+        vector[44] = abs(vector[3] - vector[4])
+        vector[45] = abs(vector[9] - vector[10])
+        vector[46] = Float(bbox.width / max(0.001, bbox.height))
 
-    private func runCoreMLInference(model: MLModel, faceCrop: CGImage) -> [Float]? {
-        // Feature extraction from input image through Core ML model
-        // Typically expects 112x112 or 160x160 normalized RGB input
-        return nil // Default fallback when format differs
-    }
-
-    private func computeBiometricDescriptor(faceCrop: CGImage, landmarks: VNFaceLandmarks2D?) -> [Float] {
-        var vector = computeLandmarkGeometryVector(landmarks: landmarks)
-
-        // Add 32 spatial color & intensity moments from 4x4 grid of face crop
-        let grid = 4
-        let cellW = max(1, faceCrop.width / grid)
-        let cellH = max(1, faceCrop.height / grid)
-
-        for gy in 0..<grid {
-            for gx in 0..<grid {
-                let rect = CGRect(x: gx * cellW, y: gy * cellH, width: cellW, height: cellH)
-                if let cellCrop = faceCrop.cropping(to: rect) {
-                    let avgLuma = computeMeanLuminance(cellCrop)
-                    vector.append(Float(avgLuma))
-                } else {
-                    vector.append(0.5)
-                }
-            }
-        }
-
-        // Normalize vector to unit length
+        // Normalize vector to unit L2 length
         var sumSquares: Float = 0.0
         for v in vector { sumSquares += v * v }
         let norm = sqrt(sumSquares)
@@ -169,57 +259,6 @@ public final class FaceIdentityRecognizer: @unchecked Sendable {
             return vector.map { $0 / norm }
         }
         return vector
-    }
-
-    private func computeLandmarkGeometryVector(landmarks: VNFaceLandmarks2D?) -> [Float] {
-        var geom: [Float] = Array(repeating: 0.0, count: 32)
-        guard let lm = landmarks else { return geom }
-
-        // Relative distances between nose, eyes, mouth, jawline
-        if let nose = lm.nose?.normalizedPoints.first,
-           let leftEye = lm.leftEye?.normalizedPoints.first,
-           let rightEye = lm.rightEye?.normalizedPoints.first {
-            let eyeDist = Float(hypot(rightEye.x - leftEye.x, rightEye.y - leftEye.y))
-            let noseToLeft = Float(hypot(nose.x - leftEye.x, nose.y - leftEye.y))
-            let noseToRight = Float(hypot(nose.x - rightEye.x, nose.y - rightEye.y))
-            geom[0] = eyeDist
-            geom[1] = noseToLeft
-            geom[2] = noseToRight
-        }
-
-        if let outerLips = lm.outerLips?.normalizedPoints, outerLips.count >= 4 {
-            let mouthW = Float(abs(outerLips[2].x - outerLips[0].x))
-            let mouthH = Float(abs(outerLips[3].y - outerLips[1].y))
-            geom[3] = mouthW
-            geom[4] = mouthH
-        }
-
-        return geom
-    }
-
-    private func computeMeanLuminance(_ cgImage: CGImage) -> Double {
-        guard let dataProvider = cgImage.dataProvider,
-              let data = dataProvider.data,
-              let ptr = CFDataGetBytePtr(data) else { return 0.5 }
-
-        let bytesPerPixel = cgImage.bitsPerPixel / 8
-        let bytesPerRow = cgImage.bytesPerRow
-        var totalLuma: Double = 0.0
-        var count: Double = 0.0
-
-        for y in stride(from: 0, to: cgImage.height, by: 4) {
-            let rowOffset = y * bytesPerRow
-            for x in stride(from: 0, to: cgImage.width, by: 4) {
-                let offset = rowOffset + (x * bytesPerPixel)
-                let r = Double(ptr[offset])
-                let g = Double(ptr[offset + 1])
-                let b = Double(ptr[offset + 2])
-                totalLuma += (0.299 * r + 0.587 * g + 0.114 * b) / 255.0
-                count += 1.0
-            }
-        }
-
-        return count > 0 ? totalLuma / count : 0.5
     }
 
     private func computeEyeOpennessRatio(eye: VNFaceLandmarkRegion2D) -> Double {
@@ -230,6 +269,6 @@ public final class FaceIdentityRecognizer: @unchecked Sendable {
         let w = abs(points[0].x - points[3].x)
         guard w > 0.001 else { return 0.8 }
         let ear = Double((h1 + h2) / (2.0 * w))
-        return min(1.0, ear * 3.5)
+        return min(1.0, max(0.0, ear * 3.5))
     }
 }
