@@ -1,12 +1,12 @@
-﻿import XCTest
+import XCTest
 #if canImport(WeddingCull)
 @testable import WeddingCull
 #elseif canImport(WeddingCullCore)
 @testable import WeddingCullCore
 #endif
 
-@MainActor
 final class AppStateAndUIWorkflowTests: XCTestCase {
+    @MainActor
     func testInitialAppState() {
         let appState = AppState()
         XCTAssertEqual(appState.navigationState, .start)
@@ -16,6 +16,7 @@ final class AppStateAndUIWorkflowTests: XCTestCase {
         XCTAssertEqual(appState.currentFilter, .smartAlbum("all"))
     }
 
+    @MainActor
     func testPhotoMarkingAndFiltering() {
         let appState = AppState()
 
@@ -41,10 +42,10 @@ final class AppStateAndUIWorkflowTests: XCTestCase {
 
         // Test marking photo
         appState.markPhoto(id: "photo_1", state: .userRejected)
-        XCTAssertEqual(appState.session.photos.first(where: { .id == "photo_1" })?.selectionState, .userRejected)
+        XCTAssertEqual(appState.session.photos.first(where: { $0.id == "photo_1" })?.selectionState, .userRejected)
 
         appState.markPhoto(id: "photo_2", state: .userSelected)
-        XCTAssertEqual(appState.session.photos.first(where: { .id == "photo_2" })?.selectionState, .userSelected)
+        XCTAssertEqual(appState.session.photos.first(where: { $0.id == "photo_2" })?.selectionState, .userSelected)
 
         // Test smart album filtering
         appState.currentFilter = .smartAlbum("all")
@@ -63,6 +64,7 @@ final class AppStateAndUIWorkflowTests: XCTestCase {
         XCTAssertEqual(appState.filteredPhotos.first?.id, "photo_3")
     }
 
+    @MainActor
     func testPauseResumeAndCancelWorkflow() {
         let appState = AppState()
 
