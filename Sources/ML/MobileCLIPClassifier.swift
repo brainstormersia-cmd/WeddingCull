@@ -100,6 +100,10 @@ public final class MobileCLIPClassifier: ImageClassifierProtocol, @unchecked Sen
         return fallbackClassifier.classify(cgImage: cgImage, metadata: metadata, faceCount: faceCount)
     }
 
+    public func classifyWithObservations(_ observations: [VNClassificationObservation]?, metadata: PhotoMetadata, faceCount: Int) -> (category: WeddingCategory, confidence: Double) {
+        return fallbackClassifier.processObservations(observations, metadata: metadata, faceCount: faceCount)
+    }
+
     private func runMobileCLIPInference(model: MLModel, cgImage: CGImage) -> (category: WeddingCategory, confidence: Double)? {
         // In MobileCLIP-S0 CoreML model, input is typically 256x256 image
         // When inference succeeds, compute cosine similarity with conceptEmbeddings

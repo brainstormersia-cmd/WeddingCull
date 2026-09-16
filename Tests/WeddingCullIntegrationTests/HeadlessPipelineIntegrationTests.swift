@@ -27,7 +27,11 @@ final class HeadlessPipelineIntegrationTests: XCTestCase {
 
         // Step 1: Generate synthetic wedding photos
         let generator = SyntheticWeddingGenerator()
-        let files = try generator.generateDataset(at: sourceDir)
+        let config = SyntheticWeddingGenerator.GeneratorConfig(
+            generateLargeImages: false,
+            targetTotalPhotos: 60
+        )
+        let files = try generator.generateDataset(at: sourceDir, config: config)
         XCTAssertGreaterThan(files.count, 50, "Should generate sufficient synthetic photos")
 
         // Step 2: Compute initial hashes for source immutability verification

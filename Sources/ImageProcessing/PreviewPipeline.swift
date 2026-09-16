@@ -53,12 +53,12 @@ public final class PreviewPipeline: Sendable {
                 throw NSError(domain: "PreviewPipeline", code: 1, userInfo: [NSLocalizedDescriptionKey: "Failed to open image source"])
             }
 
-            // 1. Generate 1600px analysis preview
+            // 1. Generate 1000px analysis preview
             let previewOptions: [CFString: Any] = [
                 kCGImageSourceCreateThumbnailFromImageAlways: true,
                 kCGImageSourceShouldCacheImmediately: true,
                 kCGImageSourceCreateThumbnailWithTransform: true,
-                kCGImageSourceThumbnailMaxPixelSize: 1600
+                kCGImageSourceThumbnailMaxPixelSize: 1000
             ]
 
             guard let previewCGImage = CGImageSourceCreateThumbnailAtIndex(imageSource, 0, previewOptions as CFDictionary) else {

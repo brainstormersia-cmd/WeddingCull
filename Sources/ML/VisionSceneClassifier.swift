@@ -9,22 +9,27 @@ public final class VisionSceneClassifier: ImageClassifierProtocol, Sendable {
         let request = VNClassifyImageRequest()
         let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
 
-        var visionScores: [WeddingCategory: Double] = [:]
-
         do {
             try handler.perform([request])
-            if let observations = request.results {
-                for obs in observations where obs.confidence >= 0.1 {
-                    let identifier = obs.identifier.lowercased()
-                    let confidence = Double(obs.confidence)
-
-                    if let cat = mapVisionIdentifierToCategory(identifier) {
-                        visionScores[cat] = max(visionScores[cat] ?? 0.0, confidence)
-                    }
-                }
-            }
         } catch {
             // Vision classify unavailable or failed; use heuristics
+        }
+
+        return processObservations(request.results, metadata: metadata, faceCount: faceCount)
+    }
+
+    public func processObservations(_ observations: [VNClassificationObservation]?, metadata: PhotoMetadata, faceCount: Int) -> (category: WeddingCategory, confidence: Double) {
+        var visionScores: [WeddingCategory: Double] = [:]
+
+        if let obsList = observations {
+            for obs in obsList where obs.confidence >= 0.1 {
+                let identifier = obs.identifier.lowercased()
+                let confidence = Double(obs.confidence)
+
+                if let cat = mapVisionIdentifierToCategory(identifier) {
+                    visionScores[cat] = max(visionScores[cat] ?? 0.0, confidence)
+                }
+            }
         }
 
         // Apply context heuristics

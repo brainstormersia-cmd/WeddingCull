@@ -50,13 +50,17 @@ public final class FaceIdentityRecognizer: @unchecked Sendable {
             return []
         }
 
-        guard let observations = request.results, !observations.isEmpty else {
+        return processObservations(request.results ?? [])
+    }
+
+    /// Processes already executed VNDetectFaceLandmarksRequest observations
+    public func processObservations(_ observations: [VNFaceObservation]) -> [FaceInstance] {
+        guard !observations.isEmpty else {
             return []
         }
 
         var results: [FaceInstance] = []
         results.reserveCapacity(observations.count)
-
 
         for obs in observations {
             let bbox = obs.boundingBox
