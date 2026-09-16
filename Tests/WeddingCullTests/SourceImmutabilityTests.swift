@@ -26,7 +26,7 @@ final class SourceImmutabilityTests: XCTestCase {
         let generator = SyntheticWeddingGenerator()
         let config = SyntheticWeddingGenerator.GeneratorConfig(
             generateLargeImages: false,
-            totalTargetCount: 15
+            targetTotalPhotos: 15
         )
         let generatedFiles = try generator.generateDataset(at: sourceDir, config: config)
 

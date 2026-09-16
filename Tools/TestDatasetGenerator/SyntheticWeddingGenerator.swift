@@ -9,15 +9,17 @@ public final class SyntheticWeddingGenerator: Sendable {
         public let baseDate: Date
         public let generateLargeImages: Bool
         public let targetTotalPhotos: Int
+        public var totalTargetCount: Int { targetTotalPhotos }
 
         public init(
             baseDate: Date = Date(timeIntervalSince1970: 1720000000), // fixed deterministic date
             generateLargeImages: Bool = true,
-            targetTotalPhotos: Int = 150
+            targetTotalPhotos: Int = 150,
+            totalTargetCount: Int? = nil
         ) {
             self.baseDate = baseDate
             self.generateLargeImages = generateLargeImages
-            self.targetTotalPhotos = targetTotalPhotos
+            self.targetTotalPhotos = totalTargetCount ?? targetTotalPhotos
         }
     }
 
