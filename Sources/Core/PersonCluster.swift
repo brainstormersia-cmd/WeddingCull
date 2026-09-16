@@ -6,6 +6,7 @@ public enum PersonRole: String, Codable, Sendable, CaseIterable {
     case groom
     case partnerA
     case partnerB
+    case weddingParty
     case guest
     case custom
 
@@ -16,6 +17,7 @@ public enum PersonRole: String, Codable, Sendable, CaseIterable {
         case .groom: return "Groom"
         case .partnerA: return "Partner A"
         case .partnerB: return "Partner B"
+        case .weddingParty: return "Wedding Party"
         case .guest: return "Guest"
         case .custom: return "Custom"
         }

@@ -88,7 +88,7 @@ public final class MobileCLIPClassifier: ImageClassifierProtocol, @unchecked Sen
         }
     }
 
-    public func classify(cgImage: CGImage, metadata: PhotoMetadata, faceCount: Int) async -> (category: WeddingCategory, confidence: Double) {
+    public func classify(cgImage: CGImage, metadata: PhotoMetadata, faceCount: Int) -> (category: WeddingCategory, confidence: Double) {
         // If Core ML MobileCLIP image encoder is loaded, perform zero-shot classification with precalculated concept embeddings
         if let model = coreMLModel, !conceptEmbeddings.isEmpty {
             if let result = runMobileCLIPInference(model: model, cgImage: cgImage) {

@@ -11,7 +11,7 @@ public struct FaceInstance: Sendable {
     public let identityEmbedding: [Float] // Normalized identity vector (128-d / 64-d)
 }
 
-public final class FaceIdentityRecognizer: Sendable {
+public final class FaceIdentityRecognizer: @unchecked Sendable {
     private let modelURL: URL?
     private let coreMLModel: MLModel?
 

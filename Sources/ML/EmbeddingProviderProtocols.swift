@@ -12,5 +12,5 @@ public protocol SemanticEmbeddingProvider: Sendable {
 }
 
 public protocol ImageClassifierProtocol: Sendable {
-    func classify(cgImage: CGImage, metadata: PhotoMetadata, faceCount: Int) async -> (category: WeddingCategory, confidence: Double)
+    func classify(cgImage: CGImage, metadata: PhotoMetadata, faceCount: Int) -> (category: WeddingCategory, confidence: Double)
 }

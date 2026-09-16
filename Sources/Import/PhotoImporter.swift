@@ -36,7 +36,7 @@ public final class PhotoImporter: Sendable {
         }
 
         var count = 0
-        for case let fileURL as URL in enumerator {
+        while let fileURL = enumerator.nextObject() as? URL {
             if Task.isCancelled { break }
             let ext = fileURL.pathExtension.lowercased()
             if Self.allSupportedExtensions.contains(ext) {
