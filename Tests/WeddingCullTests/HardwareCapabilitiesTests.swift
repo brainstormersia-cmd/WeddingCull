@@ -1,5 +1,9 @@
 import XCTest
+#if canImport(WeddingCull)
 @testable import WeddingCull
+#elseif canImport(WeddingCullCore)
+@testable import WeddingCullCore
+#endif
 
 final class HardwareCapabilitiesTests: XCTestCase {
     func testHardwareDetection() {

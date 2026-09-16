@@ -1,6 +1,13 @@
 import XCTest
 import CryptoKit
+#if canImport(WeddingCull)
 @testable import WeddingCull
+#elseif canImport(WeddingCullCore)
+@testable import WeddingCullCore
+#endif
+#if canImport(TestDatasetGeneratorLibrary)
+import TestDatasetGeneratorLibrary
+#endif
 
 final class HeadlessPipelineIntegrationTests: XCTestCase {
     private func computeSHA256(for fileURL: URL) throws -> String {

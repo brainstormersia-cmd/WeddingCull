@@ -1,10 +1,14 @@
 import XCTest
+#if canImport(WeddingCull)
 @testable import WeddingCull
+#elseif canImport(WeddingCullCore)
+@testable import WeddingCullCore
+#endif
 
 public struct GoldenSelectionManifest: Codable {
     public let shootID: String
     public let selectedPhotoNames: [String]
-    public let categories: [String: String]? // filename -> category
+    public let categories: [String: String]?
 }
 
 public struct GoldenEvaluationResult {
@@ -62,9 +66,6 @@ final class GoldenDatasetEvaluatorTests: XCTestCase {
             goldenManifest: manifest
         )
 
-        // Algo selected: 1, 2, 5 (total 3)
-        // Human selected: 1, 2, 3, 4 (total 4)
-        // Overlap: 1, 2 (count 2)
         XCTAssertEqual(eval.overlapCount, 2)
         XCTAssertEqual(eval.totalAlgorithmicSelected, 3)
         XCTAssertEqual(eval.totalHumanSelected, 4)

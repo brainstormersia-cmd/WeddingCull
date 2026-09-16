@@ -1,6 +1,10 @@
 import XCTest
 import CoreGraphics
+#if canImport(WeddingCull)
 @testable import WeddingCull
+#elseif canImport(WeddingCullCore)
+@testable import WeddingCullCore
+#endif
 
 final class QualityAndSharpnessMetricsTests: XCTestCase {
     private func createSharpImage() -> CGImage {
@@ -8,7 +12,6 @@ final class QualityAndSharpnessMetricsTests: XCTestCase {
         let height = 200
         var buffer = [UInt8](repeating: 0, count: width * height)
 
-        // Checkerboard / high-frequency pattern = high Laplacian variance
         for y in 0..<height {
             for x in 0..<width {
                 if ((x / 10) + (y / 10)) % 2 == 0 {
@@ -63,7 +66,7 @@ final class QualityAndSharpnessMetricsTests: XCTestCase {
     }
 
     func testRobustNormalization() {
-        let values = [10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0, 90.0, 100.0, 1000.0] // with outlier
+        let values = [10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0, 90.0, 100.0, 1000.0]
         let normalizer = RobustNormalizer(values: values)
 
         let normLow = normalizer.normalize(15.0)
@@ -82,8 +85,8 @@ final class QualityAndSharpnessMetricsTests: XCTestCase {
         item1.category = .ceremony
 
         var item2 = PhotoItem(fileName: "IMG_002.jpg", sourceURL: URL(fileURLWithPath: "/tmp/2.jpg"))
-        item2.metrics.rawSharpness = 10.0 // Blurry
-        item2.metrics.meanLuminance = 0.05 // Severe underexposure
+        item2.metrics.rawSharpness = 10.0
+        item2.metrics.meanLuminance = 0.05
         item2.metrics.isSevereUnderexposed = true
 
         let scored = scorer.scorePhotos(items: [item1, item2])

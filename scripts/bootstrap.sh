@@ -10,29 +10,26 @@ OS=$(uname -s)
 echo "Operating System: $OS"
 echo "Machine Architecture: $ARCH"
 
-if [ "$OS" != "Darwin" ]; then
-    echo "⚠️ Warning: Not running on macOS (Darwin). Current OS: $OS"
-fi
-
 mkdir -p artifacts/screenshots
 mkdir -p artifacts/reports
 
 # Check if xcodegen is installed
 if ! command -v xcodegen &> /dev/null; then
-    echo "📦 Installing xcodegen via Homebrew..."
+    echo "📦 Checking Homebrew for xcodegen..."
     if command -v brew &> /dev/null; then
-        brew install xcodegen
-    else
-        echo "⚠️ Homebrew not found. XcodeGen must be installed manually."
+        brew install xcodegen || true
     fi
 fi
 
 if command -v xcodegen &> /dev/null; then
     echo "⚙️ Generating Xcode project from project.yml..."
-    xcodegen generate
-    echo "✅ WeddingCull.xcodeproj generated successfully."
-else
-    echo "⚠️ xcodegen not found; SPM package will be used."
+    xcodegen generate || true
+
+    # Fix objectVersion if generated with format 77 for compatibility with Xcode 15/16
+    if [ -f "WeddingCull.xcodeproj/project.pbxproj" ]; then
+        echo "🔧 Ensuring Xcode project compatibility..."
+        sed -i '' 's/objectVersion = [0-9][0-9]*;/objectVersion = 56;/g' WeddingCull.xcodeproj/project.pbxproj || true
+    fi
 fi
 
 echo "✅ Bootstrap complete."

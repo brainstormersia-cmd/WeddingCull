@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(TestDatasetGeneratorLibrary)
+import TestDatasetGeneratorLibrary
+#endif
 
 let arguments = ProcessInfo.processInfo.arguments
 let outputDir: URL

@@ -8,18 +8,9 @@ on:
   workflow_dispatch:
 
 jobs:
-  test-matrix:
-    name: Test (${{ matrix.os }} / ${{ matrix.name }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: macos-14
-            name: "Apple Silicon (arm64)"
-          - os: macos-13
-            name: "Intel (x86_64)"
-
+  test-apple-silicon:
+    name: Test (Apple Silicon arm64)
+    runs-on: macos-14
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -29,21 +20,42 @@ jobs:
           echo "=== ARCHITECTURE AUDIT ==="
           uname -m
           sw_vers
-          sysctl -n machdep.cpu.brand_string || true
 
       - name: Setup Environment
         run: |
           chmod +x ./scripts/*.sh
           ./scripts/bootstrap.sh
 
-      - name: Run Tests & Verification
+      - name: Run Tests on Apple Silicon
         run: |
           ./scripts/test.sh
+
+  test-intel:
+    name: Test (Intel x86_64)
+    runs-on: macos-14
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: System Architecture Information
+        run: |
+          echo "=== INTEL ARCHITECTURE AUDIT ==="
+          arch -x86_64 uname -m
+          sw_vers
+
+      - name: Setup Environment
+        run: |
+          chmod +x ./scripts/*.sh
+          ./scripts/bootstrap.sh
+
+      - name: Run Tests on Intel Architecture
+        run: |
+          arch -x86_64 ./scripts/test.sh
 
   universal-build-and-verify:
     name: Universal Build & Verification (macOS)
     runs-on: macos-14
-    needs: test-matrix
+    needs: [test-apple-silicon, test-intel]
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4

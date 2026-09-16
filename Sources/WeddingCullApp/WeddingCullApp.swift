@@ -1,4 +1,7 @@
 import SwiftUI
+#if canImport(WeddingCullCore)
+import WeddingCullCore
+#endif
 
 @main
 public struct WeddingCullApp: App {
