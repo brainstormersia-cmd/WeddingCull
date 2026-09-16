@@ -136,6 +136,9 @@ public actor AnalysisPipeline {
                 items[index].duplicateOfID = canonID
                 items[index].selectionState = .rejected
             }
+            if item.metadata.isCorrupt {
+                items[index].selectionState = .rejected
+            }
         }
 
         let bursts = duplicateDetector.detectBursts(items: items)

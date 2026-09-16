@@ -153,7 +153,7 @@ public final class PhotoImporter: Sendable {
         }
 
         guard let properties = CGImageSourceCopyPropertiesAtIndex(imageSource, 0, options as CFDictionary) as? [CFString: Any] else {
-            return PhotoMetadata(isCorrupt: false)
+            return PhotoMetadata(isCorrupt: true)
         }
 
         let width = properties[kCGImagePropertyPixelWidth] as? Int ?? 0
@@ -213,7 +213,7 @@ public final class PhotoImporter: Sendable {
             iso: iso,
             hasGPS: hasGPS,
             burstUUID: burstUUID,
-            isCorrupt: width == 0 && height == 0
+            isCorrupt: width == 0 || height == 0
         )
     }
 }
