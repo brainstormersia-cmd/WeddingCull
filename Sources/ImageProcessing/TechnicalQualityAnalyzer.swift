@@ -156,7 +156,6 @@ public final class TechnicalQualityAnalyzer: Sendable {
             let rowOffset = y * width
             for x in 1..<(width - 1) {
                 let inXThirds = x >= thirdsX1 && x <= thirdsX2
-                let center = Int(grayBuffer[rowOffset + x])
                 let top = Int(grayBuffer[(y - 1) * width + x])
                 let bottom = Int(grayBuffer[(y + 1) * width + x])
                 let left = Int(grayBuffer[rowOffset + x - 1])

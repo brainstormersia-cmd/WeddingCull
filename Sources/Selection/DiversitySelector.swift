@@ -100,7 +100,7 @@ public final class DiversitySelector: Sendable {
         var selectedItemsList: [PhotoItem] = items.filter { userSelectedIDs.contains($0.id) }
 
         // Candidate pool sorted by base utility
-        var remainingCandidates = candidates.filter { !userSelectedIDs.contains($0.id) }
+        let remainingCandidates = candidates.filter { !userSelectedIDs.contains($0.id) }
 
         // Helper: compute similarity penalty against already selected photos
         func maxSimilarityToSelected(_ candidate: PhotoItem) -> Double {

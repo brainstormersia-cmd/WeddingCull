@@ -74,7 +74,7 @@ public final class AppState: ObservableObject {
         analysisTask = Task {
             do {
                 let result = try await pipeline.runAnalysis(sourceFolder: folderURL, targetCount: targetCount) { [weak self] progress in
-                    Task { @MainActor in
+                    Task { @MainActor [weak self] in
                         self?.analysisProgress = progress
                         self?.statusMessage = "\(progress.phase.rawValue): \(progress.message)"
                     }

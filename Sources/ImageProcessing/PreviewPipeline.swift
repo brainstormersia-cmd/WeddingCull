@@ -2,7 +2,7 @@ import Foundation
 import CoreGraphics
 import ImageIO
 
-public actor PreviewPipeline {
+public final class PreviewPipeline: Sendable {
     public let cacheDirectory: URL
     public let previewsDirectory: URL
     public let thumbnailsDirectory: URL

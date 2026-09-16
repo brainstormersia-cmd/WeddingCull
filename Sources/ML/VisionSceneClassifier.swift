@@ -14,7 +14,7 @@ public final class VisionSceneClassifier: ImageClassifierProtocol, Sendable {
         do {
             try handler.perform([request])
             if let observations = request.results {
-                for obs in observations where obs.hasMinimumConfidence(0.1, forPrecisionRecallCurvePercentage: 0.5) {
+                for obs in observations where obs.confidence >= 0.1 {
                     let identifier = obs.identifier.lowercased()
                     let confidence = Double(obs.confidence)
 

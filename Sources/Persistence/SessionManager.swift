@@ -42,7 +42,7 @@ public final class SessionManager: Sendable {
             }
 
             let currentSize = (attributes[.size] as? NSNumber)?.int64Value ?? 0
-            let currentModDate = (attributes[.contentModificationDate] as? Date) ?? Date()
+            let currentModDate = (attributes[.modificationDate] as? Date) ?? Date()
 
             // Invalidate if size changed or modified more than 1 second apart
             let sizeMatches = currentSize == item.fileSizeBytes
