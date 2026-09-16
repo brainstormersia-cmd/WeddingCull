@@ -125,18 +125,33 @@ public struct BurstCompareView: View {
             .frame(width: 260)
 
             // Button to set as winner
-            Button(action: {
-                appState.setBurstWinner(burstID: burst.id, newWinnerID: item.id)
-            }) {
-                HStack {
-                    Image(systemName: isWinner ? "checkmark" : "hand.thumbsup.fill")
-                    Text(isWinner ? "Vincitore attuale" : "Imposta come migliore")
+            if isWinner {
+                Button(action: {
+                    appState.setBurstWinner(burstID: burst.id, newWinnerID: item.id)
+                }) {
+                    HStack {
+                        Image(systemName: "checkmark")
+                        Text("Vincitore attuale")
+                    }
+                    .frame(maxWidth: .infinity)
                 }
-                .frame(maxWidth: .infinity)
+                .buttonStyle(.borderedProminent)
+                .tint(.green)
+                .accessibilityIdentifier(AccessibilityIdentifiers.setWinnerButton)
+            } else {
+                Button(action: {
+                    appState.setBurstWinner(burstID: burst.id, newWinnerID: item.id)
+                }) {
+                    HStack {
+                        Image(systemName: "hand.thumbsup.fill")
+                        Text("Imposta come migliore")
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+                .tint(.accentColor)
+                .accessibilityIdentifier(AccessibilityIdentifiers.setWinnerButton)
             }
-            .buttonStyle(isWinner ? .borderedProminent : .bordered)
-            .tint(isWinner ? .green : .accentColor)
-            .accessibilityIdentifier(AccessibilityIdentifiers.setWinnerButton)
         }
         .padding()
         .background(Color.secondary.opacity(0.06))
