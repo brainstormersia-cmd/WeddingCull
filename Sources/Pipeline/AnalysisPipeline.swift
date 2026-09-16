@@ -48,7 +48,7 @@ public actor AnalysisPipeline {
     ) async throws -> SessionData {
         let startTime = Date()
 
-        let report: @Sendable (AnalysisPhase, Int, Int, String) -> Void = { phase, current, total, message in
+        @Sendable func report(phase: AnalysisPhase, current: Int, total: Int, message: String) {
             let elapsed = Date().timeIntervalSince(startTime)
             progressHandler?(AnalysisProgress(
                 phase: phase,
