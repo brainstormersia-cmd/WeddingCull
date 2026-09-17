@@ -30,7 +30,8 @@ public final class SyntheticWeddingGenerator: Sendable {
         var createdFiles: [URL] = []
         var currentTime = config.baseDate
 
-        let scale = max(1.0, Double(config.targetTotalPhotos) / 150.0)
+        let scale = max(0.08, Double(config.targetTotalPhotos) / 150.0)
+        let isSmallDataset = config.targetTotalPhotos <= 30
 
         let baseScenes: [(category: String, colorRGB: (CGFloat, CGFloat, CGFloat), baseCount: Int, hasFaces: Bool)] = [
             ("BridePrep", (0.95, 0.85, 0.90), 12, true),
@@ -49,7 +50,7 @@ public final class SyntheticWeddingGenerator: Sendable {
         for scene in baseScenes {
             // Gap of 25 minutes between major scenes to test temporal segmentation
             currentTime = currentTime.addingTimeInterval(1500)
-            let sceneCount = max(2, Int(round(Double(scene.baseCount) * scale)))
+            let sceneCount = max(1, Int(round(Double(scene.baseCount) * scale)))
 
             for i in 0..<sceneCount {
                 currentTime = currentTime.addingTimeInterval(Double.random(in: 4...25))
@@ -78,12 +79,13 @@ public final class SyntheticWeddingGenerator: Sendable {
             }
 
             // Burst sequences for Ceremony, Cake, and Dance
-            if scene.category == "Ceremony" || scene.category == "Cake" || (scale > 2.0 && scene.category == "Dance") {
+            let shouldGenerateBurst = isSmallDataset ? (scene.category == "Ceremony") : (scene.category == "Ceremony" || scene.category == "Cake" || (scale > 2.0 && scene.category == "Dance"))
+            if shouldGenerateBurst {
                 let burstCount = scale > 2.0 ? 2 : 1
                 for burstIdx in 0..<burstCount {
                     let burstUUID = UUID().uuidString
-                    let burstLength = 5
-                    let burstWinnerOffset = 2
+                    let burstLength = isSmallDataset ? 3 : 5
+                    let burstWinnerOffset = isSmallDataset ? 1 : 2
 
                     for b in 0..<burstLength {
                         currentTime = currentTime.addingTimeInterval(0.3) // 300ms apart

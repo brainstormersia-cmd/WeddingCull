@@ -43,7 +43,7 @@ jobs:
           name: WeddingCull-Test-Artifacts-arm64
           path: |
             artifacts/screenshots/
-            artifacts/*.xcresult
+            artifacts/*.xcresult*
 
   test-intel:
     name: Test (Intel x86_64)
@@ -80,7 +80,7 @@ jobs:
           name: WeddingCull-Test-Artifacts-x86_64
           path: |
             artifacts/screenshots/
-            artifacts/*.xcresult
+            artifacts/*.xcresult*
 
   universal-build-and-verify:
     name: Universal Build & Verification (macOS)
@@ -128,4 +128,4 @@ jobs:
           name: WeddingCull-Test-Artifacts
           path: |
             artifacts/screenshots/
-            artifacts/*.xcresult
+            artifacts/*.xcresult*

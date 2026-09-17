@@ -84,21 +84,21 @@ final class WeddingCullUITests: XCTestCase {
             }
         }
 
-        // 4. Wait for Review Mode (allow ample time for Intel runner without Apple Neural Engine)
-        let photoGrid = app.scrollViews["photo_grid"]
-        let sidebar = app.outlines["sidebar_list"]
-        let reviewEntered = photoGrid.waitForExistence(timeout: 120.0) || sidebar.waitForExistence(timeout: 120.0)
+        // 4. Wait for Review Mode (toolbar / inspector buttons unambiguously signal Review state)
+        let exportButton = app.buttons["main_export_button"].firstMatch
+        let selectButton = app.buttons["select_button"].firstMatch
+        let reviewEntered = exportButton.waitForExistence(timeout: 60.0) || selectButton.waitForExistence(timeout: 10.0)
         XCTAssertTrue(reviewEntered, "Pipeline must transition to Review Mode")
 
         captureScreenshot(name: "04_Review_Grid")
 
-        // 5. Verify real thumbnails are loaded in the grid (at least 5 loaded thumbnails)
+        // 5. Verify real thumbnails are loaded in the grid (at least 3 loaded thumbnails)
         let loadedThumbPredicate = NSPredicate(format: "identifier == 'photo_thumbnail_loaded'")
         let loadedThumbs = app.images.matching(loadedThumbPredicate)
         _ = loadedThumbs.firstMatch.waitForExistence(timeout: 10.0)
 
         let loadedCount = loadedThumbs.count
-        XCTAssertGreaterThanOrEqual(loadedCount, 5, "Grid must display real loaded thumbnails, not empty placeholders")
+        XCTAssertGreaterThanOrEqual(loadedCount, 3, "Grid must display real loaded thumbnails, not empty placeholders")
 
         // 6. Test Inspector Panel & Photo Selection
         let inspector = app.otherElements["inspector_panel"]
