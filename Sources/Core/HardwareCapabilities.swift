@@ -11,6 +11,7 @@ public struct HardwareCapabilities: Sendable {
     public let logicalProcessors: Int
     public let physicalMemoryBytes: UInt64
     public let isAppleSilicon: Bool
+    public let neuralEngineAvailable: Bool
     public let metalAvailable: Bool
     public let recommendedProfile: ProcessingProfile
 
@@ -42,6 +43,7 @@ public struct HardwareCapabilities: Sendable {
         self.logicalProcessors = ProcessInfo.processInfo.processorCount
         self.physicalMemoryBytes = ProcessInfo.processInfo.physicalMemory
         self.isAppleSilicon = arch.contains("arm64") || appleSilicon
+        self.neuralEngineAvailable = self.isAppleSilicon
 
         if let defaultDevice = MTLCreateSystemDefaultDevice() {
             self.metalAvailable = true

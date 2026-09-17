@@ -118,12 +118,13 @@ public final class SyntheticWeddingGenerator: Sendable {
             createdFiles.append(dupURL)
         }
 
-        // Add RAW + JPEG pair
-        let pairBaseName = "IMG_9990"
+        // Add RAW + JPEG pair test fixture
+        // Explicitly labeled as synthetic JPEG test fixture with .CR3 extension for metadata pairing tests only
+        let pairBaseName = "IMG_9990_SYNTHETIC_PAIR"
         let pairJpegURL = destinationFolder.appendingPathComponent("\(pairBaseName).JPG")
         let pairRawURL = destinationFolder.appendingPathComponent("\(pairBaseName).CR3")
 
-        let pairImage = renderSyntheticImage(width: 800, height: 600, text: "RAW+JPEG Pair", baseColor: (0.9, 0.9, 0.9), hasFaces: true, isBlurred: false, isDark: false, isOverexposed: false)
+        let pairImage = renderSyntheticImage(width: 800, height: 600, text: "RAW+JPEG Synthetic Fixture", baseColor: (0.9, 0.9, 0.9), hasFaces: true, isBlurred: false, isDark: false, isOverexposed: false)
         try saveImage(pairImage, to: pairJpegURL, captureDate: currentTime)
         try saveImage(pairImage, to: pairRawURL, captureDate: currentTime)
         createdFiles.append(pairJpegURL)
