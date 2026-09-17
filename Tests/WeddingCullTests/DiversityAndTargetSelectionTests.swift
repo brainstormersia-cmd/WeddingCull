@@ -63,4 +63,118 @@ final class DiversityAndTargetSelectionTests: XCTestCase {
         let selected = result.updatedItems.filter { $0.selectionState.isIncludedInFinal }
         XCTAssertEqual(selected.count, 15, "When target exceeds available, select all eligible photos without crashing")
     }
+
+    func testTemporalSegmentDominanceCapped() {
+        var items: [PhotoItem] = []
+        let dominantSegID = "seg_ceremony"
+        let minorSegID = "seg_reception"
+
+        // Create 80 photos in dominant segment with high scores (0.90)
+        for i in 0..<80 {
+            var item = PhotoItem(id: "dom_\(i)", fileName: "dom_\(i).jpg", sourceURL: URL(fileURLWithPath: "/tmp/dom_\(i).jpg"))
+            item.metrics.overallScore = 0.90
+            item.temporalSegmentID = dominantSegID
+            item.perceptualHash = UInt64(i * 100)
+            items.append(item)
+        }
+
+        // Create 40 photos in minor segment with slightly lower scores (0.75)
+        for i in 0..<40 {
+            var item = PhotoItem(id: "min_\(i)", fileName: "min_\(i).jpg", sourceURL: URL(fileURLWithPath: "/tmp/min_\(i).jpg"))
+            item.metrics.overallScore = 0.75
+            item.temporalSegmentID = minorSegID
+            item.perceptualHash = UInt64(i * 500 + 100000)
+            items.append(item)
+        }
+
+        let segments = [
+            TemporalSegment(id: dominantSegID, startTime: Date(), endTime: Date().addingTimeInterval(3600), photoIDs: items.filter { $0.temporalSegmentID == dominantSegID }.map(\.id)),
+            TemporalSegment(id: minorSegID, startTime: Date().addingTimeInterval(3600), endTime: Date().addingTimeInterval(7200), photoIDs: items.filter { $0.temporalSegmentID == minorSegID }.map(\.id))
+        ]
+
+        let targetCount = 50
+        let selector = DiversitySelector()
+        let result = selector.selectPhotos(items: items, segments: segments, bursts: [], targetCount: targetCount)
+
+        let selected = result.updatedItems.filter { $0.selectionState.isIncludedInFinal }
+        XCTAssertEqual(selected.count, targetCount)
+
+        let dominantSelected = selected.filter { $0.temporalSegmentID == dominantSegID }
+        let maxAllowed = Int(ceil(Double(targetCount) * 0.60)) // 60% of 50 = 30
+        XCTAssertLessThanOrEqual(dominantSelected.count, maxAllowed, "Dominant segment must not exceed 60% of final selection")
+        XCTAssertGreaterThan(selected.filter { $0.temporalSegmentID == minorSegID }.count, 0, "Minor segment must be represented")
+    }
+
+    func testCategoryDiversityCoverage() {
+        var items: [PhotoItem] = []
+        let categories: [WeddingCategory] = [
+            .bridePrep, .groomPrep, .ceremony, .bride, .groom, .couple, .reception, .details
+        ]
+
+        for (cIdx, cat) in categories.enumerated() {
+            for i in 0..<10 {
+                var item = PhotoItem(id: "photo_\(cat.rawValue)_\(i)", fileName: "photo_\(cat.rawValue)_\(i).jpg", sourceURL: URL(fileURLWithPath: "/tmp/\(cat.rawValue)_\(i).jpg"))
+                // Give earlier categories much higher scores
+                item.metrics.overallScore = Double(10 - cIdx) * 0.1
+                item.category = cat
+                item.perceptualHash = UInt64((cIdx * 10 + i) * 777)
+                items.append(item)
+            }
+        }
+
+        let selector = DiversitySelector()
+        let result = selector.selectPhotos(items: items, segments: [], bursts: [], targetCount: 20)
+
+        let selected = result.updatedItems.filter { $0.selectionState.isIncludedInFinal }
+        XCTAssertEqual(selected.count, 20)
+
+        let uniqueCategories = Set(selected.map(\.category))
+        XCTAssertGreaterThanOrEqual(uniqueCategories.count, 4, "Selection must cover at least 4 distinct wedding categories when source spans 8")
+    }
+
+    func testBurstWinnerPreference() {
+        var items: [PhotoItem] = []
+        let burstID = "burst_1"
+        let winnerID = "burst_1_frame_2"
+        let memberIDs = ["burst_1_frame_1", "burst_1_frame_2", "burst_1_frame_3"]
+
+        for id in memberIDs {
+            var item = PhotoItem(id: id, fileName: "\(id).jpg", sourceURL: URL(fileURLWithPath: "/tmp/\(id).jpg"))
+            item.burstGroupID = burstID
+            item.metrics.overallScore = 0.85 // Identical base scores
+            item.perceptualHash = 12345 // Near identical visual hash
+            items.append(item)
+        }
+
+        let burst = BurstGroup(id: burstID, memberIDs: memberIDs, winnerID: winnerID, alternativeIDs: ["burst_1_frame_1", "burst_1_frame_3"])
+
+        let selector = DiversitySelector()
+        let result = selector.selectPhotos(items: items, segments: [], bursts: [burst], targetCount: 1)
+
+        let selected = result.updatedItems.filter { $0.selectionState.isIncludedInFinal }
+        XCTAssertEqual(selected.count, 1)
+        XCTAssertEqual(selected.first?.id, winnerID, "Burst winner must be preferred over burst alternatives")
+    }
+
+    func testExactDuplicateExclusion() {
+        var items: [PhotoItem] = []
+        var original = PhotoItem(id: "original", fileName: "original.jpg", sourceURL: URL(fileURLWithPath: "/tmp/original.jpg"))
+        original.metrics.overallScore = 0.95
+        original.isDuplicate = false
+        items.append(original)
+
+        var duplicate = PhotoItem(id: "duplicate", fileName: "duplicate.jpg", sourceURL: URL(fileURLWithPath: "/tmp/duplicate.jpg"))
+        duplicate.metrics.overallScore = 0.99 // Higher score than original
+        duplicate.isDuplicate = true
+        duplicate.duplicateOfID = "original"
+        items.append(duplicate)
+
+        let selector = DiversitySelector()
+        let result = selector.selectPhotos(items: items, segments: [], bursts: [], targetCount: 1)
+
+        let selected = result.updatedItems.filter { $0.selectionState.isIncludedInFinal }
+        XCTAssertEqual(selected.count, 1)
+        XCTAssertEqual(selected.first?.id, "original", "Exact duplicates must not be selected")
+        XCTAssertEqual(result.updatedItems.first(where: { $0.id == "duplicate" })?.selectionState, .rejected)
+    }
 }

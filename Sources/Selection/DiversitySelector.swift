@@ -98,6 +98,17 @@ public final class DiversitySelector: Sendable {
         // 4. MMR-style Greedy selection pass
         var selectedIDs = Set(userSelectedIDs)
         var selectedItemsList: [PhotoItem] = items.filter { userSelectedIDs.contains($0.id) }
+        var selectedCategories = Set<WeddingCategory>(selectedItemsList.map(\.category))
+        var segmentSelectedCounts: [String: Int] = [:]
+
+        for item in selectedItemsList {
+            if let segID = item.temporalSegmentID {
+                segmentSelectedCounts[segID, default: 0] += 1
+            }
+        }
+
+        // Hard cap: no single temporal segment may dominate more than 60% of final selection
+        let maxSegmentCap = max(1, Int(ceil(Double(effectiveTarget) * 0.60)))
 
         // Candidate pool sorted by base utility
         let remainingCandidates = candidates.filter { !userSelectedIDs.contains($0.id) }
@@ -119,13 +130,13 @@ public final class DiversitySelector: Sendable {
 
         // Pass A: Quota-constrained selection per segment
         for seg in segments {
-            let quota = segmentQuotas[seg.id] ?? 0
-            var segSelectedCount = 0
+            let quota = min(segmentQuotas[seg.id] ?? 0, maxSegmentCap)
+            var segSelectedCount = segmentSelectedCounts[seg.id, default: 0]
             let segCandidates = remainingCandidates
                 .filter { seg.photoIDs.contains($0.id) }
                 .sorted { a, b in
-                    let scoreA = a.metrics.overallScore + (burstWinnerIDs.contains(a.id) ? 0.2 : 0.0) - (burstAlternativeIDs.contains(a.id) ? 0.3 : 0.0)
-                    let scoreB = b.metrics.overallScore + (burstWinnerIDs.contains(b.id) ? 0.2 : 0.0) - (burstAlternativeIDs.contains(b.id) ? 0.3 : 0.0)
+                    let scoreA = a.metrics.overallScore + (burstWinnerIDs.contains(a.id) ? 0.25 : 0.0) - (burstAlternativeIDs.contains(a.id) ? 0.35 : 0.0)
+                    let scoreB = b.metrics.overallScore + (burstWinnerIDs.contains(b.id) ? 0.25 : 0.0) - (burstAlternativeIDs.contains(b.id) ? 0.35 : 0.0)
                     return scoreA > scoreB
                 }
 
@@ -135,17 +146,19 @@ public final class DiversitySelector: Sendable {
 
                 let sim = maxSimilarityToSelected(cand)
                 // Skip if too similar to an already selected photo (unless it's a burst winner with good score)
-                if sim > 0.88 && !burstWinnerIDs.contains(cand.id) {
+                if sim > 0.85 && !burstWinnerIDs.contains(cand.id) {
                     continue
                 }
 
                 selectedIDs.insert(cand.id)
                 selectedItemsList.append(cand)
+                selectedCategories.insert(cand.category)
                 segSelectedCount += 1
+                segmentSelectedCounts[seg.id] = segSelectedCount
             }
         }
 
-        // Pass B: Global MMR selection for remaining quota with moderate diversity penalty
+        // Pass B: Global MMR selection for remaining quota with category diversity bonus
         let lambda = 0.65 // Weight for quality vs diversity
         while selectedIDs.count < effectiveTarget {
             let unselected = remainingCandidates.filter { !selectedIDs.contains($0.id) }
@@ -155,9 +168,26 @@ public final class DiversitySelector: Sendable {
             var bestMMRScore = -Double.greatestFiniteMagnitude
 
             for cand in unselected {
-                let quality = cand.metrics.overallScore + (burstWinnerIDs.contains(cand.id) ? 0.15 : 0.0) - (burstAlternativeIDs.contains(cand.id) ? 0.2 : 0.0)
+                // Check segment cap
+                if let segID = cand.temporalSegmentID, (segmentSelectedCounts[segID] ?? 0) >= maxSegmentCap {
+                    // Check if other candidates from non-capped segments exist
+                    let nonCappedExist = unselected.contains { item in
+                        guard let s = item.temporalSegmentID else { return true }
+                        return (segmentSelectedCounts[s] ?? 0) < maxSegmentCap
+                    }
+                    if nonCappedExist {
+                        continue
+                    }
+                }
+
+                // Category coverage bonus for unrepresented categories
+                let categoryBonus = selectedCategories.contains(cand.category) ? 0.0 : 0.20
+                let burstBonus = burstWinnerIDs.contains(cand.id) ? 0.20 : 0.0
+                let burstPenalty = burstAlternativeIDs.contains(cand.id) ? 0.25 : 0.0
+
+                let quality = cand.metrics.overallScore + categoryBonus + burstBonus - burstPenalty
                 let sim = maxSimilarityToSelected(cand)
-                let mmrScore = (lambda * quality) - ((1.0 - lambda) * sim)
+                let mmrScore = (lambda * quality) - ((1.0 - lambda) * sim * 1.5)
 
                 if mmrScore > bestMMRScore {
                     bestMMRScore = mmrScore
@@ -168,10 +198,14 @@ public final class DiversitySelector: Sendable {
             guard let chosen = bestCandidate else { break }
             selectedIDs.insert(chosen.id)
             selectedItemsList.append(chosen)
+            selectedCategories.insert(chosen.category)
+            if let segID = chosen.temporalSegmentID {
+                segmentSelectedCounts[segID, default: 0] += 1
+            }
         }
 
         // Pass C: EXACT TARGET COUNT GUARANTEE
-        // If still below target due to strict thresholds, progressively fill from best remaining candidates
+        // If still below target due to strict thresholds, fill from best remaining candidates
         if selectedIDs.count < effectiveTarget {
             let unselected = remainingCandidates
                 .filter { !selectedIDs.contains($0.id) }
@@ -181,6 +215,10 @@ public final class DiversitySelector: Sendable {
                 if selectedIDs.count >= effectiveTarget { break }
                 selectedIDs.insert(cand.id)
                 selectedItemsList.append(cand)
+                selectedCategories.insert(cand.category)
+                if let segID = cand.temporalSegmentID {
+                    segmentSelectedCounts[segID, default: 0] += 1
+                }
             }
         }
 
