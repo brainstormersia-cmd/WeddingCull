@@ -74,12 +74,15 @@ public final class AppState: ObservableObject {
     }
 
     @Published public var isPaused: Bool = false
+    private var pauseResumeTask: Task<Void, Never>? = nil
 
     public func pauseAnalysis() {
         guard isAnalyzing && !isPaused else { return }
         isPaused = true
         statusMessage = "Analisi in pausa."
-        Task {
+        let previous = pauseResumeTask
+        pauseResumeTask = Task {
+            _ = await previous?.value
             await pipeline.pause()
         }
     }
@@ -88,7 +91,9 @@ public final class AppState: ObservableObject {
         guard isAnalyzing && isPaused else { return }
         isPaused = false
         statusMessage = "Analisi ripresa."
-        Task {
+        let previous = pauseResumeTask
+        pauseResumeTask = Task {
+            _ = await previous?.value
             await pipeline.resume()
         }
     }
@@ -132,9 +137,10 @@ public final class AppState: ObservableObject {
     public func cancelAnalysis() {
         analysisTask?.cancel()
         analysisTask = nil
-        let p = self.pipeline
-        Task {
-            await p.cancel()
+        let previous = pauseResumeTask
+        pauseResumeTask = Task {
+            _ = await previous?.value
+            await pipeline.cancel()
         }
         isAnalyzing = false
         isPaused = false

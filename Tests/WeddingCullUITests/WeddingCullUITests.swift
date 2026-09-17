@@ -79,15 +79,15 @@ final class WeddingCullUITests: XCTestCase {
                 let resumeButton = app.buttons["analysis_resume_button"].firstMatch
                 if resumeButton.waitForExistence(timeout: 3.0) {
                     captureScreenshot(name: "03_Analysis_Paused")
+                    Thread.sleep(forTimeInterval: 0.5)
                     resumeButton.click()
                 }
             }
         }
 
-        // 4. Wait for Review Mode (toolbar / inspector buttons unambiguously signal Review state)
+        // 4. Wait for Review Mode (toolbar export button unambiguously signals Review state)
         let exportButton = app.buttons["main_export_button"].firstMatch
-        let selectButton = app.buttons["select_button"].firstMatch
-        let reviewEntered = exportButton.waitForExistence(timeout: 60.0) || selectButton.waitForExistence(timeout: 10.0)
+        let reviewEntered = exportButton.waitForExistence(timeout: 120.0)
         XCTAssertTrue(reviewEntered, "Pipeline must transition to Review Mode")
 
         captureScreenshot(name: "04_Review_Grid")

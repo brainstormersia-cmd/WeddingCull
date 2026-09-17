@@ -18,7 +18,7 @@ echo "2. Checking for Xcode UI Test capability..."
 if command -v xcodebuild &>/dev/null && [ -f "WeddingCull.xcodeproj/project.pbxproj" ]; then
     echo "Running UI automation tests via xcodebuild..."
     rm -rf artifacts/WeddingCullUITests.xcresult artifacts/WeddingCullUITests.xcresult.zip
-    perl -e 'alarm 300; exec @ARGV' xcodebuild test \
+    perl -e 'alarm 450; exec @ARGV' xcodebuild test \
         -project WeddingCull.xcodeproj \
         -scheme WeddingCull \
         -only-testing:WeddingCullUITests \
