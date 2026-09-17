@@ -177,4 +177,49 @@ final class DiversityAndTargetSelectionTests: XCTestCase {
         XCTAssertEqual(selected.first?.id, "original", "Exact duplicates must not be selected")
         XCTAssertEqual(result.updatedItems.first(where: { $0.id == "duplicate" })?.selectionState, .rejected)
     }
+
+    func testSelectionWhenTargetCountIsLessThanSegmentCount() {
+        // Reproduce edge case: 7 segments but user requests only 4 or 6 photos (targetCount < segments.count)
+        var items: [PhotoItem] = []
+        var segments: [TemporalSegment] = []
+
+        for segIdx in 0..<7 {
+            let segID = "segment_\(segIdx)"
+            var segPhotoIDs: [String] = []
+            for p in 0..<5 {
+                let photoID = "photo_\(segIdx)_\(p)"
+                segPhotoIDs.append(photoID)
+                var item = PhotoItem(
+                    id: photoID,
+                    fileName: "\(photoID).jpg",
+                    sourceURL: URL(fileURLWithPath: "/tmp/\(photoID).jpg")
+                )
+                item.temporalSegmentID = segID
+                item.metrics.overallScore = 0.5 + Double(segIdx * 5 + p) * 0.01
+                item.perceptualHash = UInt64(segIdx * 1000 + p * 10)
+                items.append(item)
+            }
+            segments.append(
+                TemporalSegment(
+                    id: segID,
+                    startTime: Date().addingTimeInterval(Double(segIdx * 3600)),
+                    endTime: Date().addingTimeInterval(Double(segIdx * 3600 + 1800)),
+                    photoIDs: segPhotoIDs
+                )
+            )
+        }
+
+        let selector = DiversitySelector()
+
+        // Test with target 4 (< 7 segments)
+        let result4 = selector.selectPhotos(items: items, segments: segments, bursts: [], targetCount: 4)
+        let selected4 = result4.updatedItems.filter { $0.selectionState.isIncludedInFinal }
+        XCTAssertEqual(selected4.count, 4, "Must select exactly 4 photos even when there are 7 segments")
+
+        // Test with target 6 (< 7 segments, UITest condition)
+        let result6 = selector.selectPhotos(items: items, segments: segments, bursts: [], targetCount: 6)
+        let selected6 = result6.updatedItems.filter { $0.selectionState.isIncludedInFinal }
+        XCTAssertEqual(selected6.count, 6, "Must select exactly 6 photos even when there are 7 segments")
+    }
 }
+

@@ -78,19 +78,40 @@ public final class DiversitySelector: Sendable {
 
             // Adjust rounding drift to match remainingTargetAfterUser
             var diff = remainingTargetAfterUser - allocated
-            if diff != 0 {
+            if diff > 0 {
+                // Distribute extra quota starting from the largest segments
                 let sortedSegIDs = segments.sorted(by: { $0.photoIDs.count > $1.photoIDs.count }).map { $0.id }
                 var idx = 0
-                while diff != 0 && idx < sortedSegIDs.count {
-                    let segID = sortedSegIDs[idx]
-                    if diff > 0 {
-                        segmentQuotas[segID, default: 0] += 1
-                        diff -= 1
-                    } else if diff < 0 && (segmentQuotas[segID] ?? 0) > 1 {
-                        segmentQuotas[segID, default: 1] -= 1
-                        diff += 1
+                while diff > 0 && !sortedSegIDs.isEmpty {
+                    let segID = sortedSegIDs[idx % sortedSegIDs.count]
+                    segmentQuotas[segID, default: 0] += 1
+                    diff -= 1
+                    idx += 1
+                }
+            } else if diff < 0 {
+                // Need to reduce quotas.
+                // First pass: reduce quotas that are > 1, starting from smallest segments
+                let smallestFirst = segments.sorted(by: { $0.photoIDs.count < $1.photoIDs.count }).map { $0.id }
+                var madeProgress = true
+                while diff < 0 && madeProgress {
+                    madeProgress = false
+                    for segID in smallestFirst {
+                        if diff < 0 && (segmentQuotas[segID] ?? 0) > 1 {
+                            segmentQuotas[segID, default: 1] -= 1
+                            diff += 1
+                            madeProgress = true
+                        }
                     }
-                    idx = (idx + 1) % sortedSegIDs.count
+                }
+                // Second pass: if still diff < 0 (e.g. remainingTargetAfterUser < segments.count),
+                // allow quotas of smallest segments to drop to 0
+                if diff < 0 {
+                    for segID in smallestFirst {
+                        if diff < 0 && (segmentQuotas[segID] ?? 0) > 0 {
+                            segmentQuotas[segID, default: 0] -= 1
+                            diff += 1
+                        }
+                    }
                 }
             }
         }

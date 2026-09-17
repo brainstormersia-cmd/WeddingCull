@@ -9,17 +9,35 @@ public final class SyntheticWeddingGenerator: Sendable {
         public let baseDate: Date
         public let generateLargeImages: Bool
         public let targetTotalPhotos: Int
+        public let seed: UInt64
         public var totalTargetCount: Int { targetTotalPhotos }
 
         public init(
             baseDate: Date = Date(timeIntervalSince1970: 1720000000), // fixed deterministic date
             generateLargeImages: Bool = true,
             targetTotalPhotos: Int = 150,
+            seed: UInt64 = 42,
             totalTargetCount: Int? = nil
         ) {
             self.baseDate = baseDate
             self.generateLargeImages = generateLargeImages
             self.targetTotalPhotos = totalTargetCount ?? targetTotalPhotos
+            self.seed = seed
+        }
+    }
+
+    private struct DeterministicRNG {
+        private var state: UInt64
+        init(seed: UInt64) {
+            self.state = seed != 0 ? seed : 1
+        }
+        mutating func next() -> UInt64 {
+            state = state &* 6364136223846793005 &+ 1442695040888963407
+            return state
+        }
+        mutating func randomDouble(in range: ClosedRange<Double>) -> Double {
+            let n = Double(next() >> 11) / Double(1 << 53)
+            return range.lowerBound + n * (range.upperBound - range.lowerBound)
         }
     }
 
@@ -27,6 +45,7 @@ public final class SyntheticWeddingGenerator: Sendable {
         let fileManager = FileManager.default
         try fileManager.createDirectory(at: destinationFolder, withIntermediateDirectories: true)
 
+        var rng = DeterministicRNG(seed: config.seed)
         var createdFiles: [URL] = []
         var currentTime = config.baseDate
 
@@ -53,7 +72,7 @@ public final class SyntheticWeddingGenerator: Sendable {
             let sceneCount = max(1, Int(round(Double(scene.baseCount) * scale)))
 
             for i in 0..<sceneCount {
-                currentTime = currentTime.addingTimeInterval(Double.random(in: 4...25))
+                currentTime = currentTime.addingTimeInterval(rng.randomDouble(in: 4...25))
                 let filename = String(format: "IMG_%04d.jpg", photoIndex)
                 let fileURL = destinationFolder.appendingPathComponent(filename)
 
@@ -83,7 +102,7 @@ public final class SyntheticWeddingGenerator: Sendable {
             if shouldGenerateBurst {
                 let burstCount = scale > 2.0 ? 2 : 1
                 for burstIdx in 0..<burstCount {
-                    let burstUUID = UUID().uuidString
+                    let burstUUID = String(format: "BURST-%04d-%08x", burstIdx, rng.next())
                     let burstLength = isSmallDataset ? 3 : 5
                     let burstWinnerOffset = isSmallDataset ? 1 : 2
 
@@ -155,6 +174,15 @@ public final class SyntheticWeddingGenerator: Sendable {
             try saveImage(cg, to: padURL, captureDate: currentTime)
             createdFiles.append(padURL)
             photoIndex += 1
+        }
+
+        // Strictly guarantee targetTotalPhotos count
+        if createdFiles.count > config.targetTotalPhotos {
+            let excess = createdFiles.suffix(createdFiles.count - config.targetTotalPhotos)
+            for file in excess {
+                try? fileManager.removeItem(at: file)
+            }
+            createdFiles = Array(createdFiles.prefix(config.targetTotalPhotos))
         }
 
         return createdFiles

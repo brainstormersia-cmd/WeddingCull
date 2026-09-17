@@ -124,15 +124,13 @@ public final class PhotoImporter: Sendable {
         // Extract metadata using ImageIO (never load full bitmap!)
         let metadata = extractMetadata(from: primaryURL)
 
-        // Stable ID: relative path + size + modDate
+        // Stable ID: relative path + size + modDate (Deterministic SHA-256)
         let relativePath = primaryURL.path.replacingOccurrences(of: rootFolder.path, with: "")
-        let idString = "\(relativePath)_\(fileSize)_\(Int(modDate.timeIntervalSince1970))"
-        let stableID = UUID(uuidString: idString) ?? UUID()
-
-        let cacheKey = "\(idString.hashValue)_\(fileSize)_\(Int(modDate.timeIntervalSince1970))"
+        let stableID = PhotoItem.computeStableID(relativePath: relativePath, fileSize: fileSize, modDate: modDate)
+        let cacheKey = PhotoItem.computePreviewCacheKey(sourcePath: primaryURL.path, fileSize: fileSize, modDate: modDate)
 
         return PhotoItem(
-            id: stableID.uuidString,
+            id: stableID,
             fileName: primaryURL.lastPathComponent,
             sourceURL: primaryURL,
             rawURL: rawURL,

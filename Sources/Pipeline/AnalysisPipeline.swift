@@ -419,7 +419,16 @@ public actor AnalysisPipeline {
                     }
 
                     // Scene / Concept classification
-                    let (category, conf) = classifier.classifyWithObservations(sceneRequest.results, metadata: item.metadata, faceCount: faces.count)
+                    let (category, conf): (WeddingCategory, Double)
+                    if classifier.isCoreMLModelLoaded {
+                        let res = classifier.classifyWithBackend(cgImage: previewCG, metadata: item.metadata, faceCount: faces.count)
+                        category = res.category
+                        conf = res.confidence
+                    } else {
+                        let res = classifier.classifyWithObservations(sceneRequest.results, metadata: item.metadata, faceCount: faces.count)
+                        category = res.0
+                        conf = res.1
+                    }
 
                     return PhotoAnalysisResult(
                         id: item.id,

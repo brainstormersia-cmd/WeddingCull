@@ -32,9 +32,9 @@ jobs:
           chmod +x ./scripts/*.sh
           ./scripts/bootstrap.sh
 
-      - name: Run Tests on Apple Silicon
+      - name: Run Unit & Integration Tests on Apple Silicon
         run: |
-          ./scripts/test.sh
+          ./scripts/test.sh --unit-only
 
       - name: Upload Test Results and Screenshots (arm64)
         uses: actions/upload-artifact@v4
@@ -69,9 +69,9 @@ jobs:
           chmod +x ./scripts/*.sh
           ./scripts/bootstrap.sh
 
-      - name: Run Tests on Real Intel Architecture
+      - name: Run Unit & Integration Tests on Real Intel Architecture
         run: |
-          ./scripts/test.sh
+          ./scripts/test.sh --unit-only
 
       - name: Upload Test Results and Screenshots (Intel x86_64)
         uses: actions/upload-artifact@v4
@@ -82,11 +82,44 @@ jobs:
             artifacts/screenshots/
             artifacts/*.xcresult*
 
+  test-ui:
+    name: UI Automation Tests (macOS GUI)
+    runs-on: macos-14
+    timeout-minutes: 15
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: System Architecture Information
+        run: |
+          echo "=== UI AUTOMATION ARCHITECTURE AUDIT ==="
+          ARCH=$(uname -m)
+          echo "Detected architecture: $ARCH"
+          sw_vers
+
+      - name: Setup Environment
+        run: |
+          chmod +x ./scripts/*.sh
+          ./scripts/bootstrap.sh
+
+      - name: Run UI Automation Tests
+        run: |
+          ./scripts/test.sh --ui-only
+
+      - name: Upload UI Test Artifacts
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: WeddingCull-UI-Test-Artifacts
+          path: |
+            artifacts/screenshots/
+            artifacts/*.xcresult*
+
   universal-build-and-verify:
     name: Universal Build & Verification (macOS)
     runs-on: macos-14
-    timeout-minutes: 20
-    needs: [test-apple-silicon, test-intel]
+    timeout-minutes: 25
+    needs: [test-apple-silicon, test-intel, test-ui]
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -97,10 +130,17 @@ jobs:
           uname -m
           sw_vers
 
+      - name: Download UI Test Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: WeddingCull-UI-Test-Artifacts
+          path: artifacts
+        continue-on-error: true
+
       - name: Make Scripts Executable
         run: chmod +x ./scripts/*.sh
 
-      - name: Execute Full Verification Suite (250 Photos Commit Benchmark)
+      - name: Execute Full Verification Suite
         run: |
           ./scripts/verify.sh --count 250
 

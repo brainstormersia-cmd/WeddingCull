@@ -1,5 +1,9 @@
 import Foundation
 
+#if canImport(CryptoKit)
+import CryptoKit
+#endif
+
 public struct PhotoItem: Identifiable, Codable, Sendable, Equatable {
     public let id: String
     public let fileName: String
@@ -22,8 +26,27 @@ public struct PhotoItem: Identifiable, Codable, Sendable, Equatable {
     public var duplicateOfID: String?
     public var previewCacheKey: String
 
+    public static func deterministicSHA256Hex(_ string: String) -> String {
+        #if canImport(CryptoKit)
+        let digest = SHA256.hash(data: Data(string.utf8))
+        return digest.map { String(format: "%02x", $0) }.joined()
+        #else
+        return string
+        #endif
+    }
+
+    public static func computeStableID(relativePath: String, fileSize: Int64, modDate: Date) -> String {
+        let raw = "\(relativePath):\(fileSize):\(Int(modDate.timeIntervalSince1970))"
+        return deterministicSHA256Hex(raw)
+    }
+
+    public static func computePreviewCacheKey(sourcePath: String, fileSize: Int64, modDate: Date) -> String {
+        let raw = "\(sourcePath):\(fileSize):\(Int(modDate.timeIntervalSince1970))"
+        return "prev_" + deterministicSHA256Hex(raw)
+    }
+
     public init(
-        id: String = UUID().uuidString,
+        id: String = "",
         fileName: String,
         sourceURL: URL,
         rawURL: URL? = nil,
@@ -44,7 +67,8 @@ public struct PhotoItem: Identifiable, Codable, Sendable, Equatable {
         duplicateOfID: String? = nil,
         previewCacheKey: String = ""
     ) {
-        self.id = id
+        let computedID = id.isEmpty ? PhotoItem.computeStableID(relativePath: sourceURL.lastPathComponent, fileSize: fileSizeBytes, modDate: fileModificationDate) : id
+        self.id = computedID
         self.fileName = fileName
         self.sourceURL = sourceURL
         self.rawURL = rawURL
@@ -63,7 +87,7 @@ public struct PhotoItem: Identifiable, Codable, Sendable, Equatable {
         self.perceptualHash = perceptualHash
         self.isDuplicate = isDuplicate
         self.duplicateOfID = duplicateOfID
-        self.previewCacheKey = previewCacheKey.isEmpty ? "\(sourceURL.path.hashValue)_\(fileSizeBytes)_\(fileModificationDate.timeIntervalSince1970)" : previewCacheKey
+        self.previewCacheKey = previewCacheKey.isEmpty ? PhotoItem.computePreviewCacheKey(sourcePath: sourceURL.path, fileSize: fileSizeBytes, modDate: fileModificationDate) : previewCacheKey
     }
 
     public var hasRawJpegPair: Bool {

@@ -131,9 +131,9 @@ public final class DuplicateAndBurstDetector: Sendable {
 
         let firstDate = burstMembers.first?.metadata.captureDate ?? Date()
         let lastDate = burstMembers.last?.metadata.captureDate ?? Date()
-        let duration = abs(lastDate.timeIntervalSince(firstDate))
-
+        let burstID = "burst_" + PhotoItem.deterministicSHA256Hex(burstMembers.map(\.id).sorted().joined(separator: ","))
         return BurstGroup(
+            id: burstID,
             name: "Burst (\(burstMembers.count) photos)",
             memberIDs: burstMembers.map { $0.id },
             winnerID: winner.id,
