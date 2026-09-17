@@ -30,7 +30,24 @@ jobs:
       - name: Execute Full 1,500-Photo Verification Suite
         run: |
           echo "🚀 Executing MANDATORY 1,500-photo pipeline benchmark for release..."
-          ./scripts/verify.sh --count 1500
+          ./scripts/verify.sh --count "${{ github.event.inputs.benchmark_count || '1500' }}"
+
+      - name: Upload Universal App Package
+        uses: actions/upload-artifact@v4
+        with:
+          name: WeddingCull-1.0.0-universal-release
+          path: |
+            artifacts/WeddingCull-1.0.0-universal.zip
+            artifacts/WeddingCull-1.0.0.dmg
+
+      - name: Upload 1,500-Photo Verification & Benchmark Reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: WeddingCull-1500-Reports
+          path: |
+            artifacts/verification-report.json
+            artifacts/benchmark.json
+            BENCHMARKS.md
 
       - name: Perform Real Developer ID Code Signing & Notarization (if secrets present)
         id: codesign-step
