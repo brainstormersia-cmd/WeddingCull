@@ -79,3 +79,13 @@ targets:
     dependencies:
       - target: WeddingCull
 
+  ValidationRunner:
+    type: tool
+    platform: macOS
+    sources:
+      - path: Tools/ValidationRunner
+      - path: Tools/TestDatasetGenerator/SyntheticWeddingGenerator.swift
+    dependencies:
+      - target: WeddingCull
+
+

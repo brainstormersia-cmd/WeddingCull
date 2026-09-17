@@ -11,7 +11,8 @@ let package = Package(
         .executable(name: "WeddingCull", targets: ["WeddingCullAppTarget"]),
         .library(name: "WeddingCullCore", targets: ["WeddingCullCore"]),
         .executable(name: "TestDatasetGenerator", targets: ["TestDatasetGenerator"]),
-        .executable(name: "BenchmarkRunner", targets: ["BenchmarkRunner"])
+        .executable(name: "BenchmarkRunner", targets: ["BenchmarkRunner"]),
+        .executable(name: "ValidationRunner", targets: ["ValidationRunner"])
     ],
     targets: [
         .target(
@@ -39,6 +40,11 @@ let package = Package(
             name: "BenchmarkRunner",
             dependencies: ["WeddingCullCore", "TestDatasetGeneratorLibrary"],
             path: "Tools/BenchmarkRunner"
+        ),
+        .executableTarget(
+            name: "ValidationRunner",
+            dependencies: ["WeddingCullCore", "TestDatasetGeneratorLibrary"],
+            path: "Tools/ValidationRunner"
         ),
         .testTarget(
             name: "WeddingCullTests",
