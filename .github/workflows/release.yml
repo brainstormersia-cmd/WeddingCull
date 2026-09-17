@@ -32,23 +32,6 @@ jobs:
           echo "🚀 Executing MANDATORY 1,500-photo pipeline benchmark for release..."
           ./scripts/verify.sh --count "${{ github.event.inputs.benchmark_count || '1500' }}"
 
-      - name: Upload Universal App Package
-        uses: actions/upload-artifact@v4
-        with:
-          name: WeddingCull-1.0.0-universal-release
-          path: |
-            artifacts/WeddingCull-1.0.0-universal.zip
-            artifacts/WeddingCull-1.0.0.dmg
-
-      - name: Upload 1,500-Photo Verification & Benchmark Reports
-        uses: actions/upload-artifact@v4
-        with:
-          name: WeddingCull-1500-Reports
-          path: |
-            artifacts/verification-report.json
-            artifacts/benchmark.json
-            BENCHMARKS.md
-
       - name: Perform Real Developer ID Code Signing & Notarization (if secrets present)
         id: codesign-step
         env:
@@ -75,10 +58,16 @@ jobs:
             echo "✍️ Signing WeddingCull.app with Hardened Runtime..."
             codesign --force --options runtime --deep --sign "$SIGNING_IDENTITY" --entitlements Sources/WeddingCullApp/WeddingCull.entitlements build/Universal/WeddingCull.app
 
+            echo "🔍 Verifying app code signature..."
+            codesign --verify --deep --strict --verbose=2 build/Universal/WeddingCull.app
+
             echo "📦 Packaging signed DMG..."
             rm -f artifacts/WeddingCull-1.0.0.dmg
             hdiutil create -volname "WeddingCull" -srcfolder build/Universal/WeddingCull.app -ov -format UDZO artifacts/WeddingCull-1.0.0.dmg
             codesign --force --sign "$SIGNING_IDENTITY" artifacts/WeddingCull-1.0.0.dmg
+
+            echo "🔍 Verifying DMG code signature..."
+            codesign --verify --verbose=2 artifacts/WeddingCull-1.0.0.dmg
 
             if [ -n "$APP_PWD" ] && [ -n "$APPLE_ID" ] && [ -n "$TEAM_ID" ]; then
               echo "☁️ Submitting DMG to Apple Notary Service..."
@@ -86,6 +75,8 @@ jobs:
               echo "📎 Stapling notarization ticket to DMG and App..."
               xcrun stapler staple artifacts/WeddingCull-1.0.0.dmg
               xcrun stapler staple build/Universal/WeddingCull.app
+              echo "🔍 Validating notarization ticket on DMG..."
+              xcrun stapler validate artifacts/WeddingCull-1.0.0.dmg
             fi
 
             echo "📦 Updating ZIP with signed application..."
@@ -96,10 +87,27 @@ jobs:
             sed -i '' 's/"signed": false/"signed": true/g' artifacts/verification-report.json || true
             echo "has_signing=true" >> "$GITHUB_OUTPUT"
           else
-            echo "ℹ️ No Apple Developer credentials configured in GitHub Secrets."
-            echo "ℹ️ Proceeding with ad-hoc signing. Application remains unsigned for Gatekeeper."
+            echo "⚠️ No Apple Developer credentials configured in GitHub Secrets."
+            echo "⚠️ Proceeding with ad-hoc build: ⚠️ UNSIGNED DEVELOPMENT BUILD — NOT NOTARIZED."
             echo "has_signing=false" >> "$GITHUB_OUTPUT"
           fi
+
+      - name: Upload Universal App Package
+        uses: actions/upload-artifact@v4
+        with:
+          name: WeddingCull-1.0.0-universal-release
+          path: |
+            artifacts/WeddingCull-1.0.0-universal.zip
+            artifacts/WeddingCull-1.0.0.dmg
+
+      - name: Upload 1,500-Photo Verification & Benchmark Reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: WeddingCull-1500-Reports
+          path: |
+            artifacts/verification-report.json
+            artifacts/benchmark.json
+            BENCHMARKS.md
 
       - name: Upload Release Assets to GitHub Release
         uses: softprops/action-gh-release@v2
@@ -120,4 +128,4 @@ jobs:
             * **Offline AI**: 100% Local Vision & Core ML processing.
             * **Verified on 1,500 Photos**: Real benchmark measured and validated within RAM budget.
             * **Source Immutability**: Verified 100% byte-identical.
-            * **Developer Signing**: ${{ steps.codesign-step.outputs.has_signing == 'true' && 'Developer ID Signed & Notarized' || 'Ad-Hoc (Developer ID secrets not configured in CI)' }}
+            * **Signing Status**: ${{ steps.codesign-step.outputs.has_signing == 'true' && '✅ Apple Developer ID Signed & Notarized' || '⚠️ UNSIGNED DEVELOPMENT BUILD — NOT NOTARIZED (Ad-Hoc Developer Build)' }}
