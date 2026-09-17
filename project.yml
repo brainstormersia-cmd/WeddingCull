@@ -60,6 +60,7 @@ targets:
     platform: macOS
     sources:
       - path: Tests/WeddingCullUITests
+      - path: Tools/TestDatasetGenerator/SyntheticWeddingGenerator.swift
     dependencies:
       - target: WeddingCull
 

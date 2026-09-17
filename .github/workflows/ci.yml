@@ -36,6 +36,15 @@ jobs:
         run: |
           ./scripts/test.sh
 
+      - name: Upload Test Results and Screenshots (arm64)
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: WeddingCull-Test-Artifacts-arm64
+          path: |
+            artifacts/screenshots/
+            artifacts/*.xcresult
+
   test-intel:
     name: Test (Intel x86_64)
     runs-on: macos-15-intel
@@ -63,6 +72,15 @@ jobs:
       - name: Run Tests on Real Intel Architecture
         run: |
           ./scripts/test.sh
+
+      - name: Upload Test Results and Screenshots (Intel x86_64)
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: WeddingCull-Test-Artifacts-x86_64
+          path: |
+            artifacts/screenshots/
+            artifacts/*.xcresult
 
   universal-build-and-verify:
     name: Universal Build & Verification (macOS)

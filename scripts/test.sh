@@ -18,7 +18,7 @@ echo "2. Checking for Xcode UI Test capability..."
 if command -v xcodebuild &>/dev/null && [ -f "WeddingCull.xcodeproj/project.pbxproj" ]; then
     echo "Running UI automation tests via xcodebuild..."
     rm -rf artifacts/WeddingCullUITests.xcresult
-    perl -e 'alarm 180; exec @ARGV' xcodebuild test \
+    perl -e 'alarm 300; exec @ARGV' xcodebuild test \
         -project WeddingCull.xcodeproj \
         -scheme WeddingCull \
         -only-testing:WeddingCullUITests \
@@ -26,9 +26,9 @@ if command -v xcodebuild &>/dev/null && [ -f "WeddingCull.xcodeproj/project.pbxp
         -resultBundlePath artifacts/WeddingCullUITests.xcresult \
         CODE_SIGN_IDENTITY="" \
         CODE_SIGNING_REQUIRED=NO \
-        CODE_SIGNING_ALLOWED=NO || echo "⚠️ UI Test execution completed or skipped (headless environment)."
+        CODE_SIGNING_ALLOWED=NO
 else
-    echo "ℹ️ Skipping xcodebuild UI test execution (headless SPM environment)."
+    echo "ℹ️ Skipping xcodebuild UI test execution (no Xcode project available)."
 fi
 
 echo "✅ Tests execution finished on $(uname -m)."

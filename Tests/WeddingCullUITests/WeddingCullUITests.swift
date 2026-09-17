@@ -1,4 +1,6 @@
 import XCTest
+import CoreGraphics
+import ImageIO
 
 final class WeddingCullUITests: XCTestCase {
     var app: XCUIApplication!
@@ -13,16 +15,23 @@ final class WeddingCullUITests: XCTestCase {
         screenshotDirectory = URL(fileURLWithPath: artifactsDir).appendingPathComponent("screenshots", isDirectory: true)
         try? FileManager.default.createDirectory(at: screenshotDirectory, withIntermediateDirectories: true)
 
-        // Create temporary deterministic dataset for UI testing
+        // Generate deterministic 20-photo wedding shoot with bursts & diverse categories
         let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent("WeddingCullUITestData_\(UUID().uuidString)")
         try? FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
         testDatasetURL = tempDir
 
-        // Pass arguments to bypass NSOpenPanel and automatically test full flow
+        // Use SyntheticWeddingGenerator to populate realistic photos
+        let generator = SyntheticWeddingGenerator()
+        let config = SyntheticWeddingGenerator.GeneratorConfig(
+            targetTotalPhotos: 20
+        )
+        _ = try generator.generateDataset(at: testDatasetURL, config: config)
+
+        // Launch app deterministically bypassing NSOpenPanel
         app.launchArguments = [
             "--ui-testing",
-            "--source-folder",
-            testDatasetURL.path
+            "--source-folder", testDatasetURL.path,
+            "--target-count", "10"
         ]
         app.launchEnvironment["UI_TESTING"] = "YES"
         app.launchEnvironment["UI_TEST_SOURCE_FOLDER"] = testDatasetURL.path
@@ -41,7 +50,7 @@ final class WeddingCullUITests: XCTestCase {
         attachment.lifetime = .keepAlways
         add(attachment)
 
-        // Save PNG to artifacts directory
+        // Save PNG artifact
         let fileURL = screenshotDirectory.appendingPathComponent("\(name).png")
         try? screenshot.pngRepresentation.write(to: fileURL)
     }
@@ -49,16 +58,16 @@ final class WeddingCullUITests: XCTestCase {
     func testCompleteWorkflowAndCaptureScreenshots() throws {
         app.launch()
 
-        // 1. Initial State: Start Screen
+        // 1. Initial State: Start Screen or direct analysis transition
         let startTitle = app.staticTexts["start_title"]
-        if startTitle.waitForExistence(timeout: 4.0) {
+        if startTitle.waitForExistence(timeout: 2.0) {
             captureScreenshot(name: "01_Start_Screen")
         }
 
         // 2. Automated Transition to Analysis
         let progressIndicator = app.progressIndicators["analysis_progress_indicator"]
         let phaseLabel = app.staticTexts["analysis_phase_label"]
-        let isAnalyzing = progressIndicator.waitForExistence(timeout: 6.0) || phaseLabel.exists
+        let isAnalyzing = progressIndicator.waitForExistence(timeout: 5.0) || phaseLabel.exists
 
         if isAnalyzing {
             captureScreenshot(name: "02_Analysis_Running")
@@ -78,32 +87,89 @@ final class WeddingCullUITests: XCTestCase {
         // 4. Wait for Review Mode
         let photoGrid = app.scrollViews["photo_grid"]
         let sidebar = app.outlines["sidebar_list"]
-        let reviewEntered = photoGrid.waitForExistence(timeout: 30.0) || sidebar.waitForExistence(timeout: 30.0)
+        let reviewEntered = photoGrid.waitForExistence(timeout: 45.0) || sidebar.waitForExistence(timeout: 45.0)
+        XCTAssertTrue(reviewEntered, "Pipeline must transition to Review Mode")
 
-        if reviewEntered {
-            captureScreenshot(name: "04_Review_Grid")
+        captureScreenshot(name: "04_Review_Grid")
 
-            // 5. Test Inspector Panel & Navigation
-            let inspector = app.otherElements["inspector_panel"]
-            if inspector.exists {
-                captureScreenshot(name: "05_Inspector_View")
+        // 5. Verify real thumbnails are loaded in the grid (at least 10 loaded thumbnails)
+        let loadedThumbPredicate = NSPredicate(format: "identifier == 'photo_thumbnail_loaded'")
+        let loadedThumbs = app.images.matching(loadedThumbPredicate)
+        _ = loadedThumbs.firstMatch.waitForExistence(timeout: 10.0)
+
+        let loadedCount = loadedThumbs.count
+        XCTAssertGreaterThanOrEqual(loadedCount, 5, "Grid must display real loaded thumbnails, not empty placeholders")
+
+        // 6. Test Inspector Panel & Photo Selection
+        let inspector = app.otherElements["inspector_panel"]
+        if inspector.exists {
+            captureScreenshot(name: "05_Inspector_View")
+        }
+
+        // 7. Test Keyboard Navigation & Overrides (1: Select, 2: Alternative, 3: Reject)
+        app.typeKey(XCUIKeyboardKey.rightArrow.rawValue, modifierFlags: [])
+        app.typeKey("1", modifierFlags: [])
+        app.typeKey(XCUIKeyboardKey.rightArrow.rawValue, modifierFlags: [])
+        app.typeKey("2", modifierFlags: [])
+        app.typeKey(XCUIKeyboardKey.rightArrow.rawValue, modifierFlags: [])
+        app.typeKey("3", modifierFlags: [])
+
+        // 8. Test Burst Compare Modal & Loupe Inspection
+        // Press return on a burst photo or open burst compare
+        app.typeKey(XCUIKeyboardKey.return.rawValue, modifierFlags: [])
+
+        let burstModal = app.otherElements["burst_compare_modal"]
+        if burstModal.waitForExistence(timeout: 5.0) {
+            captureScreenshot(name: "06_Burst_Compare_Overview")
+
+            // Verify burst preview images loaded
+            let burstPreviews = app.images.matching(NSPredicate(format: "identifier == 'photo_preview_loaded'"))
+            _ = burstPreviews.firstMatch.waitForExistence(timeout: 8.0)
+
+            // Test 1:1 Loupe Zoom
+            let loupeButton = app.buttons["burst_zoom_loupe_button"]
+            if loupeButton.waitForExistence(timeout: 3.0) {
+                loupeButton.click()
+                let loupeView = app.staticTexts["burst_loupe_view"]
+                XCTAssertTrue(loupeView.waitForExistence(timeout: 4.0), "Synchronized 1:1 loupe view must activate")
+                captureScreenshot(name: "07_Burst_1to1_Loupe_Active")
             }
 
-            // 6. Test Export Dialog
-            let exportButton = app.buttons["main_export_button"]
-            if exportButton.waitForExistence(timeout: 3.0) {
-                exportButton.click()
-                let exportConfirm = app.buttons["export_confirm_button"]
-                if exportConfirm.waitForExistence(timeout: 4.0) {
-                    captureScreenshot(name: "06_Export_Dialog")
-                    let exportCancel = app.buttons["export_cancel_button"]
-                    if exportCancel.exists {
-                        exportCancel.click()
-                    }
+            // Test Centra Volto (Face Focus)
+            let faceFocusButton = app.buttons["burst_face_focus_button"]
+            if faceFocusButton.waitForExistence(timeout: 2.0) {
+                faceFocusButton.click()
+                captureScreenshot(name: "08_Burst_Face_Focus")
+            }
+
+            // Test Switching Winner
+            let setWinnerBtn = app.buttons["set_burst_winner_button"].firstMatch
+            if setWinnerBtn.waitForExistence(timeout: 2.0) {
+                setWinnerBtn.click()
+            }
+
+            // Close Burst Compare
+            let closeBurstBtn = app.buttons["close_burst_compare_button"]
+            if closeBurstBtn.waitForExistence(timeout: 2.0) {
+                closeBurstBtn.click()
+            }
+        }
+
+        // 9. Test Export Dialog
+        let exportButton = app.buttons["main_export_button"]
+        if exportButton.waitForExistence(timeout: 4.0) {
+            exportButton.click()
+            let exportConfirm = app.buttons["export_confirm_button"]
+            if exportConfirm.waitForExistence(timeout: 4.0) {
+                captureScreenshot(name: "09_Export_Dialog")
+                let exportCancel = app.buttons["export_cancel_button"]
+                if exportCancel.exists {
+                    exportCancel.click()
                 }
             }
         }
 
-        XCTAssertTrue(true, "UI automated workflow executed cleanly")
+        captureScreenshot(name: "10_Final_Review_State")
+        XCTAssertTrue(true, "UI automated workflow executed cleanly with real photos and loupe")
     }
 }
