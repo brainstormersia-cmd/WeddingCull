@@ -4,6 +4,9 @@ import XCTest
 #elseif canImport(WeddingCullCore)
 @testable import WeddingCullCore
 #endif
+#if canImport(TestDatasetGeneratorLibrary)
+import TestDatasetGeneratorLibrary
+#endif
 
 final class PauseCancellationSafetyTests: XCTestCase {
 
