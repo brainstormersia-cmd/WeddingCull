@@ -16,19 +16,29 @@ echo "Target CoreML Face Model: MobileFaceNet.mlmodelc"
 if [ -d "$MODELS_DIR/mobileclip_s0_image.mlmodelc" ] || [ -d "$MODELS_DIR/mobileclip_s0_image.mlpackage" ]; then
     echo "✅ MobileCLIP image encoder is already present in $MODELS_DIR."
 else
-    echo "⬇️ Attempting download of MobileCLIP-S0 Image Encoder from Apple CoreML repo..."
-    MODEL_URL="https://huggingface.co/apple/coreml-mobileclip/resolve/main/mobileclip_s0_image.mlpackage"
-    
-    # Optional download using curl with 10s timeout
-    if curl -sLf --connect-timeout 10 "$MODEL_URL" -o "$MODELS_DIR/mobileclip_s0_image.mlpackage" 2>/dev/null; then
-        echo "✅ Downloaded MobileCLIP-S0 Image Encoder."
-        if command -v xcrun &>/dev/null; then
-            echo "⚙️ Compiling Core ML model package to .mlmodelc..."
-            xcrun coremlc compile "$MODELS_DIR/mobileclip_s0_image.mlpackage" "$MODELS_DIR" || true
+    echo "⬇️ Attempting download of MobileCLIP-S0 Image Encoder via huggingface-cli..."
+    HF_CMD=""
+    if command -v huggingface-cli &>/dev/null; then
+        HF_CMD="huggingface-cli"
+    elif python3 -m huggingface_hub.cli.download --help &>/dev/null; then
+        HF_CMD="python3 -m huggingface_hub.cli.download"
+    fi
+
+    if [ -n "$HF_CMD" ]; then
+        echo "Running: $HF_CMD apple/coreml-mobileclip --include 'mobileclip_s0_image.mlpackage/*' --local-dir $MODELS_DIR"
+        if $HF_CMD download apple/coreml-mobileclip --include "mobileclip_s0_image.mlpackage/*" --local-dir "$MODELS_DIR" 2>/dev/null || \
+           $HF_CMD apple/coreml-mobileclip --include "mobileclip_s0_image.mlpackage/*" --local-dir "$MODELS_DIR" 2>/dev/null; then
+            echo "✅ Downloaded MobileCLIP-S0 Image Encoder package."
+            if command -v xcrun &>/dev/null; then
+                echo "⚙️ Compiling Core ML model package to .mlmodelc..."
+                xcrun coremlc compile "$MODELS_DIR/mobileclip_s0_image.mlpackage" "$MODELS_DIR" || true
+            fi
+        else
+            echo "ℹ️ Note: CoreML weights download skipped (network unreachable or rate-limited)."
+            echo "ℹ️ WeddingCull will automatically and seamlessly use native Apple Vision scene classification."
         fi
     else
-        echo "ℹ️ Note: CoreML remote weights not downloaded (network unreachable or skipped)."
-        echo "ℹ️ WeddingCull will automatically and seamlessly use native Apple Vision scene classification."
+        echo "ℹ️ Note: huggingface-cli not installed. Using native Apple Vision scene classification."
     fi
 fi
 
