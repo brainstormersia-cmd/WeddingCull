@@ -158,7 +158,7 @@ struct ValidationRunner {
 
         for photo in photos {
             let name = photo.fileName
-            if name.contains("CORRUPT") || name.contains("DUP") || photo.metrics.blurScore < 0.3 {
+            if name.contains("CORRUPT") || name.contains("DUP") || photo.metrics.sharpnessScore < 0.3 {
                 groundTruthHardRejects.insert(name)
             } else {
                 groundTruthKeepers.insert(name)
@@ -175,7 +175,7 @@ struct ValidationRunner {
         var matchingBursts = 0
         let burstGroups = session?.burstGroups ?? []
         for bg in burstGroups {
-            if let winner = bg.winnerPhotoID, let winnerPhoto = photos.first(where: { $0.id == winner }) {
+            if !bg.winnerID.isEmpty, let winnerPhoto = photos.first(where: { $0.id == bg.winnerID }) {
                 // In synthetic generator, burst winner offset 2 is sharp
                 if !winnerPhoto.fileName.isEmpty {
                     matchingBursts += 1
@@ -202,7 +202,7 @@ struct ValidationRunner {
         if hardRejectRate > 0.02 {
             advisory.append("Hard-reject error rate exceeded 2%; strengthen blur / corrupt rejection filter.")
         }
-        if duplicateLeakage > 0.01 {
+        if dupLeakage > 0.01 {
             advisory.append("Duplicate leakage detected; verify perceptual hash Hamming distance threshold.")
         }
         if advisory.isEmpty {
