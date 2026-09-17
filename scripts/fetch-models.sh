@@ -23,38 +23,64 @@ if [ -d "$MODELS_DIR/mobileclip_s0_image.mlmodelc" ] || [ -d "$MODELS_DIR/mobile
     fi
 else
     echo "⬇️ Ensuring Hugging Face download client is available..."
-    HF_CMD=""
-    if command -v huggingface-cli &>/dev/null; then
-        HF_CMD="huggingface-cli"
-    elif python3 -m huggingface_hub.cli.download --help &>/dev/null; then
-        HF_CMD="python3 -m huggingface_hub.cli.download"
-    else
-        echo "📦 Installing huggingface_hub CLI..."
+    PYTHON_CMD="python3"
+    if ! command -v python3 &>/dev/null; then
+        PYTHON_CMD="python"
+    fi
+
+    if ! $PYTHON_CMD -c "import huggingface_hub" &>/dev/null; then
+        echo "📦 Installing huggingface_hub..."
         if command -v pip3 &>/dev/null; then
-            pip3 install --quiet --break-system-packages "huggingface_hub[cli]" || pip3 install --quiet "huggingface_hub[cli]" || true
+            pip3 install --quiet --break-system-packages "huggingface_hub" || pip3 install --quiet "huggingface_hub" || true
         elif command -v pip &>/dev/null; then
-            pip install --quiet --break-system-packages "huggingface_hub[cli]" || pip install --quiet "huggingface_hub[cli]" || true
-        fi
-        if command -v huggingface-cli &>/dev/null; then
-            HF_CMD="huggingface-cli"
-        elif python3 -m huggingface_hub.cli.download --help &>/dev/null; then
-            HF_CMD="python3 -m huggingface_hub.cli.download"
+            pip install --quiet --break-system-packages "huggingface_hub" || pip install --quiet "huggingface_hub" || true
         fi
     fi
 
-    if [ -n "$HF_CMD" ]; then
-        echo "Running: $HF_CMD download apple/coreml-mobileclip --revision $PINNED_MOBILECLIP_REVISION --include 'mobileclip_s0_image.mlpackage/*' --local-dir $MODELS_DIR"
-        if $HF_CMD download apple/coreml-mobileclip --revision "$PINNED_MOBILECLIP_REVISION" --include "mobileclip_s0_image.mlpackage/*" --local-dir "$MODELS_DIR"; then
-            echo "✅ Successfully downloaded MobileCLIP-S0 Image Encoder package."
-            if command -v xcrun &>/dev/null; then
-                echo "⚙️ Compiling Core ML model package to .mlmodelc..."
-                xcrun coremlc compile "$MODELS_DIR/mobileclip_s0_image.mlpackage" "$MODELS_DIR" || true
+    DOWNLOAD_SUCCESS=false
+    if $PYTHON_CMD -c "import huggingface_hub" &>/dev/null; then
+        echo "Running huggingface_hub snapshot_download for apple/coreml-mobileclip@$PINNED_MOBILECLIP_REVISION..."
+        if $PYTHON_CMD -c '
+from huggingface_hub import snapshot_download
+import sys
+try:
+    snapshot_download(
+        repo_id="apple/coreml-mobileclip",
+        revision="'"$PINNED_MOBILECLIP_REVISION"'",
+        allow_patterns=["mobileclip_s0_image.mlpackage/*"],
+        local_dir="'"$MODELS_DIR"'"
+    )
+    print("✅ Successfully downloaded MobileCLIP-S0 Image Encoder via huggingface_hub.")
+except Exception as e:
+    print(f"Download error: {e}", file=sys.stderr)
+    sys.exit(1)
+'; then
+            DOWNLOAD_SUCCESS=true
+        fi
+    fi
+
+    if [ "$DOWNLOAD_SUCCESS" != "true" ]; then
+        if command -v hf &>/dev/null; then
+            echo "Running: hf download apple/coreml-mobileclip --revision $PINNED_MOBILECLIP_REVISION --include 'mobileclip_s0_image.mlpackage/*' --local-dir $MODELS_DIR"
+            if hf download apple/coreml-mobileclip --revision "$PINNED_MOBILECLIP_REVISION" --include "mobileclip_s0_image.mlpackage/*" --local-dir "$MODELS_DIR"; then
+                DOWNLOAD_SUCCESS=true
             fi
-        else
-            echo "⚠️ Warning: Failed to download Core ML model package from Hugging Face."
+        elif command -v huggingface-cli &>/dev/null; then
+            echo "Running: huggingface-cli download apple/coreml-mobileclip --revision $PINNED_MOBILECLIP_REVISION --include 'mobileclip_s0_image.mlpackage/*' --local-dir $MODELS_DIR"
+            if huggingface-cli download apple/coreml-mobileclip --revision "$PINNED_MOBILECLIP_REVISION" --include "mobileclip_s0_image.mlpackage/*" --local-dir "$MODELS_DIR"; then
+                DOWNLOAD_SUCCESS=true
+            fi
+        fi
+    fi
+
+    if [ "$DOWNLOAD_SUCCESS" = "true" ]; then
+        echo "✅ MobileCLIP package ready."
+        if command -v xcrun &>/dev/null; then
+            echo "⚙️ Compiling Core ML model package to .mlmodelc..."
+            xcrun coremlc compile "$MODELS_DIR/mobileclip_s0_image.mlpackage" "$MODELS_DIR" || true
         fi
     else
-        echo "⚠️ Warning: huggingface-cli could not be installed or executed."
+        echo "⚠️ Warning: Could not download Core ML model package from Hugging Face."
     fi
 fi
 
