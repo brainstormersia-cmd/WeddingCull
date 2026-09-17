@@ -270,18 +270,9 @@ struct ReleaseRawValidator {
             ]
             cgThumb = CGImageSourceCreateThumbnailAtIndex(imageSource, 0, thumbOpts as CFDictionary)
 
-            // 2. Embedded preview extraction fallback
-            if cgThumb == nil {
-                print("  Trying embedded preview extraction fallback...")
-                let embeddedOpts: [CFString: Any] = [
-                    kCGImageSourceCreateThumbnailFromImageIfPresent: true,
-                    kCGImageSourceThumbnailMaxPixelSize: 800,
-                    kCGImageSourceCreateThumbnailWithTransform: true
-                ]
-                cgThumb = CGImageSourceCreateThumbnailAtIndex(imageSource, 0, embeddedOpts as CFDictionary)
-            }
 
-            // 3. Full image decode fallback
+
+            // 2. Full image decode fallback
             if cgThumb == nil {
                 print("  Trying full image decode fallback...")
                 cgThumb = CGImageSourceCreateImageAtIndex(imageSource, 0, nil)

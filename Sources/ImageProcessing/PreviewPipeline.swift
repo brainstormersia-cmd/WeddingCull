@@ -72,18 +72,7 @@ public final class PreviewPipeline: Sendable {
             ]
             previewCGImage = CGImageSourceCreateThumbnailAtIndex(imageSource, 0, previewOptions as CFDictionary)
 
-            // 2. If thumbnail fails, try extracting embedded thumbnail (common in RAW formats)
-            if previewCGImage == nil {
-                let embeddedOptions: [CFString: Any] = [
-                    kCGImageSourceCreateThumbnailFromImageIfPresent: true,
-                    kCGImageSourceShouldCacheImmediately: true,
-                    kCGImageSourceCreateThumbnailWithTransform: true,
-                    kCGImageSourceThumbnailMaxPixelSize: 1000
-                ]
-                previewCGImage = CGImageSourceCreateThumbnailAtIndex(imageSource, 0, embeddedOptions as CFDictionary)
-            }
-
-            // 3. If still nil, try full image decode and downsample
+            // 2. If thumbnail fails, try full image decode and downsample
             if previewCGImage == nil {
                 let fullOptions: [CFString: Any] = [
                     kCGImageSourceShouldCache: false

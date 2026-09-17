@@ -1,6 +1,6 @@
 import Foundation
 import CoreGraphics
-import Vision
+@preconcurrency import Vision
 
 public enum AnalysisPhase: String, CaseIterable, Sendable {
     case discovery = "Importazione"
@@ -63,7 +63,7 @@ public actor AnalysisCoordinator {
             return
         }
 
-        try await withTaskCancellationHandler {
+        await withTaskCancellationHandler {
             await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
                 if self.isPaused {
                     self.resumeContinuations.append(cont)
