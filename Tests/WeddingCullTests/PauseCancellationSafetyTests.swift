@@ -62,7 +62,8 @@ final class PauseCancellationSafetyTests: XCTestCase {
 
         for _ in 0..<10 {
             await coordinator.pause()
-            XCTAssertTrue(await coordinator.getIsPaused())
+            let isPaused = await coordinator.getIsPaused()
+            XCTAssertTrue(isPaused)
 
             let exp = expectation(description: "Rapid cycle completed")
             let task = Task {
