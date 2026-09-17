@@ -4,16 +4,49 @@ import CoreML
 import Vision
 import Accelerate
 
+public enum DescriptorType: String, Sendable {
+    case geometric = "Geometric Landmark Proportions"
+    case learnedEmbedding = "Learned Deep Embedding"
+}
+
 public struct FaceInstance: Sendable {
     public let boundingBox: CGRect
     public let eyeOpenness: Double
     public let faceQuality: Double
-    public let identityEmbedding: [Float] // Normalized identity vector (128-d / 64-d)
+    public let identityEmbedding: [Float] // Normalized descriptor vector (64-d geometric or 128-d learned)
+    public let descriptorType: DescriptorType
+
+    public init(
+        boundingBox: CGRect,
+        eyeOpenness: Double,
+        faceQuality: Double,
+        identityEmbedding: [Float],
+        descriptorType: DescriptorType = .geometric
+    ) {
+        self.boundingBox = boundingBox
+        self.eyeOpenness = eyeOpenness
+        self.faceQuality = faceQuality
+        self.identityEmbedding = identityEmbedding
+        self.descriptorType = descriptorType
+    }
 }
 
+/// Face Grouping via Geometric Landmark Proportions (Native Baseline) & Optional Learned Embeddings.
+///
+/// NOTE: By default, this computes 64-dimensional geometric descriptors from Apple Vision's
+/// `VNFaceLandmarks2D` (inter-ocular distance, nose/mouth ratios, jaw contour proportions).
+/// This is NOT learned face recognition (like ArcFace). It provides coarse person grouping
+/// within a single wedding (distinguishing bride vs groom vs children). It will not reliably identify
+/// individuals across heavy expression changes, glasses on/off, or extreme profile angles.
+///
+/// When an optional Core ML model (`MobileFaceNet.mlmodelc`) is present, it switches to learned 128-d embeddings.
 public final class FaceIdentityRecognizer: @unchecked Sendable {
     private let modelURL: URL?
     private let coreMLModel: MLModel?
+
+    public var descriptorType: DescriptorType {
+        return coreMLModel != nil ? .learnedEmbedding : .geometric
+    }
 
     public init(customModelURL: URL? = nil) {
         // Look for bundled or local Face Recognition model (e.g. MobileFaceNet / ArcFace)
@@ -84,7 +117,8 @@ public final class FaceIdentityRecognizer: @unchecked Sendable {
                 boundingBox: bbox,
                 eyeOpenness: avgEyeOpen,
                 faceQuality: quality,
-                identityEmbedding: embedding
+                identityEmbedding: embedding,
+                descriptorType: descriptorType
             ))
         }
 

@@ -13,13 +13,14 @@ public final class PersonClusterer: Sendable {
         var distancesToCentroid: [Float] = []
     }
 
-    /// Real identity-based clustering of wedding subjects using face identity embeddings
+    /// Clusters wedding subjects based on facial biometric descriptors (geometric landmark proportions or learned embeddings).
+    /// Uses conservative cosine distance threshold (0.28) to prevent false identity merges.
     public func clusterPersonsWithIdentities(
         items: [PhotoItem],
         faceInstances: [String: [FaceInstance]]
     ) -> [PersonCluster] {
         var clusters: [InternalCluster] = []
-        let matchThreshold: Float = 0.38 // Cosine distance threshold for same person identity
+        let matchThreshold: Float = 0.28 // Conservative cosine distance threshold to prevent false merges
 
         // 1. Process all photos chronologically
         for item in items {

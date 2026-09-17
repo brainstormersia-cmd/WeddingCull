@@ -40,7 +40,7 @@ The `AnalysisPipeline` operates in structured, async/await phases:
        ↓
 [Semantic Classification (Vision / MobileCLIP Zero-Shot)]
        ↓
-[Person Clustering & Primary Couple Suggestion]
+[Face Grouping & Primary Couple Suggestion (Geometric Landmark Analysis)]
        ↓
 [Robust Normalization & Multi-Component Scoring]
        ↓
@@ -70,7 +70,17 @@ Rather than using a single opaque score, quality is evaluated across distinct ph
 
 ---
 
-## 5. Ranking & Robust Normalization
+## 5. Face Grouping & Biometric Descriptors
+
+- **Geometric Landmark Baseline (Native Apple Vision)**:
+  By default, `FaceIdentityRecognizer` computes 64-dimensional geometric descriptors from `VNFaceLandmarks2D` (inter-ocular distance, eye widths, nose-to-mouth proportions, chin contour, and symmetry).
+  - **Intended Scope**: Coarse subject grouping within a single wedding (e.g. distinguishing bride, groom, wedding party members, children).
+  - **Limitations**: This is **not** learned deep face recognition (e.g. ArcFace). It will not guarantee identity persistence across radical expression changes, glasses on/off, or extreme profile angles.
+  - **Learned Model Support**: If `MobileFaceNet.mlmodelc` is placed in Application Support, `FaceIdentityRecognizer` activates 128-d learned embeddings.
+
+---
+
+## 6. Ranking & Robust Normalization
 
 Lighting and camera settings vary across shoots. Fixed absolute thresholds fail across different wedding styles.
 - **Robust Normalization**: Uses 10th percentile and 90th percentile clamping (`RobustNormalizer`) computed across the imported collection.
@@ -86,16 +96,18 @@ Lighting and camera settings vary across shoots. Fixed absolute thresholds fail 
 
 ---
 
-## 6. Diversity-Aware Selection & Exact Target Count
+## 7. Diversity-Aware Selection & Exact Target Count
 
 Simple top-N sorting over-selects repetitive shots (e.g. 200 nearly identical bride portraits and 2 ceremony photos). WeddingCull solves this via:
 - **Segment Coverage Quotas**: Proportional allocation based on moment duration, photo count, and category importance.
+- **Dominance Cap**: No single temporal segment may exceed 60% of the final proposed selection.
+- **Category Coverage**: Underrepresented categories receive a diversity boost in MMR to ensure balanced storytelling.
 - **Maximal Marginal Relevance (MMR)**:
   $$\text{Utility}(p) = \lambda \cdot \text{Score}(p) - (1 - \lambda) \cdot \max_{s \in \text{Selected}} \text{Sim}(p, s)$$
 - **Exact Target Count Guarantee**:
   If the photographer requests 700 photos:
   1. High-diversity pass selects the best candidates per segment quota.
-  2. Global MMR fills remaining slots while penalizing near-duplicates.
+  2. Global MMR fills remaining slots while penalizing near-duplicates and duplicate burst frames.
   3. If strict thresholds leave slots open, thresholds are progressively relaxed to hit **exactly** 700.
   4. If fewer than 700 valid photos exist in the entire shoot, selects all valid photos and reports the count transparently.
 - **User Overrides Guarantee**:

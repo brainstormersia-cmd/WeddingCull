@@ -65,6 +65,19 @@ WeddingCull is designed for rapid keyboard-driven photographer culling:
 
 ---
 
+## 🧑‍🤝‍🧑 Face Grouping & Model Scope
+
+* **Face Grouping (Geometric Landmark Baseline)**:
+  Uses native Apple Vision `VNFaceLandmarks2D` to extract 64-dimensional biometric proportion descriptors. Designed for coarse subject grouping within a wedding shoot (distinguishing bride, groom, wedding party members, children).
+* **Limitations**:
+  Geometric descriptors are not learned deep face embeddings (e.g. ArcFace). They do not guarantee identity tracking across radical expression shifts, glasses on/off, or extreme profile angles.
+* **Optional Learned Model**:
+  Supports optional Core ML `MobileFaceNet.mlmodelc` if installed locally.
+* **Scene Classification**:
+  Combines Apple Vision scene classification with optional Core ML MobileCLIP-S0 zero-shot inference (512-d normalized concept embeddings).
+
+---
+
 ## 🔒 Privacy & Local Processing
 
 - **Zero Cloud**: 100% of processing happens locally on device.
