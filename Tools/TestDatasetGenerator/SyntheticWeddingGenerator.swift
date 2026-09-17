@@ -133,7 +133,9 @@ public final class SyntheticWeddingGenerator: Sendable {
         }
 
         // Add exact duplicate
+        var duplicateOriginalName: String? = nil
         if let firstFile = createdFiles.first {
+            duplicateOriginalName = firstFile.lastPathComponent
             let dupURL = destinationFolder.appendingPathComponent("IMG_EXACT_DUP.jpg")
             try fileManager.copyItem(at: firstFile, to: dupURL)
             createdFiles.append(dupURL)
@@ -178,23 +180,29 @@ public final class SyntheticWeddingGenerator: Sendable {
 
         // Strictly guarantee targetTotalPhotos count without removing special test fixtures
         if createdFiles.count > config.targetTotalPhotos {
-            let protectedNames: Set<String> = [
+            var protectedNames: Set<String> = [
                 "CORRUPT_IMAGE.jpg",
                 "IMG_EXACT_DUP.jpg",
                 "IMG_9990_SYNTHETIC_PAIR.JPG",
                 "IMG_9990_SYNTHETIC_PAIR.CR3"
             ]
+            if let dupOrig = duplicateOriginalName {
+                protectedNames.insert(dupOrig)
+            }
+            if let first = createdFiles.first {
+                protectedNames.insert(first.lastPathComponent)
+            }
+
             var toRemove = createdFiles.count - config.targetTotalPhotos
-            var i = 0
-            while i < createdFiles.count && toRemove > 0 {
+            var i = createdFiles.count - 1
+            while i >= 0 && toRemove > 0 {
                 let file = createdFiles[i]
                 if !protectedNames.contains(file.lastPathComponent) {
                     try? fileManager.removeItem(at: file)
                     createdFiles.remove(at: i)
                     toRemove -= 1
-                } else {
-                    i += 1
                 }
+                i -= 1
             }
         }
 
