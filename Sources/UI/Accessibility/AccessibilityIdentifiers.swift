@@ -37,4 +37,14 @@ public enum AccessibilityIdentifiers {
     public static let exportDestinationFolder = "export_destination_folder"
     public static let exportConfirmButton = "export_confirm_button"
     public static let exportCancelButton = "export_cancel_button"
+    public static let exportResultSummary = "export_result_summary"
+
+    // Real Photo Display & Loupe
+    public static let photoThumbnailLoaded = "photo_thumbnail_loaded"
+    public static let photoThumbnailPlaceholder = "photo_thumbnail_placeholder"
+    public static let photoPreviewLoaded = "photo_preview_loaded"
+    public static let photoPreviewPlaceholder = "photo_preview_placeholder"
+    public static let burstLoupeView = "burst_loupe_view"
+    public static let burstFaceFocusButton = "burst_face_focus_button"
+    public static let burstZoomLoupeButton = "burst_zoom_loupe_button"
 }

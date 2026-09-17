@@ -1,8 +1,15 @@
 import SwiftUI
+#if canImport(WeddingCullCore)
+import WeddingCullCore
+#endif
 
 public struct BurstCompareView: View {
     @ObservedObject var appState: AppState
     let burst: BurstGroup
+
+    @State private var zoomScale: CGFloat = 1.0
+    @State private var panOffset: CGSize = .zero
+    @State private var isLoupeActive: Bool = false
 
     public init(appState: AppState, burst: BurstGroup) {
         self.appState = appState
@@ -10,31 +17,52 @@ public struct BurstCompareView: View {
     }
 
     public var body: some View {
-        VStack(spacing: 16) {
-            // Header
+        VStack(spacing: 12) {
+            // Header with professional comparison controls
             HStack {
-                VStack(alignment: .leading) {
+                VStack(alignment: .leading, spacing: 2) {
                     Text("Confronto Sequenza Burst")
                         .font(.title2)
                         .fontWeight(.bold)
-                    Text("\(burst.memberIDs.count) foto · Scegli lo scatto migliore")
+                    Text("\(burst.memberIDs.count) foto · Scegli lo scatto migliore · Zoom e pan sincronizzati")
                         .font(.subheadline)
                         .foregroundColor(.secondary)
                 }
 
                 Spacer()
 
-                Button("Chiudi") {
-                    appState.activeBurstForComparison = nil
+                // Synchronized Loupe / 1:1 Zoom control
+                HStack(spacing: 8) {
+                    Button(action: {
+                        toggleLoupe()
+                    }) {
+                        Label(isLoupeActive ? "Vista Intera (Fit)" : "Loupe 1:1 (Nitidezza)",
+                              systemName: isLoupeActive ? "arrow.down.right.and.arrow.up.left" : "magnifyingglass")
+                    }
+                    .buttonStyle(.bordered)
+                    .accessibilityIdentifier(AccessibilityIdentifiers.burstZoomLoupeButton)
+
+                    Button(action: {
+                        focusFace()
+                    }) {
+                        Label("Centra Volto", systemName: "person.crop.circle")
+                    }
+                    .buttonStyle(.bordered)
+                    .accessibilityIdentifier(AccessibilityIdentifiers.burstFaceFocusButton)
+
+                    Button("Chiudi") {
+                        appState.activeBurstForComparison = nil
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .accessibilityIdentifier(AccessibilityIdentifiers.closeBurstCompareButton)
                 }
-                .buttonStyle(.bordered)
-                .accessibilityIdentifier(AccessibilityIdentifiers.closeBurstCompareButton)
             }
-            .padding()
+            .padding(.horizontal)
+            .padding(.top, 12)
 
             Divider()
 
-            // Side-by-side comparison grid
+            // Side-by-side comparison strip
             let burstPhotos = appState.session.photos.filter { burst.memberIDs.contains($0.id) }
             ScrollView(.horizontal, showsIndicators: true) {
                 HStack(spacing: 16) {
@@ -45,31 +73,45 @@ public struct BurstCompareView: View {
                 .padding()
             }
 
-            Spacer()
+            if isLoupeActive {
+                HStack(spacing: 6) {
+                    Image(systemName: "hand.draw")
+                    Text("Trascina per spostare il loupe sincronizzato su tutti i fotogrammi")
+                }
+                .font(.caption)
+                .foregroundColor(.secondary)
+                .padding(.bottom, 8)
+                .accessibilityIdentifier(AccessibilityIdentifiers.burstLoupeView)
+            }
+
+            Spacer(minLength: 0)
         }
-        .frame(minWidth: 800, minHeight: 600)
+        .frame(minWidth: 850, minHeight: 650)
         .accessibilityIdentifier(AccessibilityIdentifiers.burstCompareModal)
     }
 
     private func burstPhotoCard(item: PhotoItem) -> some View {
         let isWinner = (item.id == burst.winnerID)
 
-        return VStack(spacing: 12) {
-            // Image card
+        return VStack(spacing: 10) {
+            // High-resolution preview with synchronized loupe & pan
             ZStack(alignment: .topTrailing) {
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(Color.secondary.opacity(0.15))
-                    .frame(width: 280, height: 280)
-                    .overlay(
-                        VStack(spacing: 8) {
-                            Image(systemName: "photo")
-                                .font(.system(size: 48))
-                                .foregroundColor(.secondary)
-                            Text(item.fileName)
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                        }
-                    )
+                AsyncBurstPreviewView(
+                    item: item,
+                    loader: appState.thumbnailLoader,
+                    zoomScale: zoomScale,
+                    panOffset: panOffset,
+                    onPan: { translation in
+                        panOffset = CGSize(
+                            width: panOffset.width + translation.width,
+                            height: panOffset.height + translation.height
+                        )
+                    }
+                )
+                .frame(width: 320, height: 320)
+                .background(Color.black.opacity(0.1))
+                .cornerRadius(8)
+                .clipped()
 
                 if isWinner {
                     HStack(spacing: 4) {
@@ -90,10 +132,10 @@ public struct BurstCompareView: View {
                     .stroke(isWinner ? Color.yellow : Color.clear, lineWidth: 3)
             )
 
-            // Quality metrics
+            // Fine-grained metrics for comparing focus, eyes, and expressions
             VStack(alignment: .leading, spacing: 4) {
                 HStack {
-                    Text("Punteggio:")
+                    Text("Punteggio complessivo:")
                         .font(.caption)
                         .foregroundColor(.secondary)
                     Spacer()
@@ -113,7 +155,7 @@ public struct BurstCompareView: View {
 
                 if let eye = item.metrics.averageEyeOpenness {
                     HStack {
-                        Text("Occhi aperti:")
+                        Text("Apertura occhi:")
                             .font(.caption)
                             .foregroundColor(.secondary)
                         Spacer()
@@ -122,15 +164,15 @@ public struct BurstCompareView: View {
                     }
                 }
             }
-            .frame(width: 260)
+            .frame(width: 300)
 
-            // Button to set as winner
+            // Winner selection: preserves alternatives without auto-rejecting
             if isWinner {
                 Button(action: {
                     appState.setBurstWinner(burstID: burst.id, newWinnerID: item.id)
                 }) {
                     HStack {
-                        Image(systemName: "checkmark")
+                        Image(systemName: "checkmark.circle.fill")
                         Text("Vincitore attuale")
                     }
                     .frame(maxWidth: .infinity)
@@ -143,7 +185,7 @@ public struct BurstCompareView: View {
                     appState.setBurstWinner(burstID: burst.id, newWinnerID: item.id)
                 }) {
                     HStack {
-                        Image(systemName: "hand.thumbsup.fill")
+                        Image(systemName: "hand.thumbsup")
                         Text("Imposta come migliore")
                     }
                     .frame(maxWidth: .infinity)
@@ -156,5 +198,88 @@ public struct BurstCompareView: View {
         .padding()
         .background(Color.secondary.opacity(0.06))
         .cornerRadius(12)
+    }
+
+    private func toggleLoupe() {
+        if isLoupeActive {
+            withAnimation(.easeInOut(duration: 0.2)) {
+                zoomScale = 1.0
+                panOffset = .zero
+                isLoupeActive = false
+            }
+        } else {
+            withAnimation(.easeInOut(duration: 0.2)) {
+                zoomScale = 2.5
+                isLoupeActive = true
+            }
+        }
+    }
+
+    private func focusFace() {
+        withAnimation(.easeInOut(duration: 0.2)) {
+            zoomScale = 2.5
+            // Center towards the upper middle area where wedding portraits/faces typically sit
+            panOffset = CGSize(width: 0, height: 40)
+            isLoupeActive = true
+        }
+    }
+}
+
+public struct AsyncBurstPreviewView: View {
+    let item: PhotoItem
+    @ObservedObject var loader: ThumbnailLoader
+    let zoomScale: CGFloat
+    let panOffset: CGSize
+    let onPan: (CGSize) -> Void
+
+    public init(
+        item: PhotoItem,
+        loader: ThumbnailLoader,
+        zoomScale: CGFloat = 1.0,
+        panOffset: CGSize = .zero,
+        onPan: @escaping (CGSize) -> Void = { _ in }
+    ) {
+        self.item = item
+        self.loader = loader
+        self.zoomScale = zoomScale
+        self.panOffset = panOffset
+        self.onPan = onPan
+    }
+
+    public var body: some View {
+        GeometryReader { geo in
+            ZStack {
+                if let nsImage = loader.cachedPreview(for: item) ?? loader.cachedThumbnail(for: item) {
+                    Image(nsImage: nsImage)
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .scaleEffect(zoomScale)
+                        .offset(panOffset)
+                        .gesture(
+                            DragGesture()
+                                .onChanged { val in
+                                    onPan(val.translation)
+                                }
+                        )
+                        .accessibilityIdentifier(AccessibilityIdentifiers.photoPreviewLoaded)
+                } else {
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(Color.secondary.opacity(0.15))
+                        .overlay(
+                            VStack(spacing: 8) {
+                                ProgressView()
+                                Text(item.fileName)
+                                    .font(.caption2)
+                                    .foregroundColor(.secondary)
+                            }
+                        )
+                        .accessibilityIdentifier(AccessibilityIdentifiers.photoPreviewPlaceholder)
+                }
+            }
+            .frame(width: geo.size.width, height: geo.size.height)
+        }
+        .task(id: item.previewCacheKey) {
+            _ = await loader.requestPreview(for: item)
+        }
     }
 }

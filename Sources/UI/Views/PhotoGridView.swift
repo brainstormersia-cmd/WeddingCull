@@ -70,21 +70,17 @@ public struct PhotoGridView: View {
 
         return VStack(spacing: 4) {
             ZStack(alignment: .topTrailing) {
-                // Thumbnail image representation
-                RoundedRectangle(cornerRadius: 6)
-                    .fill(Color.secondary.opacity(0.15))
-                    .aspectRatio(3/2, contentMode: .fit)
-                    .overlay(
-                        VStack(spacing: 4) {
-                            Image(systemName: "photo")
-                                .font(.system(size: 24))
-                                .foregroundColor(.secondary)
-                            Text(item.fileName)
-                                .font(.system(size: 9))
-                                .lineLimit(1)
-                                .foregroundColor(.secondary)
+                // Real thumbnail with async loading and caching
+                AsyncThumbnailView(item: item, loader: appState.thumbnailLoader)
+                    .onAppear {
+                        if let idx = appState.filteredPhotos.firstIndex(where: { $0.id == item.id }) {
+                            let nextItems = Array(appState.filteredPhotos.dropFirst(idx + 1).prefix(12))
+                            appState.thumbnailLoader.prefetchThumbnails(for: nextItems)
                         }
-                    )
+                    }
+                    .onDisappear {
+                        appState.thumbnailLoader.cancelThumbnailRequest(for: item)
+                    }
 
                 // Top left badge: Burst indicator
                 if let burstID = item.burstGroupID,
@@ -143,6 +139,47 @@ public struct PhotoGridView: View {
             Image(systemName: "xmark.circle.fill")
                 .foregroundColor(.gray)
                 .background(Circle().fill(Color.white))
+        }
+    }
+}
+
+public struct AsyncThumbnailView: View {
+    let item: PhotoItem
+    @ObservedObject var loader: ThumbnailLoader
+
+    public init(item: PhotoItem, loader: ThumbnailLoader) {
+        self.item = item
+        self.loader = loader
+    }
+
+    public var body: some View {
+        ZStack {
+            if let nsImage = loader.cachedThumbnail(for: item) {
+                Image(nsImage: nsImage)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+                    .accessibilityIdentifier(AccessibilityIdentifiers.photoThumbnailLoaded)
+            } else {
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(Color.secondary.opacity(0.15))
+                    .overlay(
+                        VStack(spacing: 4) {
+                            ProgressView()
+                                .scaleEffect(0.6)
+                            Text(item.fileName)
+                                .font(.system(size: 8))
+                                .lineLimit(1)
+                                .foregroundColor(.secondary)
+                        }
+                    )
+                    .accessibilityIdentifier(AccessibilityIdentifiers.photoThumbnailPlaceholder)
+            }
+        }
+        .aspectRatio(3/2, contentMode: .fit)
+        .clipped()
+        .cornerRadius(6)
+        .task(id: item.previewCacheKey) {
+            _ = await loader.requestThumbnail(for: item)
         }
     }
 }

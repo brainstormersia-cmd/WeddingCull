@@ -79,9 +79,9 @@ public actor AnalysisPipeline {
     private let selector = DiversitySelector()
     private let coordinator = AnalysisCoordinator()
 
-    public init(hardware: HardwareCapabilities = HardwareCapabilities(), customCacheDir: URL? = nil) {
+    public init(hardware: HardwareCapabilities = HardwareCapabilities(), previewPipeline: PreviewPipeline? = nil, customCacheDir: URL? = nil) {
         self.hardware = hardware
-        self.previewPipeline = PreviewPipeline(customCacheDirectory: customCacheDir)
+        self.previewPipeline = previewPipeline ?? PreviewPipeline(customCacheDirectory: customCacheDir)
         self.classifier = MobileCLIPClassifier(hardwareCapabilities: hardware)
     }
 

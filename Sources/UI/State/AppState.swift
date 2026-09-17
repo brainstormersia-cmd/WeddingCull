@@ -26,12 +26,19 @@ public final class AppState: ObservableObject {
     @Published public var isExportSheetPresented: Bool = false
     @Published public var statusMessage: String = ""
 
+    public let previewPipeline: PreviewPipeline
+    public let thumbnailLoader: ThumbnailLoader
+
     private var analysisTask: Task<Void, Never>? = nil
-    private let pipeline = AnalysisPipeline()
+    private let pipeline: AnalysisPipeline
     private let selector = DiversitySelector()
     private let sessionManager = SessionManager()
 
-    public init() {}
+    public init(previewPipeline: PreviewPipeline = PreviewPipeline()) {
+        self.previewPipeline = previewPipeline
+        self.thumbnailLoader = ThumbnailLoader(previewPipeline: previewPipeline)
+        self.pipeline = AnalysisPipeline(previewPipeline: previewPipeline)
+    }
 
     public var selectedPhoto: PhotoItem? {
         guard let id = selectedPhotoID else { return session.photos.first }

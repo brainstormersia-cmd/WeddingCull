@@ -11,6 +11,13 @@ public struct InspectorView: View {
         ScrollView {
             if let photo = appState.selectedPhoto {
                 VStack(alignment: .leading, spacing: 18) {
+                    // Selected photo preview
+                    AsyncThumbnailView(item: photo, loader: appState.thumbnailLoader)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 180)
+                        .cornerRadius(8)
+                        .clipped()
+
                     // Header & File info
                     VStack(alignment: .leading, spacing: 4) {
                         Text(photo.fileName)

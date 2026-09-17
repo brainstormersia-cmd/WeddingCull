@@ -85,11 +85,20 @@ public final class PreviewPipeline: Sendable {
         return (pURL, tURL)
     }
 
+    public func loadThumbnailCGImage(for item: PhotoItem) -> CGImage? {
+        let tURL = thumbnailURL(for: item)
+        guard FileManager.default.fileExists(atPath: tURL.path) else { return nil }
+
+        let options: [CFString: Any] = [kCGImageSourceShouldCache: false]
+        guard let source = CGImageSourceCreateWithURL(tURL as CFURL, options as CFDictionary) else { return nil }
+        return CGImageSourceCreateImageAtIndex(source, 0, options as CFDictionary)
+    }
+
     public func loadPreviewCGImage(for item: PhotoItem) -> CGImage? {
         let pURL = previewURL(for: item)
         guard FileManager.default.fileExists(atPath: pURL.path) else { return nil }
 
-        let options: [CFString: Any] = [kCGImageSourceShouldCache: true]
+        let options: [CFString: Any] = [kCGImageSourceShouldCache: false]
         guard let source = CGImageSourceCreateWithURL(pURL as CFURL, options as CFDictionary) else { return nil }
         return CGImageSourceCreateImageAtIndex(source, 0, options as CFDictionary)
     }
