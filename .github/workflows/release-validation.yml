@@ -1,0 +1,296 @@
+name: Final Release Dataset Validation
+
+on:
+  workflow_dispatch:
+    inputs:
+      dataset_size:
+        description: 'Benchmark dataset size (photos)'
+        required: false
+        default: '1500'
+      target_count:
+        description: 'Target culling selection count'
+        required: false
+        default: '700'
+      albumbench_limit:
+        description: 'AlbumBench wedding albums limit (0 = all pinned)'
+        required: false
+        default: '8'
+
+jobs:
+  dataset-validation-arm64:
+    name: 1,500→700 Benchmark (Apple Silicon arm64)
+    runs-on: macos-14
+    timeout-minutes: 45
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Architecture Audit
+        run: |
+          set -euo pipefail
+          ARCH=$(uname -m)
+          echo "Architecture: $ARCH"
+          if [ "$ARCH" != "arm64" ]; then
+            echo "❌ Expected arm64 runner, got $ARCH"
+            exit 1
+          fi
+
+      - name: Bootstrap Environment
+        run: |
+          set -euo pipefail
+          chmod +x ./scripts/*.sh
+          ./scripts/bootstrap.sh
+
+      - name: Execute 1,500→700 Pipeline Benchmark on Apple Silicon
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          swift run BenchmarkRunner \
+            --count "${{ github.event.inputs.dataset_size || '1500' }}" \
+            --target "${{ github.event.inputs.target_count || '700' }}" \
+            --strict \
+            --output-json artifacts/benchmark-arm64.json \
+            --output-md artifacts/BENCHMARKS-arm64.md
+
+      - name: Upload arm64 Benchmark Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-arm64
+          path: artifacts/benchmark-arm64.json
+
+  dataset-validation-intel:
+    name: 1,500→700 Benchmark (Native Intel x86_64)
+    runs-on: macos-15-intel
+    timeout-minutes: 45
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Architecture Audit
+        run: |
+          set -euo pipefail
+          ARCH=$(uname -m)
+          echo "Architecture: $ARCH"
+          if [ "$ARCH" != "x86_64" ]; then
+            echo "❌ Expected x86_64 runner, got $ARCH"
+            exit 1
+          fi
+
+      - name: Bootstrap Environment
+        run: |
+          set -euo pipefail
+          chmod +x ./scripts/*.sh
+          ./scripts/bootstrap.sh
+
+      - name: Execute 1,500→700 Pipeline Benchmark on Native Intel Hardware
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          swift run BenchmarkRunner \
+            --count "${{ github.event.inputs.dataset_size || '1500' }}" \
+            --target "${{ github.event.inputs.target_count || '700' }}" \
+            --strict \
+            --output-json artifacts/benchmark-intel.json \
+            --output-md artifacts/BENCHMARKS-intel.md
+
+      - name: Upload Intel Benchmark Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-intel
+          path: artifacts/benchmark-intel.json
+
+  albumbench-validation:
+    name: AlbumBench / CUFED Real Wedding Dataset Validation
+    runs-on: macos-14
+    timeout-minutes: 30
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Bootstrap Environment
+        run: |
+          set -euo pipefail
+          chmod +x ./scripts/*.sh
+          ./scripts/bootstrap.sh
+
+      - name: Download Real AlbumBench Wedding Subset
+        run: |
+          set -euo pipefail
+          ./scripts/fetch-albumbench-subset.sh --limit "${{ github.event.inputs.albumbench_limit || '8' }}"
+
+      - name: Run Real Wedding Album Benchmark
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          swift run WeddingAlbumBenchmark \
+            --dataset-dir "tests/fixtures/datasets/albumbench_wedding" \
+            --output-json "artifacts/albumbench-report.json" \
+            --output-md "artifacts/ALBUMBENCH_REPORT.md"
+
+      - name: Upload AlbumBench Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: albumbench-report
+          path: |
+            artifacts/albumbench-report.json
+            artifacts/ALBUMBENCH_REPORT.md
+
+  real-raw-validation:
+    name: Strict Real RAW Fixture Verification (Canon, Nikon, Sony, Fuji)
+    runs-on: macos-14
+    timeout-minutes: 20
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Bootstrap Environment
+        run: |
+          set -euo pipefail
+          chmod +x ./scripts/*.sh
+          ./scripts/bootstrap.sh
+
+      - name: Execute Strict Real RAW Validator
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          swift run ReleaseRawValidator --output-json artifacts/raw-validation-report.json
+
+      - name: Upload RAW Validation Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: raw-validation-report
+          path: artifacts/raw-validation-report.json
+
+  mobileclip-validation:
+    name: MobileCLIP Core ML Strict Zero-Shot Classifier
+    runs-on: macos-14
+    timeout-minutes: 25
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Python and Hugging Face Client
+        run: |
+          set -euo pipefail
+          python3 -m pip install --quiet --upgrade "huggingface_hub[cli]"
+
+      - name: Download and Compile Apple MobileCLIP Model
+        run: |
+          set -euo pipefail
+          chmod +x ./scripts/*.sh
+          ./scripts/fetch-models.sh
+
+      - name: Strict MobileCLIP Validation
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          swift run MobileCLIPValidator --output-json artifacts/mobileclip-report.json
+
+      - name: Upload MobileCLIP Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: mobileclip-report
+          path: artifacts/mobileclip-report.json
+
+  quality-benchmark:
+    name: Quality Metrics, Failure Modes & Stability Stress Tests
+    runs-on: macos-14
+    timeout-minutes: 20
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Bootstrap Environment
+        run: |
+          set -euo pipefail
+          chmod +x ./scripts/*.sh
+          ./scripts/bootstrap.sh
+
+      - name: Run Unit, Integration and Failure Mode Tests
+        run: |
+          set -euo pipefail
+          ./scripts/test.sh --unit-only
+
+      - name: Run IQA Validation Runner (Framework Audit)
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          swift run IQAValidationRunner --output artifacts/iqa-report.json
+
+      - name: Upload IQA Report Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: iqa-report
+          path: artifacts/iqa-report.json
+
+  selection-quality-validation:
+    name: Selection Ground-Truth, Category & Burst Validation
+    runs-on: macos-14
+    timeout-minutes: 20
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Bootstrap Environment
+        run: |
+          set -euo pipefail
+          chmod +x ./scripts/*.sh
+          ./scripts/bootstrap.sh
+
+      - name: Run Simulated Wedding Validation
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          swift run ValidationRunner --count 250 --target 125 --output-dir artifacts
+
+      - name: Upload Selection Quality Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: selection-quality-report
+          path: |
+            artifacts/selection-ground-truth-report.json
+            artifacts/category-report.json
+            artifacts/duplicate-burst-report.json
+            artifacts/VALIDATION_REPORT.md
+
+  release-validation-report:
+    name: Release Validation Audit & Report Consolidation
+    runs-on: macos-14
+    timeout-minutes: 15
+    needs:
+      - dataset-validation-arm64
+      - dataset-validation-intel
+      - albumbench-validation
+      - real-raw-validation
+      - mobileclip-validation
+      - quality-benchmark
+      - selection-quality-validation
+    if: always()
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Download All Subsystem Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Consolidate Master Release Validation Report
+        run: |
+          set -euo pipefail
+          python3 ./scripts/generate-release-report.py artifacts
+
+      - name: Display Master Markdown Report
+        run: |
+          cat artifacts/RELEASE_VALIDATION_REPORT.md
+
+      - name: Upload Unified Release Validation Package
+        uses: actions/upload-artifact@v4
+        with:
+          name: WeddingCull-Final-Release-Validation
+          path: |
+            artifacts/release-validation-report.json
+            artifacts/RELEASE_VALIDATION_REPORT.md
+            artifacts/*.json
+            artifacts/*.md

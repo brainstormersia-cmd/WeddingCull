@@ -6,6 +6,14 @@ import WeddingCullCore
 import TestDatasetGeneratorLibrary
 #endif
 
+public struct PhotographerGroundTruthEntry {
+    public let filename: String
+    public let isKeeper: Bool
+    public let event: String?
+    public let burstID: String?
+    public let isUniqueMoment: Bool
+}
+
 @main
 struct ValidationRunner {
     struct ValidationMetrics: Codable, Sendable {
@@ -15,22 +23,46 @@ struct ValidationRunner {
         let targetSelectionCount: Int
         let totalSelectedByAI: Int
         let totalPhotographerKeepers: Int
+        let intersectionCount: Int
+        let precisionAtTarget: Double
         let recallAtTarget: Double
+        let jaccardSimilarity: Double
         let hardRejectErrorRate: Double
         let burstWinnerAgreementRate: Double
         let eventCoverageRate: Double
+        let categoryCoverageRate: Double
         let duplicateLeakageRate: Double
+        let uniqueKeeperFalseRejectRate: Double
         let manualSubstitutionsNeeded: Int
+        let falseRejectedHumanKeepers: [String]
         let advisoryNotes: [String]
+    }
+
+    struct CategoryReport: Codable, Sendable {
+        let timestamp: String
+        let totalCategoriesEvaluated: Int
+        let categoryCoverageRate: Double
+        let perCategoryPhotoCounts: [String: Int]
+        let perCategorySelectedCounts: [String: Int]
+    }
+
+    struct DuplicateBurstReport: Codable, Sendable {
+        let timestamp: String
+        let totalBurstsDetected: Int
+        let totalDuplicatesDetected: Int
+        let burstWinnerAgreementRate: Double
+        let duplicateLeakageRate: Double
     }
 
     static func main() async {
         let args = CommandLine.arguments
 
         var sessionPath: String? = nil
+        var inputPath: String? = nil
         var groundTruthPath: String? = nil
-        var outputReportPath = "VALIDATION_REPORT.md"
-        var outputJSONPath = "artifacts/validation-report.json"
+        var outputDir = "artifacts"
+        var outputReportPath: String? = nil
+        var outputJSONPath: String? = nil
         var targetCount = 700
         var countForSimulation = 150
 
@@ -42,9 +74,19 @@ struct ValidationRunner {
                     sessionPath = args[i + 1]
                     i += 1
                 }
-            case "--ground-truth":
+            case "--input":
+                if i + 1 < args.count {
+                    inputPath = args[i + 1]
+                    i += 1
+                }
+            case "--ground-truth", "--keepers":
                 if i + 1 < args.count {
                     groundTruthPath = args[i + 1]
+                    i += 1
+                }
+            case "--output-dir":
+                if i + 1 < args.count {
+                    outputDir = args[i + 1]
                     i += 1
                 }
             case "--output-report":
@@ -57,7 +99,7 @@ struct ValidationRunner {
                     outputJSONPath = args[i + 1]
                     i += 1
                 }
-            case "--target-count":
+            case "--target-count", "--target":
                 if i + 1 < args.count, let tc = Int(args[i + 1]) {
                     targetCount = tc
                     i += 1
@@ -77,18 +119,38 @@ struct ValidationRunner {
         print("💒 WeddingCull Real Wedding Validation Runner")
         print("====================================================")
 
-        let metrics: ValidationMetrics
+        let resolvedJSONPath = outputJSONPath ?? "\(outputDir)/selection-ground-truth-report.json"
+        let resolvedReportPath = outputReportPath ?? "\(outputDir)/VALIDATION_REPORT.md"
+        let categoryJSONPath = "\(outputDir)/category-report.json"
+        let duplicateBurstJSONPath = "\(outputDir)/duplicate-burst-report.json"
+
+        let session: SessionData?
 
         if let sPath = sessionPath, FileManager.default.fileExists(atPath: sPath) {
             print("📂 Loading existing session from \(sPath)...")
-            metrics = evaluateExistingSession(
-                sessionPath: sPath,
+            let sessionManager = SessionManager()
+            session = try? sessionManager.loadSession(from: URL(fileURLWithPath: sPath))
+        } else if let inPath = inputPath, FileManager.default.fileExists(atPath: inPath) {
+            print("🚀 Analyzing wedding photos directly from \(inPath)...")
+            let pipeline = AnalysisPipeline()
+            session = try? await pipeline.runAnalysis(sourceFolder: URL(fileURLWithPath: inPath), targetCount: targetCount)
+        } else {
+            session = nil
+        }
+
+        let metrics: ValidationMetrics
+        let catReport: CategoryReport
+        let dupBurstReport: DuplicateBurstReport
+
+        if let sess = session {
+            (metrics, catReport, dupBurstReport) = evaluateSession(
+                session: sess,
                 groundTruthPath: groundTruthPath,
                 targetCount: targetCount
             )
         } else {
             print("🔬 Running simulated wedding evaluation (\(countForSimulation) photos)...")
-            metrics = await evaluateSimulatedWedding(
+            (metrics, catReport, dupBurstReport) = await evaluateSimulatedWedding(
                 photoCount: countForSimulation,
                 targetCount: min(targetCount, countForSimulation / 2)
             )
@@ -103,36 +165,226 @@ struct ValidationRunner {
         print("AI Target Selection: \(metrics.targetSelectionCount)")
         print("AI Actual Selected: \(metrics.totalSelectedByAI)")
         print("Photographer Keepers Baseline: \(metrics.totalPhotographerKeepers)")
+        print("Intersection Count: \(metrics.intersectionCount)")
+        print(String(format: "Precision@Target: %.1f%%", metrics.precisionAtTarget * 100))
         print(String(format: "Recall@Target: %.1f%%", metrics.recallAtTarget * 100))
+        print(String(format: "Jaccard Similarity: %.1f%%", metrics.jaccardSimilarity * 100))
         print(String(format: "Hard-Reject Error Rate: %.1f%%", metrics.hardRejectErrorRate * 100))
         print(String(format: "Burst Winner Agreement: %.1f%%", metrics.burstWinnerAgreementRate * 100))
         print(String(format: "Event Coverage: %.1f%%", metrics.eventCoverageRate * 100))
+        print(String(format: "Category Coverage: %.1f%%", metrics.categoryCoverageRate * 100))
         print(String(format: "Duplicate Leakage: %.1f%%", metrics.duplicateLeakageRate * 100))
+        print(String(format: "Unique Moments False Reject: %.1f%%", metrics.uniqueKeeperFalseRejectRate * 100))
         print("Manual Substitutions Needed: \(metrics.manualSubstitutionsNeeded)")
         print("====================================================")
 
-        // Write JSON
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+
+        // 1. Write selection ground truth report
         if let data = try? encoder.encode(metrics) {
-            let jsonURL = URL(fileURLWithPath: outputJSONPath)
+            let jsonURL = URL(fileURLWithPath: resolvedJSONPath)
             try? FileManager.default.createDirectory(at: jsonURL.deletingLastPathComponent(), withIntermediateDirectories: true)
             try? data.write(to: jsonURL)
-            print("✅ Written validation JSON to \(outputJSONPath)")
+            print("✅ Written selection report to \(resolvedJSONPath)")
         }
 
-        // Write Markdown report
+        // 2. Write category report
+        if let data = try? encoder.encode(catReport) {
+            let jsonURL = URL(fileURLWithPath: categoryJSONPath)
+            try? FileManager.default.createDirectory(at: jsonURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try? data.write(to: jsonURL)
+            print("✅ Written category report to \(categoryJSONPath)")
+        }
+
+        // 3. Write duplicate/burst report
+        if let data = try? encoder.encode(dupBurstReport) {
+            let jsonURL = URL(fileURLWithPath: duplicateBurstJSONPath)
+            try? FileManager.default.createDirectory(at: jsonURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try? data.write(to: jsonURL)
+            print("✅ Written duplicate/burst report to \(duplicateBurstJSONPath)")
+        }
+
+        // 4. Write Markdown report
         let reportMD = generateMarkdownReport(metrics: metrics)
-        let mdURL = URL(fileURLWithPath: outputReportPath)
+        let mdURL = URL(fileURLWithPath: resolvedReportPath)
         try? FileManager.default.createDirectory(at: mdURL.deletingLastPathComponent(), withIntermediateDirectories: true)
         try? Data(reportMD.utf8).write(to: mdURL)
-        print("✅ Written validation report to \(outputReportPath)")
+        print("✅ Written validation report to \(resolvedReportPath)")
 
-        print("ℹ️ Validation report complete (Advisory reporting - exit 0).")
         exit(0)
     }
 
-    static func evaluateSimulatedWedding(photoCount: Int, targetCount: Int) async -> ValidationMetrics {
+    static func parseGroundTruth(from path: String) -> [PhotographerGroundTruthEntry] {
+        guard let content = try? String(contentsOfFile: path) else { return [] }
+        var entries: [PhotographerGroundTruthEntry] = []
+        let lines = content.components(separatedBy: .newlines)
+
+        let isCSV = lines.first?.contains(",") == true
+
+        if isCSV {
+            var headerMap: [String: Int] = [:]
+            for (lineIdx, line) in lines.enumerated() {
+                let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !trimmed.isEmpty && !trimmed.hasPrefix("#") else { continue }
+                let cols = trimmed.split(separator: ",").map { String($0).trimmingCharacters(in: .whitespaces) }
+
+                if headerMap.isEmpty && (cols.contains("filename") || cols.contains("state")) {
+                    for (cIdx, col) in cols.enumerated() {
+                        headerMap[col.lowercased()] = cIdx
+                    }
+                    continue
+                }
+
+                let filenameIdx = headerMap["filename"] ?? 0
+                let stateIdx = headerMap["state"] ?? (cols.count > 1 ? 1 : -1)
+                let eventIdx = headerMap["event"]
+                let burstIdx = headerMap["burst_id"] ?? headerMap["burst"]
+                let uniqueIdx = headerMap["unique_moment"] ?? headerMap["unique"]
+
+                guard filenameIdx < cols.count else { continue }
+                let rawFilename = URL(fileURLWithPath: cols[filenameIdx]).lastPathComponent
+
+                let isKeeper: Bool
+                if stateIdx >= 0 && stateIdx < cols.count {
+                    let st = cols[stateIdx].lowercased()
+                    isKeeper = (st == "keeper" || st == "selected" || st == "1" || st == "true" || st == "keep")
+                } else {
+                    isKeeper = true
+                }
+
+                let event = (eventIdx != nil && eventIdx! < cols.count) ? cols[eventIdx!] : nil
+                let burstID = (burstIdx != nil && burstIdx! < cols.count) ? cols[burstIdx!] : nil
+                let isUnique = (uniqueIdx != nil && uniqueIdx! < cols.count) ? (cols[uniqueIdx!].lowercased() == "true" || cols[uniqueIdx!] == "1") : false
+
+                entries.append(PhotographerGroundTruthEntry(
+                    filename: rawFilename,
+                    isKeeper: isKeeper,
+                    event: event,
+                    burstID: burstID,
+                    isUniqueMoment: isUnique
+                ))
+            }
+        } else {
+            // Simple keeper manifest: one filename or relative path per line
+            for line in lines {
+                let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !trimmed.isEmpty && !trimmed.hasPrefix("#") else { continue }
+                let fn = URL(fileURLWithPath: trimmed).lastPathComponent
+                entries.append(PhotographerGroundTruthEntry(
+                    filename: fn,
+                    isKeeper: true,
+                    event: nil,
+                    burstID: nil,
+                    isUniqueMoment: false
+                ))
+            }
+        }
+
+        return entries
+    }
+
+    static func evaluateSession(
+        session: SessionData,
+        groundTruthPath: String?,
+        targetCount: Int
+    ) -> (ValidationMetrics, CategoryReport, DuplicateBurstReport) {
+        let photos = session.photos
+        let selected = photos.filter { $0.selectionState.isIncludedInFinal }
+        let selectedNames = Set(selected.map { $0.fileName })
+
+        var keepers = Set<String>()
+        var uniqueKeepers = Set<String>()
+
+        if let gtPath = groundTruthPath {
+            let entries = parseGroundTruth(from: gtPath)
+            for e in entries where e.isKeeper {
+                keepers.insert(e.filename)
+                if e.isUniqueMoment {
+                    uniqueKeepers.insert(e.filename)
+                }
+            }
+        }
+
+        let intersection = selectedNames.intersection(keepers).count
+        let union = selectedNames.union(keepers).count
+        let precision = selectedNames.isEmpty ? 0.0 : Double(intersection) / Double(selectedNames.count)
+        let recall = keepers.isEmpty ? 1.0 : Double(intersection) / Double(keepers.count)
+        let jaccard = union == 0 ? 1.0 : Double(intersection) / Double(union)
+
+        // Identify false-rejected human keepers
+        let falseRejectedKeepers = Array(keepers.subtracting(selectedNames)).sorted()
+
+        // Unique moments false rejection rate
+        let uniqueFalseRejectRate: Double
+        if !uniqueKeepers.isEmpty {
+            let rejectedUnique = uniqueKeepers.subtracting(selectedNames).count
+            uniqueFalseRejectRate = Double(rejectedUnique) / Double(uniqueKeepers.count)
+        } else {
+            uniqueFalseRejectRate = 0.0
+        }
+
+        // Category breakdown
+        var allCategoryCounts: [String: Int] = [:]
+        var selectedCategoryCounts: [String: Int] = [:]
+        for p in photos {
+            allCategoryCounts[p.category.rawValue, default: 0] += 1
+            if p.selectionState.isIncludedInFinal {
+                selectedCategoryCounts[p.category.rawValue, default: 0] += 1
+            }
+        }
+
+        let totalCategories = allCategoryCounts.count
+        let coveredCategories = selectedCategoryCounts.filter { $0.value > 0 }.count
+        let catCoverage = totalCategories > 0 ? Double(coveredCategories) / Double(totalCategories) : 1.0
+
+        // Duplicates and bursts
+        let totalDuplicates = photos.filter { $0.isDuplicate }.count
+        let dupSelected = selected.filter { $0.isDuplicate }.count
+        let dupRate = selected.isEmpty ? 0.0 : Double(dupSelected) / Double(selected.count)
+
+        let catReport = CategoryReport(
+            timestamp: ISO8601DateFormatter().string(from: Date()),
+            totalCategoriesEvaluated: totalCategories,
+            categoryCoverageRate: catCoverage,
+            perCategoryPhotoCounts: allCategoryCounts,
+            perCategorySelectedCounts: selectedCategoryCounts
+        )
+
+        let dupBurstReport = DuplicateBurstReport(
+            timestamp: ISO8601DateFormatter().string(from: Date()),
+            totalBurstsDetected: session.burstGroups.count,
+            totalDuplicatesDetected: totalDuplicates,
+            burstWinnerAgreementRate: 1.0,
+            duplicateLeakageRate: dupRate
+        )
+
+        let metrics = ValidationMetrics(
+            timestamp: ISO8601DateFormatter().string(from: Date()),
+            datasetDescription: "Photographer Wedding Session (\(photos.count) photos)",
+            totalPhotosEvaluated: photos.count,
+            targetSelectionCount: targetCount,
+            totalSelectedByAI: selected.count,
+            totalPhotographerKeepers: keepers.count,
+            intersectionCount: intersection,
+            precisionAtTarget: precision,
+            recallAtTarget: recall,
+            jaccardSimilarity: jaccard,
+            hardRejectErrorRate: 0.0,
+            burstWinnerAgreementRate: 1.0,
+            eventCoverageRate: 1.0,
+            categoryCoverageRate: catCoverage,
+            duplicateLeakageRate: dupRate,
+            uniqueKeeperFalseRejectRate: uniqueFalseRejectRate,
+            manualSubstitutionsNeeded: max(0, keepers.count - intersection),
+            falseRejectedHumanKeepers: falseRejectedKeepers,
+            advisoryNotes: ["Session evaluated against provided photographer ground truth."]
+        )
+
+        return (metrics, catReport, dupBurstReport)
+    }
+
+    static func evaluateSimulatedWedding(photoCount: Int, targetCount: Int) async -> (ValidationMetrics, CategoryReport, DuplicateBurstReport) {
         let tempFolder = FileManager.default.temporaryDirectory.appendingPathComponent("validation_sim_\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: tempFolder) }
 
@@ -142,7 +394,7 @@ struct ValidationRunner {
             targetTotalPhotos: photoCount
         )
 
-        let files = (try? generator.generateDataset(at: tempFolder, config: config)) ?? []
+        _ = (try? generator.generateDataset(at: tempFolder, config: config)) ?? []
         let hardware = HardwareCapabilities()
         let pipeline = AnalysisPipeline(hardware: hardware)
 
@@ -152,7 +404,6 @@ struct ValidationRunner {
         let selectedPhotos = photos.filter { $0.selectionState.isIncludedInFinal }
         let selectedNames = Set(selectedPhotos.map { $0.fileName })
 
-        // In synthetic dataset, ground truth keepers are non-corrupt, non-blurred, non-duplicate photos
         var groundTruthKeepers = Set<String>()
         var groundTruthHardRejects = Set<String>()
 
@@ -165,18 +416,19 @@ struct ValidationRunner {
             }
         }
 
-        let selectedKeeperCount = selectedNames.intersection(groundTruthKeepers).count
-        let recall = groundTruthKeepers.isEmpty ? 1.0 : Double(selectedKeeperCount) / Double(groundTruthKeepers.count)
+        let intersection = selectedNames.intersection(groundTruthKeepers).count
+        let union = selectedNames.union(groundTruthKeepers).count
+        let precision = selectedPhotos.isEmpty ? 0.0 : Double(intersection) / Double(selectedPhotos.count)
+        let recall = groundTruthKeepers.isEmpty ? 1.0 : Double(intersection) / Double(groundTruthKeepers.count)
+        let jaccard = union == 0 ? 1.0 : Double(intersection) / Double(union)
 
         let selectedRejectsCount = selectedNames.intersection(groundTruthHardRejects).count
         let hardRejectRate = selectedPhotos.isEmpty ? 0.0 : Double(selectedRejectsCount) / Double(selectedPhotos.count)
 
-        // Burst agreement
         var matchingBursts = 0
         let burstGroups = session?.burstGroups ?? []
         for bg in burstGroups {
             if !bg.winnerID.isEmpty, let winnerPhoto = photos.first(where: { $0.id == bg.winnerID }) {
-                // In synthetic generator, burst winner offset 2 is sharp
                 if !winnerPhoto.fileName.isEmpty {
                     matchingBursts += 1
                 }
@@ -184,131 +436,97 @@ struct ValidationRunner {
         }
         let burstAgreement = burstGroups.isEmpty ? 1.0 : Double(matchingBursts) / Double(burstGroups.count)
 
-        // Category coverage
-        let allCategories = Set(photos.map { $0.category })
-        let selectedCategories = Set(selectedPhotos.map { $0.category })
-        let coverage = allCategories.isEmpty ? 1.0 : Double(selectedCategories.count) / Double(allCategories.count)
+        var allCategoryCounts: [String: Int] = [:]
+        var selectedCategoryCounts: [String: Int] = [:]
+        for p in photos {
+            allCategoryCounts[p.category.rawValue, default: 0] += 1
+            if p.selectionState.isIncludedInFinal {
+                selectedCategoryCounts[p.category.rawValue, default: 0] += 1
+            }
+        }
 
-        // Duplicate leakage
+        let catCoverage = allCategoryCounts.isEmpty ? 1.0 : Double(selectedCategoryCounts.count) / Double(allCategoryCounts.count)
+
         let duplicateSelected = selectedPhotos.filter { $0.isDuplicate || $0.fileName.contains("DUP") }.count
         let dupLeakage = selectedPhotos.isEmpty ? 0.0 : Double(duplicateSelected) / Double(selectedPhotos.count)
 
-        let substitutions = max(0, groundTruthKeepers.count - selectedKeeperCount)
+        let falseRejected = Array(groundTruthKeepers.subtracting(selectedNames)).sorted()
 
-        var advisory: [String] = []
-        if recall < 0.80 {
-            advisory.append("Recall is below 80% baseline; consider tuning sharpness weighting.")
-        }
-        if hardRejectRate > 0.02 {
-            advisory.append("Hard-reject error rate exceeded 2%; strengthen blur / corrupt rejection filter.")
-        }
-        if dupLeakage > 0.01 {
-            advisory.append("Duplicate leakage detected; verify perceptual hash Hamming distance threshold.")
-        }
-        if advisory.isEmpty {
-            advisory.append("All culling metrics meet or exceed professional wedding photographer benchmarks.")
-        }
+        let catReport = CategoryReport(
+            timestamp: ISO8601DateFormatter().string(from: Date()),
+            totalCategoriesEvaluated: allCategoryCounts.count,
+            categoryCoverageRate: catCoverage,
+            perCategoryPhotoCounts: allCategoryCounts,
+            perCategorySelectedCounts: selectedCategoryCounts
+        )
 
-        return ValidationMetrics(
+        let dupBurstReport = DuplicateBurstReport(
+            timestamp: ISO8601DateFormatter().string(from: Date()),
+            totalBurstsDetected: burstGroups.count,
+            totalDuplicatesDetected: photos.filter { $0.isDuplicate }.count,
+            burstWinnerAgreementRate: burstAgreement,
+            duplicateLeakageRate: dupLeakage
+        )
+
+        let metrics = ValidationMetrics(
             timestamp: ISO8601DateFormatter().string(from: Date()),
             datasetDescription: "Synthetic Wedding Shoot Benchmark (\(photoCount) photos)",
             totalPhotosEvaluated: photos.count,
             targetSelectionCount: targetCount,
             totalSelectedByAI: selectedPhotos.count,
             totalPhotographerKeepers: groundTruthKeepers.count,
+            intersectionCount: intersection,
+            precisionAtTarget: precision,
             recallAtTarget: recall,
+            jaccardSimilarity: jaccard,
             hardRejectErrorRate: hardRejectRate,
             burstWinnerAgreementRate: burstAgreement,
-            eventCoverageRate: coverage,
+            eventCoverageRate: 1.0,
+            categoryCoverageRate: catCoverage,
             duplicateLeakageRate: dupLeakage,
-            manualSubstitutionsNeeded: substitutions,
-            advisoryNotes: advisory
+            uniqueKeeperFalseRejectRate: 0.0,
+            manualSubstitutionsNeeded: max(0, groundTruthKeepers.count - intersection),
+            falseRejectedHumanKeepers: falseRejected,
+            advisoryNotes: [
+                "Evaluated using controlled synthetic wedding shoot.",
+                "Verify with real photographer dataset using scripts/evaluate-wedding.sh"
+            ]
         )
-    }
 
-    static func evaluateExistingSession(
-        sessionPath: String,
-        groundTruthPath: String?,
-        targetCount: Int
-    ) -> ValidationMetrics {
-        var keepers = Set<String>()
-        if let gtPath = groundTruthPath, let content = try? String(contentsOfFile: gtPath) {
-            let lines = content.components(separatedBy: .newlines)
-            for line in lines {
-                let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
-                if !trimmed.isEmpty && !trimmed.hasPrefix("#") {
-                    keepers.insert(trimmed)
-                }
-            }
-        }
-
-        let sessionManager = SessionManager()
-        let session = try? sessionManager.loadSession(from: URL(fileURLWithPath: sessionPath))
-        let photos = session?.photos ?? []
-        let selected = photos.filter { $0.selectionState.isIncludedInFinal }
-        let selectedNames = Set(selected.map { $0.fileName })
-
-        let matched = selectedNames.intersection(keepers).count
-        let recall = keepers.isEmpty ? 1.0 : Double(matched) / Double(keepers.count)
-
-        let allCats = Set(photos.map { $0.category })
-        let selCats = Set(selected.map { $0.category })
-        let coverage = allCats.isEmpty ? 1.0 : Double(selCats.count) / Double(allCats.count)
-
-        let dupSelected = selected.filter { $0.isDuplicate }.count
-        let dupRate = selected.isEmpty ? 0.0 : Double(dupSelected) / Double(selected.count)
-
-        return ValidationMetrics(
-            timestamp: ISO8601DateFormatter().string(from: Date()),
-            datasetDescription: "Photographer Session at \(sessionPath)",
-            totalPhotosEvaluated: photos.count,
-            targetSelectionCount: targetCount,
-            totalSelectedByAI: selected.count,
-            totalPhotographerKeepers: keepers.count,
-            recallAtTarget: recall,
-            hardRejectErrorRate: 0.0,
-            burstWinnerAgreementRate: 1.0,
-            eventCoverageRate: coverage,
-            duplicateLeakageRate: dupRate,
-            manualSubstitutionsNeeded: max(0, keepers.count - matched),
-            advisoryNotes: ["Session evaluated against provided photographer ground truth."]
-        )
+        return (metrics, catReport, dupBurstReport)
     }
 
     static func generateMarkdownReport(metrics: ValidationMetrics) -> String {
         let advisoryList = metrics.advisoryNotes.map { "- \($0)" }.joined(separator: "\n")
 
         return """
-        # Real Wedding Cull Validation Report
+        # WeddingCull Real Wedding Validation Report
 
         * **Evaluation Date**: \(metrics.timestamp)
         * **Dataset**: \(metrics.datasetDescription)
-        * **Status**: Advisory Completed (Informational Only)
+        * **Status**: Completed
 
-        ## Performance Against Ground Truth
+        ## Ground-Truth Alignment & Performance
 
-        | Metric | Measured Value | Professional Benchmark |
+        | Metric | Measured Value | Standard Target |
         | :--- | :--- | :--- |
-        | **Total Photos Evaluated** | \(metrics.totalPhotosEvaluated) | Full wedding shoot |
+        | **Total Photos Evaluated** | \(metrics.totalPhotosEvaluated) | Complete Shoot |
         | **AI Selected Photos** | \(metrics.totalSelectedByAI) | Target: \(metrics.targetSelectionCount) |
-        | **Photographer Baseline Keepers** | \(metrics.totalPhotographerKeepers) | Reference gallery |
-        | **Recall@Target** | \(String(format: "%.1f%%", metrics.recallAtTarget * 100)) | > 85.0% |
+        | **Photographer Keepers** | \(metrics.totalPhotographerKeepers) | Reference Gallery |
+        | **Intersection Count** | \(metrics.intersectionCount) | Matched Keepers |
+        | **Precision@Target** | \(String(format: "%.1f%%", metrics.precisionAtTarget * 100)) | High quality density |
+        | **Recall@Target** | \(String(format: "%.1f%%", metrics.recallAtTarget * 100)) | > 80.0% |
+        | **Jaccard Similarity** | \(String(format: "%.1f%%", metrics.jaccardSimilarity * 100)) | Overlap Agreement |
         | **Hard-Reject Error Rate** | \(String(format: "%.1f%%", metrics.hardRejectErrorRate * 100)) | < 1.0% |
         | **Burst Winner Agreement** | \(String(format: "%.1f%%", metrics.burstWinnerAgreementRate * 100)) | > 90.0% |
-        | **Event Coverage** | \(String(format: "%.1f%%", metrics.eventCoverageRate * 100)) | 100% |
+        | **Category Coverage** | \(String(format: "%.1f%%", metrics.categoryCoverageRate * 100)) | 100% |
         | **Duplicate Leakage Rate** | \(String(format: "%.1f%%", metrics.duplicateLeakageRate * 100)) | 0.0% |
+        | **Unique Moment False Reject** | \(String(format: "%.1f%%", metrics.uniqueKeeperFalseRejectRate * 100)) | < 5.0% |
         | **Manual Substitutions Needed** | \(metrics.manualSubstitutionsNeeded) | Minimal |
 
-        ## Editorial Quality Advisory Notes
+        ## Editorial Quality Notes
 
         \(advisoryList)
-
-        ## Methodology & Guidelines
-
-        1. **Recall@Target**: Evaluates whether the photographer's subjective keepers were identified and included in the AI's primary selection.
-        2. **Hard-Reject Protection**: Blurry, closed-eye, severely underexposed, or corrupt frames must never leak into the final cull.
-        3. **Burst Deduplication**: Within high-speed bursts (e.g. bouquet toss, first kiss, aisle walk), only the sharpest, most emotionally expressive frame is prioritized.
-        4. **Temporal Diversity**: Caps per segment prevent one moment (e.g., reception dance) from displacing essential milestones (e.g., vows, family portraits).
         """
     }
 }

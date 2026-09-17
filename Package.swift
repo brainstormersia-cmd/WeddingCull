@@ -12,7 +12,11 @@ let package = Package(
         .library(name: "WeddingCullCore", targets: ["WeddingCullCore"]),
         .executable(name: "TestDatasetGenerator", targets: ["TestDatasetGenerator"]),
         .executable(name: "BenchmarkRunner", targets: ["BenchmarkRunner"]),
-        .executable(name: "ValidationRunner", targets: ["ValidationRunner"])
+        .executable(name: "ValidationRunner", targets: ["ValidationRunner"]),
+        .executable(name: "WeddingAlbumBenchmark", targets: ["WeddingAlbumBenchmark"]),
+        .executable(name: "IQAValidationRunner", targets: ["IQAValidationRunner"]),
+        .executable(name: "ReleaseRawValidator", targets: ["ReleaseRawValidator"]),
+        .executable(name: "MobileCLIPValidator", targets: ["MobileCLIPValidator"])
     ],
     targets: [
         .target(
@@ -45,6 +49,26 @@ let package = Package(
             name: "ValidationRunner",
             dependencies: ["WeddingCullCore", "TestDatasetGeneratorLibrary"],
             path: "Tools/ValidationRunner"
+        ),
+        .executableTarget(
+            name: "WeddingAlbumBenchmark",
+            dependencies: ["WeddingCullCore"],
+            path: "Tools/WeddingAlbumBenchmark"
+        ),
+        .executableTarget(
+            name: "IQAValidationRunner",
+            dependencies: ["WeddingCullCore"],
+            path: "Tools/IQAValidationRunner"
+        ),
+        .executableTarget(
+            name: "ReleaseRawValidator",
+            dependencies: ["WeddingCullCore"],
+            path: "Tools/ReleaseRawValidator"
+        ),
+        .executableTarget(
+            name: "MobileCLIPValidator",
+            dependencies: ["WeddingCullCore"],
+            path: "Tools/MobileCLIPValidator"
         ),
         .testTarget(
             name: "WeddingCullTests",

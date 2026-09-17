@@ -110,4 +110,42 @@ final class PauseCancellationSafetyTests: XCTestCase {
             try await task.value
         }
     }
+
+    func testSecondAnalysisAfterCancellationSucceedsPromptly() async throws {
+        let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent("cancel_pipeline_\(UUID().uuidString)")
+        try? FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        // Generate small test dataset
+        let generator = SyntheticWeddingGenerator()
+        let config = SyntheticWeddingGenerator.GeneratorConfig(generateLargeImages: false, targetTotalPhotos: 20)
+        _ = try? generator.generateDataset(at: tempDir, config: config)
+
+        let pipeline = AnalysisPipeline()
+
+        // 1. Launch first analysis and cancel it quickly
+        let cancelledExp = expectation(description: "First pipeline cancels")
+        let firstTask = Task {
+            do {
+                _ = try await pipeline.runAnalysis(sourceFolder: tempDir, targetCount: 10)
+                XCTFail("First task should have been cancelled")
+            } catch is CancellationError {
+                cancelledExp.fulfill()
+            } catch {
+                // Cancelled or thrown
+                cancelledExp.fulfill()
+            }
+        }
+
+        try await Task.sleep(nanoseconds: 50_000_000)
+        firstTask.cancel()
+        await pipeline.cancel()
+
+        await fulfillment(of: [cancelledExp], timeout: 5.0)
+
+        // 2. Launch second analysis on same pipeline instance - MUST succeed
+        let secondSession = try await pipeline.runAnalysis(sourceFolder: tempDir, targetCount: 10)
+        XCTAssertGreaterThan(secondSession.photos.count, 0, "Second pipeline run must succeed and process photos")
+        XCTAssertEqual(secondSession.targetSelectionCount, 10)
+    }
 }

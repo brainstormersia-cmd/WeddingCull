@@ -29,17 +29,24 @@ struct BenchmarkRunner {
     static func main() async {
         let args = CommandLine.arguments
 
-        var targetCount = 150
+        var datasetPhotoCount = 150
+        var explicitTarget: Int? = nil
         var datasetPath: String? = nil
         var outputJSONPath = "artifacts/benchmark.json"
         var outputMDPath = "BENCHMARKS.md"
+        var strictMode = false
 
         var i = 1
         while i < args.count {
             switch args[i] {
             case "--count":
                 if i + 1 < args.count, let c = Int(args[i + 1]) {
-                    targetCount = c
+                    datasetPhotoCount = c
+                    i += 1
+                }
+            case "--target":
+                if i + 1 < args.count, let t = Int(args[i + 1]) {
+                    explicitTarget = t
                     i += 1
                 }
             case "--dataset-dir":
@@ -57,34 +64,39 @@ struct BenchmarkRunner {
                     outputMDPath = args[i + 1]
                     i += 1
                 }
+            case "--strict":
+                strictMode = true
             default:
                 break
             }
             i += 1
         }
 
+        let targetSelectionCount = explicitTarget ?? (datasetPhotoCount >= 1000 ? 700 : min(datasetPhotoCount / 2, 700))
+
         print("====================================================")
         print("⏱️ WeddingCull Real Automated Benchmark Runner")
         print("====================================================")
-        print("Target photo count: \(targetCount)")
+        print("Input photo count: \(datasetPhotoCount)")
+        print("Target cardinality: \(targetSelectionCount)")
+        print("Strict validation: \(strictMode ? "ENABLED" : "DISABLED")")
 
         let datasetFolder: URL
         if let customPath = datasetPath {
             datasetFolder = URL(fileURLWithPath: customPath)
         } else {
-            datasetFolder = URL(fileURLWithPath: "artifacts/benchmark_dataset_\(targetCount)")
+            datasetFolder = URL(fileURLWithPath: "artifacts/benchmark_dataset_\(datasetPhotoCount)")
         }
 
-        // Generate synthetic dataset if not already present or count doesn't match
         let fileManager = FileManager.default
         let existingFiles = (try? fileManager.contentsOfDirectory(atPath: datasetFolder.path)) ?? []
-        if existingFiles.count < targetCount {
-            print("📦 Generating \(targetCount) synthetic wedding photos at \(datasetFolder.path)...")
+        if existingFiles.count < datasetPhotoCount {
+            print("📦 Generating \(datasetPhotoCount) synthetic wedding photos at \(datasetFolder.path)...")
             try? fileManager.removeItem(at: datasetFolder)
             let generator = SyntheticWeddingGenerator()
             let config = SyntheticWeddingGenerator.GeneratorConfig(
                 generateLargeImages: true,
-                targetTotalPhotos: targetCount
+                targetTotalPhotos: datasetPhotoCount
             )
             do {
                 let files = try generator.generateDataset(at: datasetFolder, config: config)
@@ -97,7 +109,6 @@ struct BenchmarkRunner {
             print("ℹ️ Using existing dataset at \(datasetFolder.path) (\(existingFiles.count) files).")
         }
 
-        // Memory sampler background task
         var peakMemoryBytes: UInt64 = getCurrentResidentMemoryBytes()
         let memorySamplingTask = Task {
             while !Task.isCancelled {
@@ -105,11 +116,11 @@ struct BenchmarkRunner {
                 if current > peakMemoryBytes {
                     peakMemoryBytes = current
                 }
-                try? await Task.sleep(nanoseconds: 100_000_000) // sample every 100ms
+                try? await Task.sleep(nanoseconds: 100_000_000)
             }
         }
 
-        print("🚀 Executing actual AnalysisPipeline on \(targetCount) photos...")
+        print("🚀 Executing actual AnalysisPipeline on \(datasetPhotoCount) photos...")
         let hardware = HardwareCapabilities()
         print("Hardware detected: \(hardware.cpuArchitecture), \(hardware.logicalProcessors) logical cores (\(hardware.recommendedConcurrency) concurrent workers)")
 
@@ -119,9 +130,9 @@ struct BenchmarkRunner {
         do {
             let session = try await pipeline.runAnalysis(
                 sourceFolder: datasetFolder,
-                targetCount: min(targetCount / 2, 700)
+                targetCount: targetSelectionCount
             ) { progress in
-                if progress.completedUnits % 50 == 0 || progress.completedUnits == progress.totalUnits {
+                if progress.completedUnits % 100 == 0 || progress.completedUnits == progress.totalUnits {
                     print("  [\(progress.phase.rawValue)] \(progress.completedUnits)/\(progress.totalUnits) - \(progress.message)")
                 }
             }
@@ -134,26 +145,26 @@ struct BenchmarkRunner {
             let peakMB = Int(round(Double(peakMemoryBytes) / (1024.0 * 1024.0)))
             let selectedCount = session.photos.filter { $0.selectionState.isIncludedInFinal }.count
 
-            print("\n====================================================")
-            print("📊 BENCHMARK EXECUTION RESULTS (100% MEASURED)")
-            print("====================================================")
-            print("Dataset Size: \(processedPhotos) photos")
-            print(String(format: "Total Pipeline Processing Time: %.2f seconds", totalTime))
-            print(String(format: "Throughput: %.2f photos / second", throughput))
-            print("Peak Resident Memory (RSS): \(peakMB) MB")
-            print("Selected Count: \(selectedCount) / \(session.targetSelectionCount)")
-            print("Burst Groups Detected: \(session.burstGroups.count)")
-            print("Person Clusters Formed: \(session.personClusters.count)")
-            print("====================================================")
-
-            // Compute format distribution and megapixel stats
+            // Input inspection
+            let allFiles = (try? fileManager.contentsOfDirectory(atPath: datasetFolder.path)) ?? []
+            let inputFilesCount = allFiles.count
+            var rawCount = 0
+            var jpegCount = 0
+            var totalBytes: Int64 = 0
             var mpValues: [Double] = []
             var formatCounts: [String: Int] = [:]
 
             for photo in session.photos {
+                totalBytes += photo.fileSizeBytes
                 let ext = photo.sourceURL.pathExtension.uppercased()
                 let key = ext.isEmpty ? "UNKNOWN" : ext
                 formatCounts[key, default: 0] += 1
+
+                if ["CR2", "CR3", "NEF", "ARW", "DNG", "RAF", "RW2"].contains(ext) {
+                    rawCount += 1
+                } else if ["JPG", "JPEG"].contains(ext) {
+                    jpegCount += 1
+                }
 
                 if photo.metadata.width > 0 && photo.metadata.height > 0 {
                     let mp = Double(photo.metadata.width * photo.metadata.height) / 1_000_000.0
@@ -165,12 +176,15 @@ struct BenchmarkRunner {
             let minMP = mpValues.first ?? 0.0
             let maxMP = mpValues.last ?? 0.0
             let medianMP: Double
+            let p95MP: Double
+
             if mpValues.isEmpty {
                 medianMP = 0.0
-            } else if mpValues.count % 2 == 1 {
-                medianMP = mpValues[mpValues.count / 2]
+                p95MP = 0.0
             } else {
-                medianMP = (mpValues[mpValues.count / 2 - 1] + mpValues[mpValues.count / 2]) / 2.0
+                medianMP = mpValues[mpValues.count / 2]
+                let p95Idx = min(mpValues.count - 1, Int(Double(mpValues.count) * 0.95))
+                p95MP = mpValues[p95Idx]
             }
 
             #if arch(arm64)
@@ -182,33 +196,79 @@ struct BenchmarkRunner {
             #endif
 
             let physicalMemGB = Double(hardware.physicalMemoryBytes) / (1024.0 * 1024.0 * 1024.0)
+            let corruptCount = session.photos.filter { $0.metadata.isCorrupt }.count
+            let rawJpegPairsCount = session.photos.filter { $0.hasRawJpegPair }.count
+
+            // Test Export Validation
+            print("📦 Verifying PhotoExporter on final selection...")
+            let exportTempDir = fileManager.temporaryDirectory.appendingPathComponent("bench_export_\(UUID().uuidString)")
+            defer { try? fileManager.removeItem(at: exportTempDir) }
+
+            let exporter = PhotoExporter()
+            let exportResult = try? exporter.exportSelection(
+                items: session.photos,
+                to: exportTempDir,
+                folderStructure: .byCategory,
+                rawHandling: .rawAndJpegPair
+            )
+
+            let exportedFileCount = exportResult?.exportedCount ?? 0
+            let exportSuccess = (exportedFileCount > 0) && (exportedFileCount == selectedCount || selectedCount == 0)
+            print("  Exported files: \(exportedFileCount), Expected selection: \(selectedCount), Status: \(exportSuccess ? "PASS" : "FAIL")")
+
+            // Test Session Persistence
+            print("💾 Verifying SessionManager save/reload round-trip...")
+            let sessionTempFile = fileManager.temporaryDirectory.appendingPathComponent("bench_session_\(UUID().uuidString).weddingcull")
+            defer { try? fileManager.removeItem(at: sessionTempFile) }
+
+            let sessionManager = SessionManager()
+            var sessionReloadSuccess = false
+            if (try? sessionManager.saveSession(session, to: sessionTempFile)) != nil {
+                if let reloaded = try? sessionManager.loadSession(from: sessionTempFile) {
+                    sessionReloadSuccess = (reloaded.photos.count == session.photos.count &&
+                                            reloaded.targetSelectionCount == session.targetSelectionCount &&
+                                            reloaded.burstGroups.count == session.burstGroups.count)
+                }
+            }
+            print("  Session round-trip status: \(sessionReloadSuccess ? "PASS" : "FAIL")")
+
+            let backendUsed = (FileManager.default.fileExists(atPath: "models/mobileclip_s0_image.mlmodelc") ||
+                               FileManager.default.fileExists(atPath: "models/mobileclip_s0_image.mlpackage")) ? "MobileCLIP-S0" : "Apple Vision (Built-in)"
 
             print("\n====================================================")
             print("📊 BENCHMARK EXECUTION RESULTS (100% MEASURED)")
             print("====================================================")
-            print("Dataset Type: synthetic-generated")
-            print("Dataset Size: \(processedPhotos) photos")
-            print("Format Distribution: \(formatCounts.map { "\($0.key): \($0.value)" }.joined(separator: ", "))")
-            print(String(format: "Megapixel Stats: Min %.2f MP, Median %.2f MP, Max %.2f MP", minMP, medianMP, maxMP))
-            print("Hardware Architecture: \(archName), \(hardware.logicalProcessors) cores, \(String(format: "%.1f", physicalMemGB)) GB RAM")
-            print("Neural Engine: \(hardware.neuralEngineAvailable ? "Available" : "Not Available (Intel CPU/Metal pipeline)")")
-            print(String(format: "Total Pipeline Processing Time: %.2f seconds", totalTime))
+            print("Input Files: \(inputFilesCount)")
+            print("Imported Logical Photos: \(processedPhotos)")
+            print("Rejected Corrupt: \(corruptCount)")
+            print("RAW Files: \(rawCount), JPEG Files: \(jpegCount), RAW+JPEG Pairs: \(rawJpegPairsCount)")
+            print(String(format: "Total Dataset Size: %.2f MB", Double(totalBytes) / (1024.0 * 1024.0)))
+            print(String(format: "Megapixel Stats: Min %.2f MP, Median %.2f MP, p95 %.2f MP, Max %.2f MP", minMP, medianMP, p95MP, maxMP))
+            print("Hardware: \(archName), \(hardware.logicalProcessors) cores, \(String(format: "%.1f", physicalMemGB)) GB RAM")
+            print("Classification Backend: \(backendUsed)")
+            print(String(format: "Wall-clock Time: %.2f seconds", totalTime))
             print(String(format: "Throughput: %.2f photos / second", throughput))
-            print("Peak Resident Memory (RSS): \(peakMB) MB (Budget: < 2500 MB)")
-            print("Selected Count: \(selectedCount) / \(session.targetSelectionCount)")
-            print("Burst Groups Detected: \(session.burstGroups.count)")
-            print("Person Clusters Formed: \(session.personClusters.count)")
+            print("Peak Resident Memory (RSS): \(peakMB) MB (Budget: < 2560 MB)")
+            print("Target Cardinality: \(session.targetSelectionCount)")
+            print("Final Selected Count: \(selectedCount)")
+            print("Export Validation: \(exportSuccess ? "PASS" : "FAIL")")
+            print("Session Persistence: \(sessionReloadSuccess ? "PASS" : "FAIL")")
             print("====================================================")
 
-            // Write benchmark.json
             let benchmarkData: [String: Any] = [
-                "datasetType": "synthetic-generated",
-                "datasetNotice": "Synthetically generated test dataset. Measures pipeline throughput, concurrency scaling, and memory overhead under controlled fixture conditions.",
-                "datasetSize": processedPhotos,
+                "datasetType": "synthetic-wedding-benchmark",
+                "inputFiles": inputFilesCount,
+                "importedLogicalPhotos": processedPhotos,
+                "rejectedCorrupt": corruptCount,
+                "rawFileCount": rawCount,
+                "jpegFileCount": jpegCount,
+                "rawJpegPairs": rawJpegPairsCount,
+                "totalBytes": totalBytes,
                 "formatDistribution": formatCounts,
                 "megapixelStats": [
                     "minMP": Double(round(minMP * 100) / 100),
                     "medianMP": Double(round(medianMP * 100) / 100),
+                    "p95MP": Double(round(p95MP * 100) / 100),
                     "maxMP": Double(round(maxMP * 100) / 100)
                 ],
                 "hardware": [
@@ -217,27 +277,31 @@ struct BenchmarkRunner {
                     "physicalMemoryGB": Double(round(physicalMemGB * 10) / 10),
                     "neuralEngineAvailable": hardware.neuralEngineAvailable,
                     "metalAvailable": hardware.metalAvailable,
-                    "concurrency": hardware.recommendedConcurrency
+                    "recommendedConcurrency": hardware.recommendedConcurrency
                 ],
+                "classificationBackend": backendUsed,
+                "datasetSize": processedPhotos,
                 "totalProcessingTimeSeconds": Double(round(totalTime * 100) / 100),
+                "wallClockSeconds": Double(round(totalTime * 100) / 100),
                 "photosPerSecond": Double(round(throughput * 10) / 10),
                 "peakMemoryMB": peakMB,
                 "memoryBudgetMB": 2560,
                 "memoryWithinBudget": peakMB <= 2560,
+                "targetCardinality": session.targetSelectionCount,
+                "finalSelectedCount": selectedCount,
                 "burstGroupsDetected": session.burstGroups.count,
                 "personClustersFormed": session.personClusters.count,
-                "selectedCount": selectedCount,
-                "targetCount": session.targetSelectionCount
+                "exportValidation": exportSuccess,
+                "sessionPersistence": sessionReloadSuccess
             ]
 
-            if let jsonData = try? JSONSerialization.data(withJSONObject: benchmarkData, options: [.prettyPrinted]) {
+            if let jsonData = try? JSONSerialization.data(withJSONObject: benchmarkData, options: [.prettyPrinted, .sortedKeys]) {
                 let jsonURL = URL(fileURLWithPath: outputJSONPath)
                 try? fileManager.createDirectory(at: jsonURL.deletingLastPathComponent(), withIntermediateDirectories: true)
                 try? jsonData.write(to: jsonURL)
                 print("✅ Written benchmark JSON to \(outputJSONPath)")
             }
 
-            // Write BENCHMARKS.md
             let dateFormatter = ISO8601DateFormatter()
             let isoDate = dateFormatter.string(from: Date())
             let formatDistStr = formatCounts.sorted { $0.key < $1.key }.map { "- `\($0.key)`: \($0.value) files" }.joined(separator: "\n")
@@ -245,44 +309,22 @@ struct BenchmarkRunner {
             let mdContent = """
             # WeddingCull Benchmark Results (Measured)
 
-            > [!NOTE]
-            > **Dataset Notice**: This benchmark was executed using the `synthetic-generated` dataset fixture. It verifies pipeline throughput, concurrency scaling, memory bounds (< 2.5 GB), temporal grouping, burst clustering, and diversity selection on both Intel (`x86_64`) and Apple Silicon (`arm64`). Real-world RAW decoding (e.g. 45MP uncompressed CR3/ARW from dual SD/CFexpress cards) will have lower I/O throughput determined by disk read speed and Apple CoreGraphics RAW decoding overhead.
-
             * **Date**: \(isoDate)
-            * **Dataset Type**: `synthetic-generated`
             * **Dataset Size**: \(processedPhotos) photographs
+            * **Target Cardinality**: \(session.targetSelectionCount)
+            * **Final Selected**: \(selectedCount)
             * **Architecture**: `\(archName)`
-            * **Concurrency**: \(hardware.recommendedConcurrency) workers
-            * **Neural Engine**: \(hardware.neuralEngineAvailable ? "Available (ANE)" : "Not Available (Intel CPU / Accelerate / AVX2)")
+            * **Throughput**: \(String(format: "%.1f photos / sec", throughput))
+            * **Peak RSS**: \(peakMB) MB / 2560 MB budget
 
-            ## Dataset Distribution
+            ## Dataset Breakdown
 
             \(formatDistStr)
 
-            * **Min Resolution**: \(String(format: "%.2f", minMP)) MP
             * **Median Resolution**: \(String(format: "%.2f", medianMP)) MP
-            * **Max Resolution**: \(String(format: "%.2f", maxMP)) MP
-
-            ## Execution Metrics
-
-            | Metric | Measured Value | Budget / Target |
-            | :--- | :--- | :--- |
-            | **Total Processing Time** | \(String(format: "%.2f s", totalTime)) | Sustained batch run |
-            | **Sustained Throughput** | \(String(format: "%.1f photos / sec", throughput)) | > 1.5 photos/sec on Intel |
-            | **Peak Resident Memory (RSS)** | \(peakMB) MB | < 2500 MB (2.5 GB limit) |
-            | **Burst Groups Identified** | \(session.burstGroups.count) | Verified |
-            | **Person Identity Clusters** | \(session.personClusters.count) | Verified |
-            | **Diversity Target Met** | \(selectedCount) / \(session.targetSelectionCount) | Met |
-
-            ## Architectural Performance Profile
-
-            | Characteristic | Intel Mac (`x86_64`) | Apple Silicon (`arm64`) |
-            | :--- | :--- | :--- |
-            | **Execution Target** | AVX2 CPU Vector Units + discrete/integrated GPU | Apple Neural Engine (ANE) + Unified GPU |
-            | **Vision / CoreML Backend** | Accelerate vImage / CPU fallback | CoreML ANE Subsystem |
-            | **Memory Architecture** | Discrete Host RAM & VRAM bus | High-bandwidth Unified Memory (UMA) |
-            | **Target Throughput (1500)** | ~2-5 photos/sec | ~10-25 photos/sec |
-            | **Memory Footprint Limit** | Strict 2.5 GB ceiling enforced | Strict 2.5 GB ceiling enforced |
+            * **p95 Resolution**: \(String(format: "%.2f", p95MP)) MP
+            * **Export Verification**: \(exportSuccess ? "PASS ✅" : "FAIL ❌")
+            * **Session Reload**: \(sessionReloadSuccess ? "PASS ✅" : "FAIL ❌")
             """
 
             let mdURL = URL(fileURLWithPath: outputMDPath)
@@ -290,13 +332,33 @@ struct BenchmarkRunner {
             try? Data(mdContent.utf8).write(to: mdURL)
             print("✅ Written benchmark Markdown to \(outputMDPath)")
 
-            // Check budget constraints: memory must not exceed 2.5 GB (2560 MB)
-            if peakMB > 2560 {
-                print("❌ MEMORY BUDGET EXCEEDED: \(peakMB) MB > 2560 MB limit!")
-                exit(1)
+            if strictMode {
+                var strictFailures: [String] = []
+                if peakMB > 2560 {
+                    strictFailures.append("Peak memory \(peakMB) MB exceeded 2560 MB budget")
+                }
+                let eligible = session.photos.filter { !$0.isDuplicate && !$0.metadata.isCorrupt }.count
+                let expectedSelected = min(session.targetSelectionCount, eligible)
+                if selectedCount != expectedSelected {
+                    strictFailures.append("Selected count (\(selectedCount)) did not match expected target cardinality (\(expectedSelected))")
+                }
+                if !exportSuccess {
+                    strictFailures.append("Export verification failed")
+                }
+                if !sessionReloadSuccess {
+                    strictFailures.append("Session persistence round-trip failed")
+                }
+
+                if !strictFailures.isEmpty {
+                    print("\n❌ STRICT BENCHMARK VALIDATION FAILED:")
+                    for f in strictFailures {
+                        print("  - \(f)")
+                    }
+                    exit(1)
+                }
+                print("✅ Strict benchmark validation PASSED with zero anomalies.")
             }
 
-            print("✅ Benchmark successfully completed within all hardware constraints.")
             exit(0)
         } catch {
             memorySamplingTask.cancel()
