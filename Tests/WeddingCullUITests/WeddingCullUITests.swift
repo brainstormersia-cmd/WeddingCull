@@ -156,7 +156,6 @@ final class WeddingCullUITests: XCTestCase {
         }
 
         // 9. Test Export Dialog
-        let exportButton = app.buttons["main_export_button"].firstMatch
         if exportButton.waitForExistence(timeout: 5.0) {
             exportButton.click()
             let exportConfirm = app.buttons["export_confirm_button"].firstMatch
