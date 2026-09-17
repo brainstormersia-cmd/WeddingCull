@@ -92,16 +92,20 @@ final class RealRAWVerificationTests: XCTestCase {
         XCTAssertFalse(metadata.isCorrupt, "Valid RAW file must not be marked as corrupt")
         XCTAssertEqual(metadata.cameraModel, "WeddingPro RAW-1")
         XCTAssertEqual(metadata.iso, 400)
-        XCTAssertEqual(metadata.fNumber, 2.8)
+        XCTAssertEqual(metadata.aperture, 2.8)
         XCTAssertEqual(metadata.apertureFormatted, "ƒ/2.8")
-        XCTAssertEqual(metadata.shutterSpeed, 0.005, accuracy: 0.0001)
+        if let speed = metadata.shutterSpeed {
+            XCTAssertEqual(speed, 0.005, accuracy: 0.0001)
+        } else {
+            XCTFail("Missing shutter speed")
+        }
         XCTAssertEqual(metadata.shutterSpeedFormatted, "1/200s")
     }
 
     func testPreviewPipelineOnRealRAW() throws {
         let rawURL = try getOrGenerateRawFixture()
         let cacheFolder = tempFolder.appendingPathComponent("preview_cache")
-        let previewPipeline = PreviewPipeline(cacheFolder: cacheFolder)
+        let previewPipeline = PreviewPipeline(customCacheDirectory: cacheFolder)
 
         let item = PhotoItem(
             id: "raw_test_photo",
@@ -133,7 +137,7 @@ final class RealRAWVerificationTests: XCTestCase {
         _ = importer.extractMetadata(from: rawURL)
 
         let cacheFolder = tempFolder.appendingPathComponent("cache_immutability")
-        let pipeline = PreviewPipeline(cacheFolder: cacheFolder)
+        let pipeline = PreviewPipeline(customCacheDirectory: cacheFolder)
         let item = PhotoItem(fileName: rawURL.lastPathComponent, sourceURL: rawURL)
         _ = try? pipeline.generatePreviewAndThumbnail(for: item)
 
