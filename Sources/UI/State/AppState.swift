@@ -132,6 +132,10 @@ public final class AppState: ObservableObject {
     public func cancelAnalysis() {
         analysisTask?.cancel()
         analysisTask = nil
+        let p = self.pipeline
+        Task {
+            await p.cancel()
+        }
         isAnalyzing = false
         isPaused = false
         analysisProgress = nil

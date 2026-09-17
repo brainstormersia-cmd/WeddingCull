@@ -45,18 +45,42 @@ public actor AnalysisCoordinator {
 
     public func resume() {
         isPaused = false
+        releaseAllContinuations()
+    }
+
+    public func cancel() {
+        isPaused = false
+        releaseAllContinuations()
+    }
+
+    public func waitIfPaused() async throws {
+        guard isPaused else {
+            try Task.checkCancellation()
+            return
+        }
+
+        try await withTaskCancellationHandler {
+            await withCheckedContinuation { (cont: CheckedContinuation<Void, Never>) in
+                if self.isPaused {
+                    self.resumeContinuations.append(cont)
+                } else {
+                    cont.resume()
+                }
+            }
+        } onCancel: {
+            Task { [weak self] in
+                await self?.cancel()
+            }
+        }
+
+        try Task.checkCancellation()
+    }
+
+    private func releaseAllContinuations() {
         for cont in resumeContinuations {
             cont.resume()
         }
         resumeContinuations.removeAll()
-    }
-
-    public func waitIfPaused() async {
-        if isPaused {
-            await withCheckedContinuation { cont in
-                resumeContinuations.append(cont)
-            }
-        }
     }
 
     public func getIsPaused() -> Bool {
@@ -91,6 +115,10 @@ public actor AnalysisPipeline {
 
     public func resume() async {
         await coordinator.resume()
+    }
+
+    public func cancel() async {
+        await coordinator.cancel()
     }
 
     public func runAnalysis(
@@ -333,7 +361,7 @@ public actor AnalysisPipeline {
         classifier: MobileCLIPClassifier
     ) async throws -> PhotoAnalysisResult {
         // Handle pause and cancellation
-        await coordinator.waitIfPaused()
+        try await coordinator.waitIfPaused()
         try Task.checkCancellation()
 
         return await withCheckedContinuation { continuation in
