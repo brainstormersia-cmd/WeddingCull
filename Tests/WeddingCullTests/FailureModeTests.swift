@@ -44,10 +44,10 @@ final class FailureModeTests: XCTestCase {
     }
 
     func testFewerPhotosThanTargetSelectsAllEligibleWithoutLooping() async throws {
-        // Create 4 simple images
+        // Create 4 simple images with different patterns to avoid duplicate detection
         for i in 1...4 {
             let fileURL = tempDirectory.appendingPathComponent("PHOTO_\(i).JPG")
-            try createSimpleValidJPEG(at: fileURL)
+            try createSimpleValidJPEG(at: fileURL, index: i)
         }
 
         let pipeline = AnalysisPipeline()
@@ -95,7 +95,7 @@ final class FailureModeTests: XCTestCase {
         XCTAssertNotNil(item.jpegURL)
     }
 
-    private func createSimpleValidJPEG(at url: URL) throws {
+    private func createSimpleValidJPEG(at url: URL, index: Int = 0) throws {
         let colorSpace = CGColorSpaceCreateDeviceRGB()
         guard let ctx = CGContext(
             data: nil,
@@ -107,8 +107,15 @@ final class FailureModeTests: XCTestCase {
             bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
         ) else { return }
 
-        ctx.setFillColor(red: 0.5, green: 0.5, blue: 0.5, alpha: 1.0)
+        let r = CGFloat((index * 60 + 50) % 255) / 255.0
+        let g = CGFloat((index * 90 + 30) % 255) / 255.0
+        let b = CGFloat((index * 130 + 70) % 255) / 255.0
+        ctx.setFillColor(red: r, green: g, blue: b, alpha: 1.0)
         ctx.fill(CGRect(x: 0, y: 0, width: 100, height: 100))
+        if index > 0 {
+            ctx.setFillColor(red: 1.0 - r, green: 1.0 - g, blue: 1.0 - b, alpha: 1.0)
+            ctx.fill(CGRect(x: index * 15, y: index * 15, width: 25, height: 25))
+        }
 
         guard let img = ctx.makeImage(),
               let dest = CGImageDestinationCreateWithURL(url as CFURL, "public.jpeg" as CFString, 1, nil) else {

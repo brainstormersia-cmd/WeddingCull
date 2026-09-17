@@ -60,10 +60,10 @@ public final class QualityScorer: Sendable {
                 overall *= 0.4
             }
             if item.metadata.isCorrupt {
-                overall = 0.0
+                m.overallScore = 0.0
+            } else {
+                m.overallScore = max(0.01, min(1.0, overall))
             }
-
-            m.overallScore = max(0.01, min(1.0, overall))
 
             // Build factual explanatory reason
             m.selectionReason = buildSelectionReason(item: item, metrics: m)
