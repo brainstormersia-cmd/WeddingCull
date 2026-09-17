@@ -31,6 +31,10 @@ public struct PhotoAnalysisResult: Sendable {
     public let faces: [FaceInstance]
     public let category: WeddingCategory
     public let categoryConfidence: Double
+    public let previewDurationSeconds: Double
+    public let qualityDurationSeconds: Double
+    public let visionDurationSeconds: Double
+    public let classificationDurationSeconds: Double
 }
 
 public actor AnalysisCoordinator {
@@ -139,11 +143,16 @@ public actor AnalysisPipeline {
             ))
         }
 
+        let wallStart = CFAbsoluteTimeGetCurrent()
+
         // Phase 1: Discovery & Import
         report(phase: .discovery, current: 0, total: 100, message: "Scanning folder...")
+        let tDiscStart = CFAbsoluteTimeGetCurrent()
         var items = try await importer.importPhotos(from: sourceFolder) { current, total in
             report(phase: .discovery, current: current, total: total, message: "Reading photo metadata...")
         }
+        let discoveryDuration = CFAbsoluteTimeGetCurrent() - tDiscStart
+        let timeToFolderReady = CFAbsoluteTimeGetCurrent() - wallStart
 
         try Task.checkCancellation()
 
@@ -164,10 +173,9 @@ public actor AnalysisPipeline {
         let totalPhotos = items.count
 
         // Phase 2, 3 & 4: Concurrent Preview, Technical Quality, Faces & FeaturePrints
-        // Uses bounded worker pool (hardware.recommendedConcurrency) with Collector Pattern
         report(phase: .quality, current: 0, total: totalPhotos, message: "Starting concurrent analysis...")
         
-        let maxConcurrency = max(1, min(hardware.recommendedConcurrency, 4))
+        let maxConcurrency = hardware.recommendedConcurrency
         var analysisResults: [String: PhotoAnalysisResult] = [:]
         analysisResults.reserveCapacity(totalPhotos)
 
@@ -178,6 +186,15 @@ public actor AnalysisPipeline {
         let faceRec = self.faceIdentityRecognizer
         let fpProv = self.featurePrintProvider
         let mlClassifier = self.classifier
+
+        var timeToFirstThumbnail: Double = 0.0
+        var timeToInteractiveGrid: Double = 0.0
+        var timeToFirstAnalyzedPhoto: Double = 0.0
+
+        var totalPreviewSeconds = 0.0
+        var totalQualitySeconds = 0.0
+        var totalVisionSeconds = 0.0
+        var totalClassificationSeconds = 0.0
 
         try await withThrowingTaskGroup(of: PhotoAnalysisResult.self) { group in
             // Initial task submission up to maxConcurrency
@@ -201,6 +218,19 @@ public actor AnalysisPipeline {
             while let result = try await group.next() {
                 completedCount += 1
                 analysisResults[result.id] = result
+                totalPreviewSeconds += result.previewDurationSeconds
+                totalQualitySeconds += result.qualityDurationSeconds
+                totalVisionSeconds += result.visionDurationSeconds
+                totalClassificationSeconds += result.classificationDurationSeconds
+
+                let elapsedSoFar = CFAbsoluteTimeGetCurrent() - wallStart
+                if completedCount == 1 {
+                    timeToFirstThumbnail = elapsedSoFar
+                    timeToFirstAnalyzedPhoto = elapsedSoFar
+                }
+                if completedCount == min(24, totalPhotos) && timeToInteractiveGrid == 0.0 {
+                    timeToInteractiveGrid = elapsedSoFar
+                }
 
                 if totalPhotos <= 20 || completedCount % 10 == 0 || completedCount == totalPhotos {
                     report(
@@ -230,6 +260,10 @@ public actor AnalysisPipeline {
             }
         }
 
+        if timeToInteractiveGrid == 0.0 {
+            timeToInteractiveGrid = CFAbsoluteTimeGetCurrent() - wallStart
+        }
+
         try Task.checkCancellation()
 
         // Apply collected results safely without concurrent mutations
@@ -249,6 +283,7 @@ public actor AnalysisPipeline {
         }
 
         // Phase 5: FeaturePrint Distance Computation & Burst/Duplicate Detection
+        let tBurstStart = CFAbsoluteTimeGetCurrent()
         report(phase: .duplicates, current: 0, total: totalPhotos, message: "Detecting duplicates and bursts...")
         let exactDuplicates = duplicateDetector.detectExactDuplicates(items: items)
         for (index, item) in items.enumerated() {
@@ -293,10 +328,13 @@ public actor AnalysisPipeline {
                 }
             }
         }
+        let burstDuration = CFAbsoluteTimeGetCurrent() - tBurstStart
+        let timeToPreliminarySelection = CFAbsoluteTimeGetCurrent() - wallStart
 
         try Task.checkCancellation()
 
         // Phase 6: Temporal Segmentation
+        let tSegStart = CFAbsoluteTimeGetCurrent()
         report(phase: .scenes, current: 0, total: totalPhotos, message: "Segmenting timeline into wedding moments...")
         let segments = temporalSegmenter.segment(items: items)
         for seg in segments {
@@ -319,10 +357,12 @@ public actor AnalysisPipeline {
                 }
             }
         }
+        let segAndClusteringDuration = CFAbsoluteTimeGetCurrent() - tSegStart
 
         try Task.checkCancellation()
 
         // Phase 8: Robust Scoring & Ranking
+        let tRankStart = CFAbsoluteTimeGetCurrent()
         report(phase: .ranking, current: 0, total: totalPhotos, message: "Scoring and ranking photos...")
         items = scorer.scorePhotos(items: items)
 
@@ -337,6 +377,31 @@ public actor AnalysisPipeline {
             targetCount: targetCount
         )
         items = selectionResult.updatedItems
+        let rankingAndSelectionDuration = CFAbsoluteTimeGetCurrent() - tRankStart
+        let timeToFinalSelection = CFAbsoluteTimeGetCurrent() - wallStart
+        let totalWallClock = CFAbsoluteTimeGetCurrent() - wallStart
+
+        let timings = PhaseTimings(
+            discoverySeconds: Double(round(discoveryDuration * 100) / 100),
+            previewGenerationSeconds: Double(round(totalPreviewSeconds * 100) / 100),
+            faceAndFeatureSeconds: Double(round(totalVisionSeconds * 100) / 100),
+            qualityScoringSeconds: Double(round(totalQualitySeconds * 100) / 100),
+            sceneClassificationSeconds: Double(round(totalClassificationDuration * 100) / 100),
+            burstAndDuplicateSeconds: Double(round(burstDuration * 100) / 100),
+            clusteringAndSegmentationSeconds: Double(round(segAndClusteringDuration * 100) / 100),
+            rankingAndSelectionSeconds: Double(round(rankingAndSelectionDuration * 100) / 100),
+            sessionPersistenceSeconds: 0.0,
+            totalWallClockSeconds: Double(round(totalWallClock * 100) / 100)
+        )
+
+        let perceivedMetrics = PerceivedSpeedMetrics(
+            timeToFolderReady: Double(round(timeToFolderReady * 100) / 100),
+            timeToFirstThumbnail: Double(round(timeToFirstThumbnail * 100) / 100),
+            timeToInteractiveGrid: Double(round(timeToInteractiveGrid * 100) / 100),
+            timeToFirstAnalyzedPhoto: Double(round(timeToFirstAnalyzedPhoto * 100) / 100),
+            timeToPreliminarySelection: Double(round(timeToPreliminarySelection * 100) / 100),
+            timeToFinalSelection: Double(round(timeToFinalSelection * 100) / 100)
+        )
 
         report(phase: .selection, current: totalPhotos, total: totalPhotos, message: selectionResult.message)
 
@@ -347,7 +412,9 @@ public actor AnalysisPipeline {
             burstGroups: bursts,
             segments: segments,
             personClusters: personClusters,
-            completedPhases: AnalysisPhase.allCases.map { $0.rawValue }
+            completedPhases: AnalysisPhase.allCases.map { $0.rawValue },
+            phaseTimings: timings,
+            perceivedSpeedMetrics: perceivedMetrics
         )
     }
 
@@ -367,7 +434,11 @@ public actor AnalysisPipeline {
         return await withCheckedContinuation { continuation in
             DispatchQueue.global(qos: .userInitiated).async {
                 let result = autoreleasepool { () -> PhotoAnalysisResult in
+                    let tPrevStart = CFAbsoluteTimeGetCurrent()
                     _ = try? previewPipeline.generatePreviewAndThumbnail(for: item)
+                    let tPrevEnd = CFAbsoluteTimeGetCurrent()
+                    let prevDuration = max(0.0, tPrevEnd - tPrevStart)
+
                     guard let previewCG = previewPipeline.loadPreviewCGImage(for: item) else {
                         return PhotoAnalysisResult(
                             id: item.id,
@@ -377,11 +448,16 @@ public actor AnalysisPipeline {
                             featurePrint: nil,
                             faces: [],
                             category: item.category,
-                            categoryConfidence: 0.3
+                            categoryConfidence: 0.3,
+                            previewDurationSeconds: prevDuration,
+                            qualityDurationSeconds: 0,
+                            visionDurationSeconds: 0,
+                            classificationDurationSeconds: 0
                         )
                     }
 
                     // Technical quality metrics
+                    let tQualStart = CFAbsoluteTimeGetCurrent()
                     let tech = qualityAnalyzer.analyze(cgImage: previewCG)
                     var metrics = item.metrics
                     metrics.rawSharpness = tech.rawSharpness
@@ -396,8 +472,11 @@ public actor AnalysisPipeline {
 
                     // Perceptual dHash
                     let pHash = PerceptualHash.computeDHash(from: previewCG)
+                    let tQualEnd = CFAbsoluteTimeGetCurrent()
+                    let qualDuration = max(0.0, tQualEnd - tQualStart)
 
-                    // Combined Single-Pass Vision Pipeline Execution (3x faster, single image decode)
+                    // Combined Single-Pass Vision Pipeline Execution
+                    let tVisStart = CFAbsoluteTimeGetCurrent()
                     let fpRequest = VNGenerateImageFeaturePrintRequest()
                     let faceRequest = VNDetectFaceLandmarksRequest()
                     let sceneRequest = VNClassifyImageRequest()
@@ -417,8 +496,11 @@ public actor AnalysisPipeline {
                         metrics.averageEyeOpenness = totalEyes / Double(faces.count)
                         metrics.rawFaceSharpness = tech.rawSharpness * 1.2
                     }
+                    let tVisEnd = CFAbsoluteTimeGetCurrent()
+                    let visDuration = max(0.0, tVisEnd - tVisStart)
 
                     // Scene / Concept classification
+                    let tClassStart = CFAbsoluteTimeGetCurrent()
                     let (category, conf): (WeddingCategory, Double)
                     if classifier.isCoreMLModelLoaded {
                         let res = classifier.classifyWithBackend(cgImage: previewCG, metadata: item.metadata, faceCount: faces.count)
@@ -429,6 +511,8 @@ public actor AnalysisPipeline {
                         category = res.0
                         conf = res.1
                     }
+                    let tClassEnd = CFAbsoluteTimeGetCurrent()
+                    let classDuration = max(0.0, tClassEnd - tClassStart)
 
                     return PhotoAnalysisResult(
                         id: item.id,
@@ -438,7 +522,11 @@ public actor AnalysisPipeline {
                         featurePrint: fPrint,
                         faces: faces,
                         category: category,
-                        categoryConfidence: conf
+                        categoryConfidence: conf,
+                        previewDurationSeconds: prevDuration,
+                        qualityDurationSeconds: qualDuration,
+                        visionDurationSeconds: visDuration,
+                        classificationDurationSeconds: classDuration
                     )
                 }
                 continuation.resume(returning: result)

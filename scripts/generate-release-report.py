@@ -43,10 +43,17 @@ def main():
     arm64_status = "EXECUTED" if (bench_arm64 and bench_arm64.get("memoryWithinBudget")) else ("FAILED" if bench_arm64 else "NOT_VERIFIED")
     # 2. 1500->700 Intel
     intel_status = "EXECUTED" if (bench_intel and bench_intel.get("memoryWithinBudget")) else ("FAILED" if bench_intel else "NOT_VERIFIED")
-    # 3. AlbumBench Real Public Dataset
-    albumbench_status = "EXECUTED" if (albumbench and albumbench.get("evaluatedAlbumsCount", 0) > 0) else ("FAILED" if albumbench else "NOT_VERIFIED")
-    # 4. Strict RAW
-    raw_status = "EXECUTED" if (raw_report and raw_report.get("mandatoryStatus") == "PASS") else ("FAILED" if raw_report else "NOT_VERIFIED")
+    # 3. AlbumBench Real Public Dataset (Regression Reference)
+    albumbench_status = "EXECUTED / REGRESSION REFERENCE" if (albumbench and albumbench.get("evaluatedAlbumsCount", 0) > 0) else ("FAILED" if albumbench else "NOT_VERIFIED")
+    
+    # 4. Strict RAW with per-format breakdown
+    raw_formats = raw_report.get("formats", {}) if raw_report else {}
+    if not raw_formats and raw_report:
+        for r in raw_report.get("results", []):
+            raw_formats[r.get("format", "UNKNOWN")] = r.get("status", "UNKNOWN")
+    raw_mandatory_pass = (raw_report and raw_report.get("mandatoryStatus") == "PASS")
+    raw_status = "EXECUTED" if raw_mandatory_pass else ("FAILED" if raw_report else "NOT_VERIFIED")
+
     # 5. MobileCLIP Strict
     mobileclip_status = "EXECUTED" if (mobileclip and mobileclip.get("status") == "PASS") else ("FAILED" if mobileclip else "NOT_VERIFIED")
     # 6. Public IQA
@@ -55,20 +62,45 @@ def main():
     overall_pass = (
         arm64_status == "EXECUTED" and
         intel_status == "EXECUTED" and
-        albumbench_status == "EXECUTED" and
+        albumbench_status.startswith("EXECUTED") and
         raw_status == "EXECUTED" and
         mobileclip_status == "EXECUTED"
     )
+
+    raw_format_summary = ", ".join([f"{fmt}: {st}" for fmt, st in sorted(raw_formats.items())]) if raw_formats else "None"
 
     report = {
         "title": "WeddingCull Final Release Dataset Validation Report",
         "timestamp": timestamp,
         "gitSHA": git_sha,
         "overallVerdict": "PASS" if overall_pass else "INCOMPLETE_OR_FAILED",
+        "baselinePerformance": {
+            "BASELINE_RELEASE_ARM64": {
+                "buildConfiguration": bench_arm64.get("buildConfiguration", "release") if bench_arm64 else None,
+                "architecture": "arm64",
+                "photosPerSecond": bench_arm64.get("photosPerSecond") if bench_arm64 else None,
+                "peakRSSMB": bench_arm64.get("peakMemoryMB") if bench_arm64 else None,
+                "wallClockSeconds": bench_arm64.get("wallClockSeconds") if bench_arm64 else None,
+                "datasetMode": bench_arm64.get("datasetMode", "LOW_RES_SCALE") if bench_arm64 else None,
+                "phaseTimings": bench_arm64.get("phaseTimings") if bench_arm64 else None,
+                "perceivedSpeedMetrics": bench_arm64.get("perceivedSpeedMetrics") if bench_arm64 else None
+            },
+            "BASELINE_RELEASE_INTEL": {
+                "buildConfiguration": bench_intel.get("buildConfiguration", "release") if bench_intel else None,
+                "architecture": "x86_64",
+                "photosPerSecond": bench_intel.get("photosPerSecond") if bench_intel else None,
+                "peakRSSMB": bench_intel.get("peakMemoryMB") if bench_intel else None,
+                "wallClockSeconds": bench_intel.get("wallClockSeconds") if bench_intel else None,
+                "datasetMode": bench_intel.get("datasetMode", "LOW_RES_SCALE") if bench_intel else None,
+                "phaseTimings": bench_intel.get("phaseTimings") if bench_intel else None,
+                "perceivedSpeedMetrics": bench_intel.get("perceivedSpeedMetrics") if bench_intel else None
+            }
+        },
         "auditMatrix": {
             "dualArchitecture1500Benchmark": {
                 "arm64_apple_silicon": {
                     "status": arm64_status,
+                    "buildConfiguration": bench_arm64.get("buildConfiguration", "release") if bench_arm64 else None,
                     "targetCardinality": bench_arm64.get("targetCardinality") if bench_arm64 else None,
                     "finalSelectedCount": bench_arm64.get("finalSelectedCount") if bench_arm64 else None,
                     "throughputPPS": bench_arm64.get("photosPerSecond") if bench_arm64 else None,
@@ -77,6 +109,7 @@ def main():
                 },
                 "x86_64_native_intel": {
                     "status": intel_status,
+                    "buildConfiguration": bench_intel.get("buildConfiguration", "release") if bench_intel else None,
                     "targetCardinality": bench_intel.get("targetCardinality") if bench_intel else None,
                     "finalSelectedCount": bench_intel.get("finalSelectedCount") if bench_intel else None,
                     "throughputPPS": bench_intel.get("photosPerSecond") if bench_intel else None,
@@ -87,8 +120,10 @@ def main():
             "realPublicDatasetValidation": {
                 "albumBenchWedding": {
                     "status": albumbench_status,
+                    "tuningStatus": "FROZEN_REGRESSION_REFERENCE",
                     "evaluatedAlbums": albumbench.get("evaluatedAlbumsCount") if albumbench else None,
                     "totalImages": albumbench.get("totalImagesEvaluated") if albumbench else None,
+                    "executionTimeSeconds": albumbench.get("executionTimeSeconds") if albumbench else None,
                     "meanPrecision": albumbench.get("meanPrecision") if albumbench else None,
                     "meanRecall": albumbench.get("meanRecall") if albumbench else None,
                     "meanF1": albumbench.get("meanF1") if albumbench else None,
@@ -105,9 +140,11 @@ def main():
             },
             "realCameraRAWDecoding": {
                 "status": raw_status,
-                "mandatoryCanonCR2": "PASS" if (raw_report and raw_report.get("mandatoryStatus") == "PASS") else "FAIL",
+                "mandatoryCanonCR2": "PASS" if raw_mandatory_pass else "FAIL",
+                "formatCompatibilityMatrix": raw_formats,
                 "totalTestedFixtures": raw_report.get("totalFixturesTested") if raw_report else 0,
-                "passedFixtures": raw_report.get("passedFixturesCount") if raw_report else 0
+                "passedFixtures": raw_report.get("passedFixturesCount") if raw_report else 0,
+                "unsupportedFixtures": raw_report.get("unsupportedFixturesCount") if raw_report else 0
             },
             "mobileCLIPAdvancedAI": {
                 "status": mobileclip_status,
@@ -129,20 +166,28 @@ def main():
     print(f"✅ Generated master report: {output_report_path}")
 
     # Generate Markdown Summary
-    md_content = f"""# WeddingCull Final Dataset Validation Report
+    albumbench_exec_time = f"{albumbench['executionTimeSeconds']:.1f}s" if albumbench and "executionTimeSeconds" in albumbench else "N/A"
+    albumbench_f1 = f"{albumbench['meanF1']*100:.1f}%" if albumbench and 'meanF1' in albumbench else "N/A"
+
+    md_content = f"""# WeddingCull Final Release Dataset Validation Report
 
 * **Git Commit**: `{git_sha}`
 * **Generated At**: `{timestamp}`
 * **Overall Verdict**: **{report['overallVerdict']}**
 
+## Release Performance Baseline
+
+* **BASELINE_RELEASE_ARM64**: {bench_arm64.get('photosPerSecond', 'N/A') if bench_arm64 else 'N/A'} PPS, {bench_arm64.get('peakMemoryMB', 'N/A') if bench_arm64 else 'N/A'} MB RSS, {bench_arm64.get('wallClockSeconds', 'N/A') if bench_arm64 else 'N/A'}s wall clock (Release build, Apple Silicon)
+* **BASELINE_RELEASE_INTEL**: {bench_intel.get('photosPerSecond', 'N/A') if bench_intel else 'N/A'} PPS, {bench_intel.get('peakMemoryMB', 'N/A') if bench_intel else 'N/A'} MB RSS, {bench_intel.get('wallClockSeconds', 'N/A') if bench_intel else 'N/A'}s wall clock (Release build, Native Intel x86_64)
+
 ## Subsystem Audit Matrix
 
 | Subsystem / Benchmark | Status | Details |
 | :--- | :--- | :--- |
-| **Apple Silicon (arm64) 1500→700** | **{arm64_status}** | {bench_arm64.get('photosPerSecond', 'N/A') if bench_arm64 else 'N/A'} PPS, {bench_arm64.get('peakMemoryMB', 'N/A') if bench_arm64 else 'N/A'} MB RSS |
-| **Native Intel (x86_64) 1500→700** | **{intel_status}** | {bench_intel.get('photosPerSecond', 'N/A') if bench_intel else 'N/A'} PPS, {bench_intel.get('peakMemoryMB', 'N/A') if bench_intel else 'N/A'} MB RSS |
-| **AlbumBench Real Wedding Dataset** | **{albumbench_status}** | {albumbench.get('evaluatedAlbumsCount', 0) if albumbench else 0} albums ({albumbench.get('totalImagesEvaluated', 0) if albumbench else 0} photos), F1={f"{albumbench['meanF1']*100:.1f}%" if albumbench and 'meanF1' in albumbench else 'N/A'} |
-| **Strict Real Camera RAWs** | **{raw_status}** | Canon CR2, Nikon NEF, Sony ARW, Fuji RAF ({raw_report.get('passedFixturesCount', 0) if raw_report else 0}/{raw_report.get('totalFixturesTested', 0) if raw_report else 0} passed) |
+| **Apple Silicon (arm64) 1500→700** | **{arm64_status}** | {bench_arm64.get('photosPerSecond', 'N/A') if bench_arm64 else 'N/A'} PPS, {bench_arm64.get('peakMemoryMB', 'N/A') if bench_arm64 else 'N/A'} MB RSS ({bench_arm64.get('buildConfiguration', 'release') if bench_arm64 else 'release'}) |
+| **Native Intel (x86_64) 1500→700** | **{intel_status}** | {bench_intel.get('photosPerSecond', 'N/A') if bench_intel else 'N/A'} PPS, {bench_intel.get('peakMemoryMB', 'N/A') if bench_intel else 'N/A'} MB RSS ({bench_intel.get('buildConfiguration', 'release') if bench_intel else 'release'}) |
+| **AlbumBench Real Wedding Dataset** | **{albumbench_status}** | {albumbench.get('evaluatedAlbumsCount', 0) if albumbench else 0} albums ({albumbench.get('totalImagesEvaluated', 0) if albumbench else 0} photos), F1={albumbench_f1}, Time={albumbench_exec_time} (Photographic tuning frozen; regression reference) |
+| **Strict Real Camera RAWs** | **{raw_status}** | {raw_format_summary} |
 | **MobileCLIP Core ML Model** | **{mobileclip_status}** | {mobileclip.get('classificationBackend', 'N/A') if mobileclip else 'N/A'}, Latency={f"{mobileclip['averageLatencyMs']:.1f}ms" if mobileclip and 'averageLatencyMs' in mobileclip else 'N/A'} |
 | **Public IQA Benchmark Framework** | **{iqa_status}** | {iqa_report.get('message', 'Framework ready for local execution') if iqa_report else 'Framework ready for local execution'} |
 """

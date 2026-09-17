@@ -14,8 +14,9 @@ public struct HardwareCapabilities: Sendable {
     public let neuralEngineAvailable: Bool
     public let metalAvailable: Bool
     public let recommendedProfile: ProcessingProfile
+    public let concurrencyOverride: Int?
 
-    public init() {
+    public init(concurrencyOverride: Int? = nil) {
         var arch = "unknown"
         #if arch(arm64)
         arch = "arm64"
@@ -44,6 +45,7 @@ public struct HardwareCapabilities: Sendable {
         self.physicalMemoryBytes = ProcessInfo.processInfo.physicalMemory
         self.isAppleSilicon = arch.contains("arm64") || appleSilicon
         self.neuralEngineAvailable = self.isAppleSilicon
+        self.concurrencyOverride = concurrencyOverride
 
         if let defaultDevice = MTLCreateSystemDefaultDevice() {
             self.metalAvailable = true
@@ -64,6 +66,9 @@ public struct HardwareCapabilities: Sendable {
     }
 
     public var recommendedConcurrency: Int {
+        if let override = concurrencyOverride {
+            return max(1, override)
+        }
         let maxLimit = isAppleSilicon ? 8 : 4
         return max(2, min(logicalProcessors, maxLimit))
     }

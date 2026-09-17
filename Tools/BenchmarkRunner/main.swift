@@ -34,7 +34,12 @@ struct BenchmarkRunner {
         var datasetPath: String? = nil
         var outputJSONPath = "artifacts/benchmark.json"
         var outputMDPath = "BENCHMARKS.md"
+        var phaseTimingsJSONPath: String? = nil
         var strictMode = false
+        var datasetMode = "LOW_RES_SCALE"
+        var explicitGitSHA: String? = nil
+        var explicitBuildConfig: String? = nil
+        var workerOverride: Int? = nil
 
         var i = 1
         while i < args.count {
@@ -64,6 +69,31 @@ struct BenchmarkRunner {
                     outputMDPath = args[i + 1]
                     i += 1
                 }
+            case "--phase-timings-json":
+                if i + 1 < args.count {
+                    phaseTimingsJSONPath = args[i + 1]
+                    i += 1
+                }
+            case "--dataset-mode":
+                if i + 1 < args.count {
+                    datasetMode = args[i + 1]
+                    i += 1
+                }
+            case "--git-sha":
+                if i + 1 < args.count {
+                    explicitGitSHA = args[i + 1]
+                    i += 1
+                }
+            case "--build-config":
+                if i + 1 < args.count {
+                    explicitBuildConfig = args[i + 1]
+                    i += 1
+                }
+            case "--workers":
+                if i + 1 < args.count, let w = Int(args[i + 1]) {
+                    workerOverride = w
+                    i += 1
+                }
             case "--strict":
                 strictMode = true
             default:
@@ -72,11 +102,24 @@ struct BenchmarkRunner {
             i += 1
         }
 
+        #if DEBUG
+        let autoBuildConfig = "debug"
+        #else
+        let autoBuildConfig = "release"
+        #endif
+        let buildConfiguration = explicitBuildConfig ?? autoBuildConfig
+        let finalGitSHA = explicitGitSHA ?? (ProcessInfo.processInfo.environment["GITHUB_SHA"] ?? "unknown")
+        let osVersion = ProcessInfo.processInfo.operatingSystemVersionString
+
         let targetSelectionCount = explicitTarget ?? (datasetPhotoCount >= 1000 ? 700 : min(datasetPhotoCount / 2, 700))
 
         print("====================================================")
         print("⏱️ WeddingCull Real Automated Benchmark Runner")
         print("====================================================")
+        print("Build configuration: \(buildConfiguration)")
+        print("Git SHA: \(finalGitSHA)")
+        print("macOS: \(osVersion)")
+        print("Dataset mode: \(datasetMode)")
         print("Input photo count: \(datasetPhotoCount)")
         print("Target cardinality: \(targetSelectionCount)")
         print("Strict validation: \(strictMode ? "ENABLED" : "DISABLED")")
@@ -85,7 +128,8 @@ struct BenchmarkRunner {
         if let customPath = datasetPath {
             datasetFolder = URL(fileURLWithPath: customPath)
         } else {
-            datasetFolder = URL(fileURLWithPath: "artifacts/benchmark_dataset_\(datasetPhotoCount)")
+            let modeSuffix = datasetMode == "HIGH_RES" ? "_highres" : ""
+            datasetFolder = URL(fileURLWithPath: "artifacts/benchmark_dataset_\(datasetPhotoCount)\(modeSuffix)")
         }
 
         let fileManager = FileManager.default
@@ -96,7 +140,8 @@ struct BenchmarkRunner {
             let generator = SyntheticWeddingGenerator()
             let config = SyntheticWeddingGenerator.GeneratorConfig(
                 generateLargeImages: true,
-                targetTotalPhotos: datasetPhotoCount
+                targetTotalPhotos: datasetPhotoCount,
+                datasetMode: datasetMode
             )
             do {
                 let files = try generator.generateDataset(at: datasetFolder, config: config)
@@ -121,14 +166,14 @@ struct BenchmarkRunner {
         }
 
         print("🚀 Executing actual AnalysisPipeline on \(datasetPhotoCount) photos...")
-        let hardware = HardwareCapabilities()
+        let hardware = HardwareCapabilities(concurrencyOverride: workerOverride)
         print("Hardware detected: \(hardware.cpuArchitecture), \(hardware.logicalProcessors) logical cores (\(hardware.recommendedConcurrency) concurrent workers)")
 
         let pipeline = AnalysisPipeline(hardware: hardware)
         let startTime = Date()
 
         do {
-            let session = try await pipeline.runAnalysis(
+            var session = try await pipeline.runAnalysis(
                 sourceFolder: datasetFolder,
                 targetCount: targetSelectionCount
             ) { progress in
@@ -223,7 +268,10 @@ struct BenchmarkRunner {
 
             let sessionManager = SessionManager()
             var sessionReloadSuccess = false
+            let tSaveStart = CFAbsoluteTimeGetCurrent()
             if (try? sessionManager.saveSession(session, to: sessionTempFile)) != nil {
+                let saveDuration = CFAbsoluteTimeGetCurrent() - tSaveStart
+                session.phaseTimings?.sessionPersistenceSeconds = Double(round(saveDuration * 100) / 100)
                 if let reloaded = try? sessionManager.loadSession(from: sessionTempFile) {
                     sessionReloadSuccess = (reloaded.photos.count == session.photos.count &&
                                             reloaded.targetSelectionCount == session.targetSelectionCount &&
@@ -238,6 +286,9 @@ struct BenchmarkRunner {
             print("\n====================================================")
             print("📊 BENCHMARK EXECUTION RESULTS (100% MEASURED)")
             print("====================================================")
+            print("Build Configuration: \(buildConfiguration)")
+            print("Git SHA: \(finalGitSHA)")
+            print("Dataset Mode: \(datasetMode)")
             print("Input Files: \(inputFilesCount)")
             print("Imported Logical Photos: \(processedPhotos)")
             print("Rejected Corrupt: \(corruptCount)")
@@ -253,6 +304,28 @@ struct BenchmarkRunner {
             print("Final Selected Count: \(selectedCount)")
             print("Export Validation: \(exportSuccess ? "PASS" : "FAIL")")
             print("Session Persistence: \(sessionReloadSuccess ? "PASS" : "FAIL")")
+            if let pt = session.phaseTimings {
+                print("--- Phase Timings ---")
+                print("  Discovery & Metadata: \(pt.discoverySeconds) s")
+                print("  Preview Generation (cumulative worker): \(pt.previewGenerationSeconds) s")
+                print("  Face & Feature Detection (cumulative worker): \(pt.faceAndFeatureSeconds) s")
+                print("  Quality Scoring (cumulative worker): \(pt.qualityScoringSeconds) s")
+                print("  Scene Classification (cumulative worker): \(pt.sceneClassificationSeconds) s")
+                print("  Burst & Duplicate Detection: \(pt.burstAndDuplicateSeconds) s")
+                print("  Clustering & Segmentation: \(pt.clusteringAndSegmentationSeconds) s")
+                print("  Ranking & Diversity Selection: \(pt.rankingAndSelectionSeconds) s")
+                print("  Session Persistence Write: \(pt.sessionPersistenceSeconds) s")
+                print("  Total Wall Clock: \(pt.totalWallClockSeconds) s")
+            }
+            if let psm = session.perceivedSpeedMetrics {
+                print("--- Perceived Speed Metrics ---")
+                print("  Time to Folder Ready: \(psm.timeToFolderReady) s")
+                print("  Time to First Thumbnail: \(psm.timeToFirstThumbnail) s")
+                print("  Time to Interactive Grid: \(psm.timeToInteractiveGrid) s")
+                print("  Time to First Analyzed Photo: \(psm.timeToFirstAnalyzedPhoto) s")
+                print("  Time to Preliminary Selection: \(psm.timeToPreliminarySelection) s")
+                print("  Time to Final Selection: \(psm.timeToFinalSelection) s")
+            }
             print("====================================================")
 
             struct MegapixelStats: Codable {
@@ -272,7 +345,14 @@ struct BenchmarkRunner {
             }
 
             struct BenchmarkReportData: Codable {
+                let buildConfiguration: String
+                let architecture: String
+                let gitSHA: String
+                let macOSVersion: String
+                let datasetMode: String
                 let datasetType: String
+                let inputCount: Int
+                let logicalPhotoCount: Int
                 let inputFiles: Int
                 let importedLogicalPhotos: Int
                 let rejectedCorrupt: Int
@@ -297,10 +377,19 @@ struct BenchmarkRunner {
                 let personClustersFormed: Int
                 let exportValidation: Bool
                 let sessionPersistence: Bool
+                let phaseTimings: PhaseTimings?
+                let perceivedSpeedMetrics: PerceivedSpeedMetrics?
             }
 
             let reportData = BenchmarkReportData(
+                buildConfiguration: buildConfiguration,
+                architecture: archName,
+                gitSHA: finalGitSHA,
+                macOSVersion: osVersion,
+                datasetMode: datasetMode,
                 datasetType: "synthetic-wedding-benchmark",
+                inputCount: inputFilesCount,
+                logicalPhotoCount: processedPhotos,
                 inputFiles: inputFilesCount,
                 importedLogicalPhotos: processedPhotos,
                 rejectedCorrupt: corruptCount,
@@ -336,7 +425,9 @@ struct BenchmarkRunner {
                 burstGroupsDetected: session.burstGroups.count,
                 personClustersFormed: session.personClusters.count,
                 exportValidation: exportSuccess,
-                sessionPersistence: sessionReloadSuccess
+                sessionPersistence: sessionReloadSuccess,
+                phaseTimings: session.phaseTimings,
+                perceivedSpeedMetrics: session.perceivedSpeedMetrics
             )
 
             let jsonEncoder = JSONEncoder()
@@ -348,18 +439,59 @@ struct BenchmarkRunner {
                 print("✅ Written benchmark JSON to \(outputJSONPath)")
             }
 
+            // Export standalone Phase Timings JSON if requested
+            if let phasePath = phaseTimingsJSONPath {
+                struct PhaseTimingsReport: Codable {
+                    let gitSHA: String
+                    let architecture: String
+                    let buildConfiguration: String
+                    let datasetMode: String
+                    let inputFiles: Int
+                    let logicalPhotos: Int
+                    let wallClockSeconds: Double
+                    let photosPerSecond: Double
+                    let peakMemoryMB: Int
+                    let phaseTimings: PhaseTimings?
+                    let perceivedSpeedMetrics: PerceivedSpeedMetrics?
+                }
+
+                let ptReport = PhaseTimingsReport(
+                    gitSHA: finalGitSHA,
+                    architecture: archName,
+                    buildConfiguration: buildConfiguration,
+                    datasetMode: datasetMode,
+                    inputFiles: inputFilesCount,
+                    logicalPhotos: processedPhotos,
+                    wallClockSeconds: Double(round(totalTime * 100) / 100),
+                    photosPerSecond: Double(round(throughput * 10) / 10),
+                    peakMemoryMB: peakMB,
+                    phaseTimings: session.phaseTimings,
+                    perceivedSpeedMetrics: session.perceivedSpeedMetrics
+                )
+                if let ptData = try? jsonEncoder.encode(ptReport) {
+                    let ptURL = URL(fileURLWithPath: phasePath)
+                    try? fileManager.createDirectory(at: ptURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+                    try? ptData.write(to: ptURL)
+                    print("✅ Written phase timings JSON to \(phasePath)")
+                }
+            }
+
             let dateFormatter = ISO8601DateFormatter()
             let isoDate = dateFormatter.string(from: Date())
             let formatDistStr = formatCounts.sorted { $0.key < $1.key }.map { "- `\($0.key)`: \($0.value) files" }.joined(separator: "\n")
 
-            let mdContent = """
+            var mdContent = """
             # WeddingCull Benchmark Results (Measured)
 
             * **Date**: \(isoDate)
-            * **Dataset Size**: \(processedPhotos) photographs
+            * **Build Configuration**: `\(buildConfiguration)`
+            * **Git SHA**: `\(finalGitSHA)`
+            * **Architecture**: `\(archName)`
+            * **macOS**: `\(osVersion)`
+            * **Dataset Mode**: `\(datasetMode)`
+            * **Dataset Size**: \(processedPhotos) photographs (Input: \(inputFilesCount) files)
             * **Target Cardinality**: \(session.targetSelectionCount)
             * **Final Selected**: \(selectedCount)
-            * **Architecture**: `\(archName)`
             * **Throughput**: \(String(format: "%.1f photos / sec", throughput))
             * **Peak RSS**: \(peakMB) MB / 2560 MB budget
 
@@ -372,6 +504,44 @@ struct BenchmarkRunner {
             * **Export Verification**: \(exportSuccess ? "PASS ✅" : "FAIL ❌")
             * **Session Reload**: \(sessionReloadSuccess ? "PASS ✅" : "FAIL ❌")
             """
+
+            if let pt = session.phaseTimings {
+                mdContent += """
+
+
+                ## Phase Timings Breakdown
+
+                | Pipeline Phase | Time (Seconds) |
+                | :--- | :--- |
+                | **Discovery & Metadata Indexing** | \(pt.discoverySeconds) s |
+                | **Preview & Thumbnail Generation (worker cumulative)** | \(pt.previewGenerationSeconds) s |
+                | **Face Detection & Identity Landmarks (worker cumulative)** | \(pt.faceAndFeatureSeconds) s |
+                | **Quality & Sharpness Scoring (worker cumulative)** | \(pt.qualityScoringSeconds) s |
+                | **Scene & Semantic Classification (worker cumulative)** | \(pt.sceneClassificationSeconds) s |
+                | **Burst & Duplicate Detection** | \(pt.burstAndDuplicateSeconds) s |
+                | **Temporal Segmentation & Grouping** | \(pt.clusteringAndSegmentationSeconds) s |
+                | **Ranking & Diversity Selection** | \(pt.rankingAndSelectionSeconds) s |
+                | **Session Persistence Write** | \(pt.sessionPersistenceSeconds) s |
+                | **Total Wall Clock Time** | **\(pt.totalWallClockSeconds) s** |
+                """
+            }
+
+            if let psm = session.perceivedSpeedMetrics {
+                mdContent += """
+
+
+                ## Perceived Speed & Responsiveness Metrics
+
+                | Milestone | Measured Time |
+                | :--- | :--- |
+                | **timeToFolderReady** (metadata indexed, placeholders visible) | \(psm.timeToFolderReady) s |
+                | **timeToFirstThumbnail** (first visible image in UI) | \(psm.timeToFirstThumbnail) s |
+                | **timeToInteractiveGrid** (user can browse & scroll) | \(psm.timeToInteractiveGrid) s |
+                | **timeToFirstAnalyzedPhoto** (first scored photo ready) | \(psm.timeToFirstAnalyzedPhoto) s |
+                | **timeToPreliminarySelection** (initial keepers visible) | \(psm.timeToPreliminarySelection) s |
+                | **timeToFinalSelection** (full analysis complete) | **\(psm.timeToFinalSelection) s** |
+                """
+            }
 
             let mdURL = URL(fileURLWithPath: outputMDPath)
             try? fileManager.createDirectory(at: mdURL.deletingLastPathComponent(), withIntermediateDirectories: true)

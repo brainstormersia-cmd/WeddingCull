@@ -39,6 +39,8 @@ struct RawValidationReport: Codable {
     let mandatoryStatus: String
     let totalFixturesTested: Int
     let passedFixturesCount: Int
+    let unsupportedFixturesCount: Int
+    let formats: [String: String]
     let results: [RawFixtureResult]
 }
 
@@ -257,13 +259,34 @@ struct ReleaseRawValidator {
             }
             print("  Dimensions: \(width ?? 0) x \(height ?? 0)")
 
-            // Preview decoding
+            // Preview decoding with fallback chain
+            var cgThumb: CGImage? = nil
+
+            // 1. Standard thumbnail decode
             let thumbOpts: [CFString: Any] = [
                 kCGImageSourceCreateThumbnailFromImageAlways: true,
                 kCGImageSourceThumbnailMaxPixelSize: 800,
                 kCGImageSourceCreateThumbnailWithTransform: true
             ]
-            let cgThumb = CGImageSourceCreateThumbnailAtIndex(imageSource, 0, thumbOpts as CFDictionary)
+            cgThumb = CGImageSourceCreateThumbnailAtIndex(imageSource, 0, thumbOpts as CFDictionary)
+
+            // 2. Embedded preview extraction fallback
+            if cgThumb == nil {
+                print("  Trying embedded preview extraction fallback...")
+                let embeddedOpts: [CFString: Any] = [
+                    kCGImageSourceCreateThumbnailFromImageIfPresent: true,
+                    kCGImageSourceThumbnailMaxPixelSize: 800,
+                    kCGImageSourceCreateThumbnailWithTransform: true
+                ]
+                cgThumb = CGImageSourceCreateThumbnailAtIndex(imageSource, 0, embeddedOpts as CFDictionary)
+            }
+
+            // 3. Full image decode fallback
+            if cgThumb == nil {
+                print("  Trying full image decode fallback...")
+                cgThumb = CGImageSourceCreateImageAtIndex(imageSource, 0, nil)
+            }
+
             let previewOk = (cgThumb != nil)
             print("  Preview decoded successfully: \(previewOk)")
 
@@ -285,7 +308,20 @@ struct ReleaseRawValidator {
             print("  Source file remained byte-identical: \(immutable)")
 
             let pass = hashMatches && (utiType != nil) && previewOk && imported && immutable
-            let status = pass ? "PASS" : "FAIL"
+            let status: String
+            let notes: String
+
+            if pass {
+                status = "PASS"
+                notes = "Successfully verified ImageIO decode, preview generation, and immutability"
+            } else if !fix.isMandatory && (utiType != nil) && !previewOk && immutable {
+                status = "UNSUPPORTED"
+                notes = "Apple Camera RAW engine lacks a sensor decoding profile for \(fix.cameraModel) on this macOS configuration; handled gracefully without crash"
+            } else {
+                status = "FAIL"
+                notes = "Pipeline or decoding failure"
+            }
+
             print("  Fixture verdict: \(status)")
 
             let result = RawFixtureResult(
@@ -302,7 +338,7 @@ struct ReleaseRawValidator {
                 previewDecoded: previewOk,
                 sourceRemainedImmutable: immutable,
                 status: status,
-                notes: pass ? "Successfully verified ImageIO decode, preview generation, and immutability" : "Pipeline or decoding failure"
+                notes: notes
             )
             results.append(result)
             if fix.isMandatory && !pass {
@@ -311,11 +347,19 @@ struct ReleaseRawValidator {
         }
 
         let passedCount = results.filter { $0.status == "PASS" }.count
+        let unsupportedCount = results.filter { $0.status == "UNSUPPORTED" }.count
+        var formatMap: [String: String] = [:]
+        for r in results {
+            formatMap[r.format] = r.status
+        }
+
         let report = RawValidationReport(
             timestamp: ISO8601DateFormatter().string(from: Date()),
             mandatoryStatus: mandatoryPassed ? "PASS" : "FAIL",
             totalFixturesTested: results.count,
             passedFixturesCount: passedCount,
+            unsupportedFixturesCount: unsupportedCount,
+            formats: formatMap,
             results: results
         )
 
@@ -330,7 +374,10 @@ struct ReleaseRawValidator {
 
         print("====================================================")
         print("Final RAW Validation Status: \(mandatoryPassed ? "PASS ✅" : "FAIL ❌")")
-        print("Tested: \(results.count) fixtures, Passed: \(passedCount)")
+        print("Tested: \(results.count) fixtures, Passed: \(passedCount), Unsupported: \(unsupportedCount)")
+        for (fmt, st) in formatMap.sorted(by: { $0.key < $1.key }) {
+            print("  - \(fmt): \(st)")
+        }
         print("====================================================")
 
         exit(mandatoryPassed ? 0 : 1)

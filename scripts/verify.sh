@@ -90,7 +90,8 @@ fi
 
 # 5. Measure Real Benchmarks via BenchmarkRunner (100% measured execution)
 echo "--- Step 5: Real Benchmark Execution ($BENCHMARK_COUNT photos) ---"
-if swift run BenchmarkRunner --count "$BENCHMARK_COUNT" --output-json artifacts/benchmark.json --output-md BENCHMARKS.md; then
+swift build -c release --product BenchmarkRunner
+if .build/release/BenchmarkRunner --count "$BENCHMARK_COUNT" --build-config release --git-sha "$GIT_SHA" --output-json artifacts/benchmark.json --output-md BENCHMARKS.md; then
     echo "✅ Real benchmark completed successfully."
 else
     echo "❌ Real benchmark execution failed!"

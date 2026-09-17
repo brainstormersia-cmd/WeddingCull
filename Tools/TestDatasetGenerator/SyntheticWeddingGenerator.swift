@@ -10,6 +10,7 @@ public final class SyntheticWeddingGenerator: Sendable {
         public let generateLargeImages: Bool
         public let targetTotalPhotos: Int
         public let seed: UInt64
+        public let datasetMode: String
         public var totalTargetCount: Int { targetTotalPhotos }
 
         public init(
@@ -17,12 +18,14 @@ public final class SyntheticWeddingGenerator: Sendable {
             generateLargeImages: Bool = true,
             targetTotalPhotos: Int = 150,
             seed: UInt64 = 42,
+            datasetMode: String = "LOW_RES_SCALE",
             totalTargetCount: Int? = nil
         ) {
             self.baseDate = baseDate
             self.generateLargeImages = generateLargeImages
             self.targetTotalPhotos = totalTargetCount ?? targetTotalPhotos
             self.seed = seed
+            self.datasetMode = datasetMode
         }
     }
 
@@ -66,6 +69,10 @@ public final class SyntheticWeddingGenerator: Sendable {
 
         var photoIndex = 1
 
+        let isHighRes = (config.datasetMode.uppercased() == "HIGH_RES")
+        let defaultW = isHighRes ? 4000 : 800
+        let defaultH = isHighRes ? 3000 : 600
+
         for scene in baseScenes {
             // Gap of 25 minutes between major scenes to test temporal segmentation
             currentTime = currentTime.addingTimeInterval(1500)
@@ -82,8 +89,8 @@ public final class SyntheticWeddingGenerator: Sendable {
                 let isOverexposed = (i % 18 == 6)
 
                 let cgImage = renderSyntheticImage(
-                    width: 800,
-                    height: 600,
+                    width: defaultW,
+                    height: defaultH,
                     text: "\(scene.category) #\(i + 1)",
                     baseColor: scene.colorRGB,
                     hasFaces: scene.hasFaces,
@@ -114,8 +121,8 @@ public final class SyntheticWeddingGenerator: Sendable {
                         // Winner frame is sharper than other burst frames
                         let isWinner = (b == burstWinnerOffset)
                         let cgImage = renderSyntheticImage(
-                            width: 800,
-                            height: 600,
+                            width: defaultW,
+                            height: defaultH,
                             text: "\(scene.category) Burst \(burstIdx + 1) #\(b + 1)",
                             baseColor: scene.colorRGB,
                             hasFaces: scene.hasFaces,
@@ -147,7 +154,7 @@ public final class SyntheticWeddingGenerator: Sendable {
         let pairJpegURL = destinationFolder.appendingPathComponent("\(pairBaseName).JPG")
         let pairRawURL = destinationFolder.appendingPathComponent("\(pairBaseName).CR3")
 
-        let pairImage = renderSyntheticImage(width: 800, height: 600, text: "RAW+JPEG Synthetic Fixture", baseColor: (0.9, 0.9, 0.9), hasFaces: true, isBlurred: false, isDark: false, isOverexposed: false)
+        let pairImage = renderSyntheticImage(width: defaultW, height: defaultH, text: "RAW+JPEG Synthetic Fixture", baseColor: (0.9, 0.9, 0.9), hasFaces: true, isBlurred: false, isDark: false, isOverexposed: false)
         try saveImage(pairImage, to: pairJpegURL, captureDate: currentTime)
         try saveImage(pairImage, to: pairRawURL, captureDate: currentTime)
         createdFiles.append(pairJpegURL)
@@ -172,7 +179,7 @@ public final class SyntheticWeddingGenerator: Sendable {
             currentTime = currentTime.addingTimeInterval(10)
             let padFilename = String(format: "IMG_%04d.jpg", photoIndex)
             let padURL = destinationFolder.appendingPathComponent(padFilename)
-            let cg = renderSyntheticImage(width: 800, height: 600, text: "Photo #\(photoIndex)", baseColor: (0.88, 0.88, 0.88), hasFaces: true, isBlurred: false, isDark: false, isOverexposed: false)
+            let cg = renderSyntheticImage(width: defaultW, height: defaultH, text: "Photo #\(photoIndex)", baseColor: (0.88, 0.88, 0.88), hasFaces: true, isBlurred: false, isDark: false, isOverexposed: false)
             try saveImage(cg, to: padURL, captureDate: currentTime)
             createdFiles.append(padURL)
             photoIndex += 1

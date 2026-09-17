@@ -111,6 +111,7 @@ struct OverallBenchmarkReport: Codable, Sendable {
     let datasetSource: String
     let evaluatedAlbumsCount: Int
     let totalImagesEvaluated: Int
+    let executionTimeSeconds: Double
     let meanPrecision: Double
     let meanRecall: Double
     let meanF1: Double
@@ -330,6 +331,7 @@ struct WeddingAlbumBenchmark {
 
         print("Found \(albumDirs.count) real AlbumBench wedding albums to evaluate.")
 
+        let benchStartTime = Date()
         let hardware = HardwareCapabilities()
         let pipeline = AnalysisPipeline(hardware: hardware)
         var albumSummaries: [AlbumEvaluationSummary] = []
@@ -562,12 +564,15 @@ struct WeddingAlbumBenchmark {
         let meanARI = albumSummaries.map(\.groupingARI).reduce(0, +) / n
         let meanCov = albumSummaries.map(\.eventCoverage).reduce(0, +) / n
 
+        let execSeconds = max(0.01, Date().timeIntervalSince(benchStartTime))
+
         let report = OverallBenchmarkReport(
             timestamp: ISO8601DateFormatter().string(from: Date()),
             datasetName: "AlbumBench / CUFED Wedding Benchmark",
             datasetSource: "https://github.com/byu-vision/albumbench (CVPR 2026)",
             evaluatedAlbumsCount: albumSummaries.count,
             totalImagesEvaluated: totalImagesAnalyzed,
+            executionTimeSeconds: Double(round(execSeconds * 100) / 100),
             meanPrecision: meanP,
             meanRecall: meanR,
             meanF1: meanF1,
@@ -598,7 +603,9 @@ struct WeddingAlbumBenchmark {
         * **Official Source**: [byu-vision/albumbench](\(report.datasetSource))
         * **Albums Evaluated**: \(report.evaluatedAlbumsCount) real wedding albums
         * **Total Images Evaluated**: \(report.totalImagesEvaluated) genuine photographs
-        * **Verification Status**: **EXECUTED** (100% Measured on Real Photographic Dataset)
+        * **Execution Time**: \(String(format: "%.2f seconds", execSeconds))
+        * **Verification Status**: **EXECUTED / REGRESSION REFERENCE**
+        * **Regression Reference Note**: Photographic culling algorithm is frozen in this phase; results serve as regression reference.
 
         ## Aggregate Album-Level Performance
 

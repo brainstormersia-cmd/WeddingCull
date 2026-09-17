@@ -36,12 +36,20 @@ public final class PreviewPipeline: Sendable {
     }
 
     public func generatePreviewAndThumbnail(for item: PhotoItem) throws -> (previewURL: URL, thumbnailURL: URL) {
+        let result = try generatePreviewAndThumbnailWithImage(for: item)
+        return (result.previewURL, result.thumbnailURL)
+    }
+
+    public func generatePreviewAndThumbnailWithImage(for item: PhotoItem) throws -> (previewURL: URL, thumbnailURL: URL, previewImage: CGImage?) {
         let pURL = previewURL(for: item)
         let tURL = thumbnailURL(for: item)
 
         if FileManager.default.fileExists(atPath: pURL.path) && FileManager.default.fileExists(atPath: tURL.path) {
-            return (pURL, tURL)
+            let cachedImage = loadPreviewCGImage(for: item)
+            return (pURL, tURL, cachedImage)
         }
+
+        var inMemoryPreview: CGImage? = nil
 
         try autoreleasepool {
             let sourceURL = item.sourceURL
@@ -53,36 +61,102 @@ public final class PreviewPipeline: Sendable {
                 throw NSError(domain: "PreviewPipeline", code: 1, userInfo: [NSLocalizedDescriptionKey: "Failed to open image source"])
             }
 
-            // 1. Generate 1000px analysis preview
+            // Fallback chain for 1000px preview:
+            // 1. Try standard thumbnail generation
+            var previewCGImage: CGImage? = nil
             let previewOptions: [CFString: Any] = [
                 kCGImageSourceCreateThumbnailFromImageAlways: true,
                 kCGImageSourceShouldCacheImmediately: true,
                 kCGImageSourceCreateThumbnailWithTransform: true,
                 kCGImageSourceThumbnailMaxPixelSize: 1000
             ]
+            previewCGImage = CGImageSourceCreateThumbnailAtIndex(imageSource, 0, previewOptions as CFDictionary)
 
-            guard let previewCGImage = CGImageSourceCreateThumbnailAtIndex(imageSource, 0, previewOptions as CFDictionary) else {
-                throw NSError(domain: "PreviewPipeline", code: 2, userInfo: [NSLocalizedDescriptionKey: "Failed to generate preview"])
+            // 2. If thumbnail fails, try extracting embedded thumbnail (common in RAW formats)
+            if previewCGImage == nil {
+                let embeddedOptions: [CFString: Any] = [
+                    kCGImageSourceCreateThumbnailFromImageIfPresent: true,
+                    kCGImageSourceShouldCacheImmediately: true,
+                    kCGImageSourceCreateThumbnailWithTransform: true,
+                    kCGImageSourceThumbnailMaxPixelSize: 1000
+                ]
+                previewCGImage = CGImageSourceCreateThumbnailAtIndex(imageSource, 0, embeddedOptions as CFDictionary)
             }
 
-            try saveCGImage(previewCGImage, to: pURL, compressionQuality: 0.85)
+            // 3. If still nil, try full image decode and downsample
+            if previewCGImage == nil {
+                let fullOptions: [CFString: Any] = [
+                    kCGImageSourceShouldCache: false
+                ]
+                if let fullImage = CGImageSourceCreateImageAtIndex(imageSource, 0, fullOptions as CFDictionary) {
+                    previewCGImage = downsample(cgImage: fullImage, maxPixelSize: 1000)
+                }
+            }
+
+            guard let finalPreview = previewCGImage else {
+                throw NSError(domain: "PreviewPipeline", code: 2, userInfo: [NSLocalizedDescriptionKey: "Failed to generate preview: RAW/image decode unsupported on this configuration"])
+            }
+
+            try saveCGImage(finalPreview, to: pURL, compressionQuality: 0.85)
+            inMemoryPreview = finalPreview
 
             // 2. Generate 320px grid thumbnail
+            var thumbCGImage: CGImage? = nil
             let thumbOptions: [CFString: Any] = [
                 kCGImageSourceCreateThumbnailFromImageAlways: true,
                 kCGImageSourceShouldCacheImmediately: true,
                 kCGImageSourceCreateThumbnailWithTransform: true,
                 kCGImageSourceThumbnailMaxPixelSize: 320
             ]
+            thumbCGImage = CGImageSourceCreateThumbnailAtIndex(imageSource, 0, thumbOptions as CFDictionary)
 
-            guard let thumbCGImage = CGImageSourceCreateThumbnailAtIndex(imageSource, 0, thumbOptions as CFDictionary) else {
+            // Fallback for thumbnail: downsample from preview image
+            if thumbCGImage == nil {
+                thumbCGImage = downsample(cgImage: finalPreview, maxPixelSize: 320)
+            }
+
+            guard let finalThumb = thumbCGImage else {
                 throw NSError(domain: "PreviewPipeline", code: 3, userInfo: [NSLocalizedDescriptionKey: "Failed to generate thumbnail"])
             }
 
-            try saveCGImage(thumbCGImage, to: tURL, compressionQuality: 0.75)
+            try saveCGImage(finalThumb, to: tURL, compressionQuality: 0.75)
         }
 
-        return (pURL, tURL)
+        return (pURL, tURL, inMemoryPreview)
+    }
+
+    public func downsample(cgImage: CGImage, maxPixelSize: Int) -> CGImage? {
+        let width = cgImage.width
+        let height = cgImage.height
+        guard width > 0 && height > 0 else { return nil }
+
+        let maxDim = max(width, height)
+        if maxDim <= maxPixelSize {
+            return cgImage
+        }
+
+        let scale = Double(maxPixelSize) / Double(maxDim)
+        let targetWidth = max(1, Int(Double(width) * scale))
+        let targetHeight = max(1, Int(Double(height) * scale))
+
+        let colorSpace = cgImage.colorSpace ?? CGColorSpaceCreateDeviceRGB()
+        let bitmapInfo = CGImageAlphaInfo.premultipliedLast.rawValue
+
+        guard let context = CGContext(
+            data: nil,
+            width: targetWidth,
+            height: targetHeight,
+            bitsPerComponent: 8,
+            bytesPerRow: targetWidth * 4,
+            space: colorSpace,
+            bitmapInfo: bitmapInfo
+        ) else {
+            return nil
+        }
+
+        context.interpolationQuality = .high
+        context.draw(cgImage, in: CGRect(x: 0, y: 0, width: targetWidth, height: targetHeight))
+        return context.makeImage()
     }
 
     public func loadThumbnailCGImage(for item: PhotoItem) -> CGImage? {
