@@ -1,6 +1,10 @@
 import XCTest
 import CoreGraphics
+#if canImport(WeddingCull)
+@testable import WeddingCull
+#elseif canImport(WeddingCullCore)
 @testable import WeddingCullCore
+#endif
 
 final class PersonClusteringAccuracyTests: XCTestCase {
 

@@ -1,7 +1,11 @@
 import XCTest
 import CoreGraphics
 import CoreML
+#if canImport(WeddingCull)
+@testable import WeddingCull
+#elseif canImport(WeddingCullCore)
 @testable import WeddingCullCore
+#endif
 
 final class MobileCLIPInferenceTests: XCTestCase {
 
