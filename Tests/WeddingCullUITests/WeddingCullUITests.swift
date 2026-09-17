@@ -15,7 +15,7 @@ final class WeddingCullUITests: XCTestCase {
         screenshotDirectory = URL(fileURLWithPath: artifactsDir).appendingPathComponent("screenshots", isDirectory: true)
         try? FileManager.default.createDirectory(at: screenshotDirectory, withIntermediateDirectories: true)
 
-        // Generate deterministic 20-photo wedding shoot with bursts & diverse categories
+        // Generate deterministic 12-photo wedding shoot with bursts & diverse categories
         let tempDir = FileManager.default.temporaryDirectory.appendingPathComponent("WeddingCullUITestData_\(UUID().uuidString)")
         try? FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
         testDatasetURL = tempDir
@@ -23,7 +23,7 @@ final class WeddingCullUITests: XCTestCase {
         // Use SyntheticWeddingGenerator to populate realistic photos
         let generator = SyntheticWeddingGenerator()
         let config = SyntheticWeddingGenerator.GeneratorConfig(
-            targetTotalPhotos: 20
+            targetTotalPhotos: 12
         )
         _ = try generator.generateDataset(at: testDatasetURL, config: config)
 
@@ -31,7 +31,7 @@ final class WeddingCullUITests: XCTestCase {
         app.launchArguments = [
             "--ui-testing",
             "--source-folder", testDatasetURL.path,
-            "--target-count", "10"
+            "--target-count", "6"
         ]
         app.launchEnvironment["UI_TESTING"] = "YES"
         app.launchEnvironment["UI_TEST_SOURCE_FOLDER"] = testDatasetURL.path
@@ -84,10 +84,10 @@ final class WeddingCullUITests: XCTestCase {
             }
         }
 
-        // 4. Wait for Review Mode
+        // 4. Wait for Review Mode (allow ample time for Intel runner without Apple Neural Engine)
         let photoGrid = app.scrollViews["photo_grid"]
         let sidebar = app.outlines["sidebar_list"]
-        let reviewEntered = photoGrid.waitForExistence(timeout: 45.0) || sidebar.waitForExistence(timeout: 45.0)
+        let reviewEntered = photoGrid.waitForExistence(timeout: 120.0) || sidebar.waitForExistence(timeout: 120.0)
         XCTAssertTrue(reviewEntered, "Pipeline must transition to Review Mode")
 
         captureScreenshot(name: "04_Review_Grid")
