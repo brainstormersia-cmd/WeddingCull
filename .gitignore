@@ -14,4 +14,6 @@ DerivedData/
 # WeddingCull Caches & Artifacts
 artifacts/
 *.weddingcull
-*.py
+*.pyc
+__pycache__/
+!scripts/*.py
