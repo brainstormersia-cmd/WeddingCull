@@ -6,7 +6,8 @@ public struct TargetCountControl: View {
 
     public init(appState: AppState) {
         self.appState = appState
-        _targetInput = State(initialValue: Double(appState.session.targetSelectionCount))
+        let initial = Double(appState.session.targetSelectionCount)
+        _targetInput = State(initialValue: max(1.0, initial))
     }
 
     public var body: some View {
@@ -49,8 +50,9 @@ public struct TargetCountControl: View {
             }
 
             // Slider control
-            let maxCount = max(10, appState.session.photos.count)
-            Slider(value: $targetInput, in: 10...Double(maxCount), step: 5)
+            let minCount: Double = 1.0
+            let maxCount: Double = max(Double(appState.session.photos.count), Double(appState.session.targetSelectionCount), 2.0)
+            Slider(value: $targetInput, in: minCount...maxCount, step: 1)
                 .frame(width: 180)
                 .accessibilityIdentifier(AccessibilityIdentifiers.targetCountSlider)
                 .onChange(of: targetInput) { newValue in
@@ -75,7 +77,9 @@ public struct TargetCountControl: View {
         .background(Color.secondary.opacity(0.06))
         .cornerRadius(8)
         .onAppear {
-            targetInput = Double(appState.session.targetSelectionCount)
+            let current = Double(appState.session.targetSelectionCount)
+            let maxC = max(Double(appState.session.photos.count), current, 2.0)
+            targetInput = max(1.0, min(maxC, current))
         }
     }
 }

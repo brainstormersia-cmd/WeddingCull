@@ -176,13 +176,26 @@ public final class SyntheticWeddingGenerator: Sendable {
             photoIndex += 1
         }
 
-        // Strictly guarantee targetTotalPhotos count
+        // Strictly guarantee targetTotalPhotos count without removing special test fixtures
         if createdFiles.count > config.targetTotalPhotos {
-            let excess = createdFiles.suffix(createdFiles.count - config.targetTotalPhotos)
-            for file in excess {
-                try? fileManager.removeItem(at: file)
+            let protectedNames: Set<String> = [
+                "CORRUPT_IMAGE.jpg",
+                "IMG_EXACT_DUP.jpg",
+                "IMG_9990_SYNTHETIC_PAIR.JPG",
+                "IMG_9990_SYNTHETIC_PAIR.CR3"
+            ]
+            var toRemove = createdFiles.count - config.targetTotalPhotos
+            var i = 0
+            while i < createdFiles.count && toRemove > 0 {
+                let file = createdFiles[i]
+                if !protectedNames.contains(file.lastPathComponent) {
+                    try? fileManager.removeItem(at: file)
+                    createdFiles.remove(at: i)
+                    toRemove -= 1
+                } else {
+                    i += 1
+                }
             }
-            createdFiles = Array(createdFiles.prefix(config.targetTotalPhotos))
         }
 
         return createdFiles
