@@ -85,6 +85,8 @@ public struct MainReviewView: View {
                    let burstID = photo.burstGroupID,
                    let burst = appState.session.burstGroups.first(where: { $0.id == burstID }) {
                     appState.activeBurstForComparison = burst
+                } else if let firstBurst = appState.session.burstGroups.first {
+                    appState.activeBurstForComparison = firstBurst
                 }
             }
             .keyboardShortcut(.return, modifiers: [])

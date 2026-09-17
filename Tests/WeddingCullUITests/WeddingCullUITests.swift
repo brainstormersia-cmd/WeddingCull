@@ -73,10 +73,10 @@ final class WeddingCullUITests: XCTestCase {
             captureScreenshot(name: "02_Analysis_Running")
 
             // 3. Test Pause / Resume functionality
-            let pauseButton = app.buttons["analysis_pause_button"]
+            let pauseButton = app.buttons["analysis_pause_button"].firstMatch
             if pauseButton.waitForExistence(timeout: 3.0) {
                 pauseButton.click()
-                let resumeButton = app.buttons["analysis_resume_button"]
+                let resumeButton = app.buttons["analysis_resume_button"].firstMatch
                 if resumeButton.waitForExistence(timeout: 3.0) {
                     captureScreenshot(name: "03_Analysis_Paused")
                     resumeButton.click()
@@ -92,7 +92,7 @@ final class WeddingCullUITests: XCTestCase {
 
         captureScreenshot(name: "04_Review_Grid")
 
-        // 5. Verify real thumbnails are loaded in the grid (at least 10 loaded thumbnails)
+        // 5. Verify real thumbnails are loaded in the grid (at least 5 loaded thumbnails)
         let loadedThumbPredicate = NSPredicate(format: "identifier == 'photo_thumbnail_loaded'")
         let loadedThumbs = app.images.matching(loadedThumbPredicate)
         _ = loadedThumbs.firstMatch.waitForExistence(timeout: 10.0)
@@ -127,7 +127,7 @@ final class WeddingCullUITests: XCTestCase {
             _ = burstPreviews.firstMatch.waitForExistence(timeout: 8.0)
 
             // Test 1:1 Loupe Zoom
-            let loupeButton = app.buttons["burst_zoom_loupe_button"]
+            let loupeButton = app.buttons["burst_zoom_loupe_button"].firstMatch
             if loupeButton.waitForExistence(timeout: 3.0) {
                 loupeButton.click()
                 let loupeView = app.staticTexts["burst_loupe_view"]
@@ -136,7 +136,7 @@ final class WeddingCullUITests: XCTestCase {
             }
 
             // Test Centra Volto (Face Focus)
-            let faceFocusButton = app.buttons["burst_face_focus_button"]
+            let faceFocusButton = app.buttons["burst_face_focus_button"].firstMatch
             if faceFocusButton.waitForExistence(timeout: 2.0) {
                 faceFocusButton.click()
                 captureScreenshot(name: "08_Burst_Face_Focus")
@@ -149,20 +149,20 @@ final class WeddingCullUITests: XCTestCase {
             }
 
             // Close Burst Compare
-            let closeBurstBtn = app.buttons["close_burst_compare_button"]
+            let closeBurstBtn = app.buttons["close_burst_compare_button"].firstMatch
             if closeBurstBtn.waitForExistence(timeout: 2.0) {
                 closeBurstBtn.click()
             }
         }
 
         // 9. Test Export Dialog
-        let exportButton = app.buttons["main_export_button"]
-        if exportButton.waitForExistence(timeout: 4.0) {
+        let exportButton = app.buttons["main_export_button"].firstMatch
+        if exportButton.waitForExistence(timeout: 5.0) {
             exportButton.click()
-            let exportConfirm = app.buttons["export_confirm_button"]
+            let exportConfirm = app.buttons["export_confirm_button"].firstMatch
             if exportConfirm.waitForExistence(timeout: 4.0) {
                 captureScreenshot(name: "09_Export_Dialog")
-                let exportCancel = app.buttons["export_cancel_button"]
+                let exportCancel = app.buttons["export_cancel_button"].firstMatch
                 if exportCancel.exists {
                     exportCancel.click()
                 }

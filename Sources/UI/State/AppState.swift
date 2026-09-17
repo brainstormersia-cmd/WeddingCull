@@ -151,18 +151,28 @@ public final class AppState: ObservableObject {
 
     public func selectNextPhoto() {
         let currentList = filteredPhotos
+        guard !currentList.isEmpty else { return }
         guard let currentID = selectedPhotoID,
-              let idx = currentList.firstIndex(where: { $0.id == currentID }),
-              idx + 1 < currentList.count else { return }
-        selectedPhotoID = currentList[idx + 1].id
+              let idx = currentList.firstIndex(where: { $0.id == currentID }) else {
+            selectedPhotoID = currentList.first?.id
+            return
+        }
+        if idx + 1 < currentList.count {
+            selectedPhotoID = currentList[idx + 1].id
+        }
     }
 
     public func selectPreviousPhoto() {
         let currentList = filteredPhotos
+        guard !currentList.isEmpty else { return }
         guard let currentID = selectedPhotoID,
-              let idx = currentList.firstIndex(where: { $0.id == currentID }),
-              idx > 0 else { return }
-        selectedPhotoID = currentList[idx - 1].id
+              let idx = currentList.firstIndex(where: { $0.id == currentID }) else {
+            selectedPhotoID = currentList.first?.id
+            return
+        }
+        if idx > 0 {
+            selectedPhotoID = currentList[idx - 1].id
+        }
     }
 
     public func updateTargetCount(_ newTarget: Int) {
