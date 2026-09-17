@@ -44,7 +44,7 @@ final class XMPExportTests: XCTestCase {
     func testEditorialRatingMappingAlternative() {
         var item = PhotoItem(fileName: "IMG_0002.JPG", sourceURL: URL(fileURLWithPath: "/dummy/IMG_0002.JPG"))
         item.selectionState = .alternative
-        item.category = .couplePortraits
+        item.category = .couple
         item.metrics.overallScore = 0.85
 
         let (rating, label, urgency) = exporter.editorialRating(for: item.selectionState)
