@@ -172,7 +172,7 @@ jobs:
       - name: Setup Python and Hugging Face Client
         run: |
           set -euo pipefail
-          python3 -m pip install --quiet --upgrade "huggingface_hub[cli]"
+          python3 -m pip install --quiet --upgrade --break-system-packages "huggingface_hub[cli]"
 
       - name: Download and Compile Apple MobileCLIP Model
         run: |

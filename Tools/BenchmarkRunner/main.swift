@@ -255,47 +255,93 @@ struct BenchmarkRunner {
             print("Session Persistence: \(sessionReloadSuccess ? "PASS" : "FAIL")")
             print("====================================================")
 
-            let benchmarkData: [String: Any] = [
-                "datasetType": "synthetic-wedding-benchmark",
-                "inputFiles": inputFilesCount,
-                "importedLogicalPhotos": processedPhotos,
-                "rejectedCorrupt": corruptCount,
-                "rawFileCount": rawCount,
-                "jpegFileCount": jpegCount,
-                "rawJpegPairs": rawJpegPairsCount,
-                "totalBytes": totalBytes,
-                "formatDistribution": formatCounts,
-                "megapixelStats": [
-                    "minMP": Double(round(minMP * 100) / 100),
-                    "medianMP": Double(round(medianMP * 100) / 100),
-                    "p95MP": Double(round(p95MP * 100) / 100),
-                    "maxMP": Double(round(maxMP * 100) / 100)
-                ],
-                "hardware": [
-                    "architecture": archName,
-                    "logicalProcessors": hardware.logicalProcessors,
-                    "physicalMemoryGB": Double(round(physicalMemGB * 10) / 10),
-                    "neuralEngineAvailable": hardware.neuralEngineAvailable,
-                    "metalAvailable": hardware.metalAvailable,
-                    "recommendedConcurrency": hardware.recommendedConcurrency
-                ],
-                "classificationBackend": backendUsed,
-                "datasetSize": processedPhotos,
-                "totalProcessingTimeSeconds": Double(round(totalTime * 100) / 100),
-                "wallClockSeconds": Double(round(totalTime * 100) / 100),
-                "photosPerSecond": Double(round(throughput * 10) / 10),
-                "peakMemoryMB": peakMB,
-                "memoryBudgetMB": 2560,
-                "memoryWithinBudget": peakMB <= 2560,
-                "targetCardinality": session.targetSelectionCount,
-                "finalSelectedCount": selectedCount,
-                "burstGroupsDetected": session.burstGroups.count,
-                "personClustersFormed": session.personClusters.count,
-                "exportValidation": exportSuccess,
-                "sessionPersistence": sessionReloadSuccess
-            ]
+            struct MegapixelStats: Codable {
+                let minMP: Double
+                let medianMP: Double
+                let p95MP: Double
+                let maxMP: Double
+            }
 
-            if let jsonData = try? JSONSerialization.data(withJSONObject: benchmarkData, options: [.prettyPrinted, .sortedKeys]) {
+            struct HardwareReport: Codable {
+                let architecture: String
+                let logicalProcessors: Int
+                let physicalMemoryGB: Double
+                let neuralEngineAvailable: Bool
+                let metalAvailable: Bool
+                let recommendedConcurrency: Int
+            }
+
+            struct BenchmarkReportData: Codable {
+                let datasetType: String
+                let inputFiles: Int
+                let importedLogicalPhotos: Int
+                let rejectedCorrupt: Int
+                let rawFileCount: Int
+                let jpegFileCount: Int
+                let rawJpegPairs: Int
+                let totalBytes: Int64
+                let formatDistribution: [String: Int]
+                let megapixelStats: MegapixelStats
+                let hardware: HardwareReport
+                let classificationBackend: String
+                let datasetSize: Int
+                let totalProcessingTimeSeconds: Double
+                let wallClockSeconds: Double
+                let photosPerSecond: Double
+                let peakMemoryMB: Int
+                let memoryBudgetMB: Int
+                let memoryWithinBudget: Bool
+                let targetCardinality: Int
+                let finalSelectedCount: Int
+                let burstGroupsDetected: Int
+                let personClustersFormed: Int
+                let exportValidation: Bool
+                let sessionPersistence: Bool
+            }
+
+            let reportData = BenchmarkReportData(
+                datasetType: "synthetic-wedding-benchmark",
+                inputFiles: inputFilesCount,
+                importedLogicalPhotos: processedPhotos,
+                rejectedCorrupt: corruptCount,
+                rawFileCount: rawCount,
+                jpegFileCount: jpegCount,
+                rawJpegPairs: rawJpegPairsCount,
+                totalBytes: totalBytes,
+                formatDistribution: formatCounts,
+                megapixelStats: MegapixelStats(
+                    minMP: Double(round(minMP * 100) / 100),
+                    medianMP: Double(round(medianMP * 100) / 100),
+                    p95MP: Double(round(p95MP * 100) / 100),
+                    maxMP: Double(round(maxMP * 100) / 100)
+                ),
+                hardware: HardwareReport(
+                    architecture: archName,
+                    logicalProcessors: hardware.logicalProcessors,
+                    physicalMemoryGB: Double(round(physicalMemGB * 10) / 10),
+                    neuralEngineAvailable: hardware.neuralEngineAvailable,
+                    metalAvailable: hardware.metalAvailable,
+                    recommendedConcurrency: hardware.recommendedConcurrency
+                ),
+                classificationBackend: backendUsed,
+                datasetSize: processedPhotos,
+                totalProcessingTimeSeconds: Double(round(totalTime * 100) / 100),
+                wallClockSeconds: Double(round(totalTime * 100) / 100),
+                photosPerSecond: Double(round(throughput * 10) / 10),
+                peakMemoryMB: peakMB,
+                memoryBudgetMB: 2560,
+                memoryWithinBudget: peakMB <= 2560,
+                targetCardinality: session.targetSelectionCount,
+                finalSelectedCount: selectedCount,
+                burstGroupsDetected: session.burstGroups.count,
+                personClustersFormed: session.personClusters.count,
+                exportValidation: exportSuccess,
+                sessionPersistence: sessionReloadSuccess
+            )
+
+            let jsonEncoder = JSONEncoder()
+            jsonEncoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            if let jsonData = try? jsonEncoder.encode(reportData) {
                 let jsonURL = URL(fileURLWithPath: outputJSONPath)
                 try? fileManager.createDirectory(at: jsonURL.deletingLastPathComponent(), withIntermediateDirectories: true)
                 try? jsonData.write(to: jsonURL)

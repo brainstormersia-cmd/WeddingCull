@@ -31,9 +31,9 @@ else
     else
         echo "📦 Installing huggingface_hub CLI..."
         if command -v pip3 &>/dev/null; then
-            pip3 install --quiet "huggingface_hub[cli]" || true
+            pip3 install --quiet --break-system-packages "huggingface_hub[cli]" || pip3 install --quiet "huggingface_hub[cli]" || true
         elif command -v pip &>/dev/null; then
-            pip install --quiet "huggingface_hub[cli]" || true
+            pip install --quiet --break-system-packages "huggingface_hub[cli]" || pip install --quiet "huggingface_hub[cli]" || true
         fi
         if command -v huggingface-cli &>/dev/null; then
             HF_CMD="huggingface-cli"

@@ -88,4 +88,36 @@ targets:
     dependencies:
       - target: WeddingCull
 
+  WeddingAlbumBenchmark:
+    type: tool
+    platform: macOS
+    sources:
+      - path: Tools/WeddingAlbumBenchmark
+    dependencies:
+      - target: WeddingCull
+
+  IQAValidationRunner:
+    type: tool
+    platform: macOS
+    sources:
+      - path: Tools/IQAValidationRunner
+    dependencies:
+      - target: WeddingCull
+
+  ReleaseRawValidator:
+    type: tool
+    platform: macOS
+    sources:
+      - path: Tools/ReleaseRawValidator
+    dependencies:
+      - target: WeddingCull
+
+  MobileCLIPValidator:
+    type: tool
+    platform: macOS
+    sources:
+      - path: Tools/MobileCLIPValidator
+    dependencies:
+      - target: WeddingCull
+
 
