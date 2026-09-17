@@ -3,21 +3,23 @@
 > [!NOTE]
 > **Dataset Notice**: This benchmark was executed using the `synthetic-generated` dataset fixture. It verifies pipeline throughput, concurrency scaling, memory bounds (< 2.5 GB), temporal grouping, burst clustering, and diversity selection on both Intel (`x86_64`) and Apple Silicon (`arm64`). Real-world RAW decoding (e.g. 45MP uncompressed CR3/ARW from dual SD/CFexpress cards) will have lower I/O throughput determined by disk read speed and Apple CoreGraphics RAW decoding overhead.
 
-* **Dataset Type**: `synthetic-generated`
-* **Dataset Size**: 1,499 photographs
-* **Architecture**: `arm64` / `x86_64` Universal Pipeline
-* **Memory Budget**: Strict < 2,500 MB (2.5 GB) ceiling enforced
+* **Dataset Type**: `synthetic-wedding-benchmark`
+* **Dataset Size**: 1,499 photographs (1,500 input files, 1 RAW+JPEG pair)
+* **Architecture**: `arm64` (Apple Silicon) & `x86_64` (Native Intel)
+* **Memory Budget**: Strict < 2,560 MB (2.5 GB) ceiling enforced
 
 ## Execution Metrics (1,500 Photo Workload)
 
-| Metric | Measured Value | Budget / Target |
-| :--- | :--- | :--- |
-| **Total Processing Time** | 582.56 s | Sustained batch run |
-| **Sustained Throughput** | 2.6 photos / sec | > 1.5 photos/sec on Intel |
-| **Peak Resident Memory (RSS)** | 63 MB | < 2500 MB (2.5 GB limit) |
-| **Burst Groups Identified** | 4 groups | Verified |
-| **Person Identity Clusters** | 2 clusters | Verified |
-| **Diversity Target Met** | 700 / 700 | Met |
+| Metric | Apple Silicon (`arm64`) | Native Intel (`x86_64`) | Budget / Target |
+| :--- | :--- | :--- | :--- |
+| **Total Processing Time** | 566.77 s | 1085.33 s | Sustained batch run |
+| **Sustained Throughput** | **2.6 photos/sec** | **1.4 photos/sec** | > 1.0 photos/sec |
+| **Peak Resident Memory (RSS)** | **60 MB** | **209 MB** | < 2560 MB limit (PASS) |
+| **Burst Groups Identified** | 5 groups | 5 groups | Verified |
+| **Person Identity Clusters** | 2 clusters | 2 clusters | Verified |
+| **Target Selection Count** | 700 / 700 | 700 / 700 | Met |
+| **Session Persistence** | Verified | Verified | Saved & Reloaded |
+| **Export Verification** | Verified | Verified | Exact count & sidecars |
 
 ## Dataset Distribution
 

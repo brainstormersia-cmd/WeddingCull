@@ -1,0 +1,70 @@
+{
+  "mandatoryStatus" : "PASS",
+  "passedFixturesCount" : 3,
+  "results" : [
+    {
+      "actualHash" : "e0539843c36e6e3f39ffe15aa91f22624149ad18c63e3bef7b6f0e71cdc46c79",
+      "cameraModel" : "Canon EOS 350D DIGITAL",
+      "expectedHash" : "e0539843c36e6e3f39ffe15aa91f22624149ad18c63e3bef7b6f0e71cdc46c79",
+      "format" : "CR2",
+      "hashMatched" : true,
+      "height" : 2304,
+      "imageIORecognized" : true,
+      "imageIOType" : "com.canon.cr2-raw-image",
+      "name" : "Canon EOS 350D CR2",
+      "notes" : "Successfully verified ImageIO decode, preview generation, and immutability",
+      "previewDecoded" : true,
+      "sourceRemainedImmutable" : true,
+      "status" : "PASS",
+      "width" : 3456
+    },
+    {
+      "actualHash" : "97e2faea5ac62040e98710b146a4f296b9570d410bcc44e14da778b5f34ced39",
+      "cameraModel" : "NIKON D70",
+      "expectedHash" : "97e2faea5ac62040e98710b146a4f296b9570d410bcc44e14da778b5f34ced39",
+      "format" : "NEF",
+      "hashMatched" : true,
+      "height" : 2000,
+      "imageIORecognized" : true,
+      "imageIOType" : "com.nikon.raw-image",
+      "name" : "Nikon D70 NEF",
+      "notes" : "Successfully verified ImageIO decode, preview generation, and immutability",
+      "previewDecoded" : true,
+      "sourceRemainedImmutable" : true,
+      "status" : "PASS",
+      "width" : 3008
+    },
+    {
+      "actualHash" : "cdf69f2856612620129789fb87c10772f80ec3b040c54a933315c77c2961dc46",
+      "cameraModel" : "DSLR-A500",
+      "expectedHash" : "cdf69f2856612620129789fb87c10772f80ec3b040c54a933315c77c2961dc46",
+      "format" : "ARW",
+      "hashMatched" : true,
+      "height" : 2848,
+      "imageIORecognized" : true,
+      "imageIOType" : "com.sony.arw-raw-image",
+      "name" : "Sony DSLR-A500 ARW",
+      "notes" : "Successfully verified ImageIO decode, preview generation, and immutability",
+      "previewDecoded" : true,
+      "sourceRemainedImmutable" : true,
+      "status" : "PASS",
+      "width" : 4272
+    },
+    {
+      "actualHash" : "5be26d83d80f1424f07b1244c80a5fbb5b699a6ee33419b7a10533f751b77af8",
+      "cameraModel" : "FinePix S5500",
+      "expectedHash" : "5be26d83d80f1424f07b1244c80a5fbb5b699a6ee33419b7a10533f751b77af8",
+      "format" : "RAF",
+      "hashMatched" : true,
+      "imageIORecognized" : true,
+      "imageIOType" : "com.fuji.raw-image",
+      "name" : "FujiFilm FinePix S5500 RAF",
+      "notes" : "Pipeline or decoding failure",
+      "previewDecoded" : false,
+      "sourceRemainedImmutable" : true,
+      "status" : "FAIL"
+    }
+  ],
+  "timestamp" : "2026-09-17T22:16:46Z",
+  "totalFixturesTested" : 4
+}

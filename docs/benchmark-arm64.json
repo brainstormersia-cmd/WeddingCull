@@ -1,0 +1,42 @@
+{
+  "burstGroupsDetected" : 5,
+  "classificationBackend" : "Apple Vision (Built-in)",
+  "datasetSize" : 1499,
+  "datasetType" : "synthetic-wedding-benchmark",
+  "exportValidation" : true,
+  "finalSelectedCount" : 700,
+  "formatDistribution" : {
+    "CR3" : 1,
+    "JPG" : 1498
+  },
+  "hardware" : {
+    "architecture" : "arm64",
+    "logicalProcessors" : 3,
+    "metalAvailable" : true,
+    "neuralEngineAvailable" : true,
+    "physicalMemoryGB" : 7,
+    "recommendedConcurrency" : 3
+  },
+  "importedLogicalPhotos" : 1499,
+  "inputFiles" : 1500,
+  "jpegFileCount" : 1498,
+  "megapixelStats" : {
+    "maxMP" : 12,
+    "medianMP" : 0.48,
+    "minMP" : 0.48,
+    "p95MP" : 0.48
+  },
+  "memoryBudgetMB" : 2560,
+  "memoryWithinBudget" : true,
+  "peakMemoryMB" : 60,
+  "personClustersFormed" : 2,
+  "photosPerSecond" : 2.6,
+  "rawFileCount" : 1,
+  "rawJpegPairs" : 1,
+  "rejectedCorrupt" : 1,
+  "sessionPersistence" : true,
+  "targetCardinality" : 700,
+  "totalBytes" : 31648035,
+  "totalProcessingTimeSeconds" : 566.77,
+  "wallClockSeconds" : 566.77
+}

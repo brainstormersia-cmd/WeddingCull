@@ -1,0 +1,15 @@
+{
+  "averageLatencyMs" : 161.02485060691833,
+  "classificationBackend" : "MobileCLIP-S0",
+  "computeUnitsUsed" : "All (Neural Engine + GPU + CPU)",
+  "modelLoaded" : true,
+  "modelName" : "mobileclip_s0_image",
+  "modelPath" : "models\/mobileclip_s0_image.mlmodelc",
+  "notes" : "Strict MobileCLIP Core ML model loaded and executed verified predictions without fallback.",
+  "outputEmbeddingDim" : 512,
+  "repoRevision" : "3e0a7bfb9fe83da8a3efaa3fd8f7df24214bb947",
+  "status" : "PASS",
+  "testCategoryAssigned" : "details",
+  "testConfidence" : 0.5280464291572571,
+  "timestamp" : "2026-09-17T22:08:46Z"
+}

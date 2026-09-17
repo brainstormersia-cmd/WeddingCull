@@ -1,0 +1,113 @@
+{
+  "albums" : [
+    {
+      "albumId" : "0_18662595@N00",
+      "eventCoverage" : 0.9,
+      "groupingARI" : 0,
+      "rankingKendallTau" : -0.015813732752152834,
+      "rankingSpearmanRho" : -0.02205288398847552,
+      "selectionF1" : 0.22023809523809523,
+      "selectionJaccard" : 0.13247863247863248,
+      "selectionPrecision" : 0.22023809523809523,
+      "selectionRecall" : 0.22023809523809523,
+      "totalImages" : 32
+    },
+    {
+      "albumId" : "0_60100060@N03",
+      "eventCoverage" : 0.75,
+      "groupingARI" : 0,
+      "rankingKendallTau" : 0.053740592098826555,
+      "rankingSpearmanRho" : 0.07266079709649577,
+      "selectionF1" : 0.28703703703703703,
+      "selectionJaccard" : 0.2196078431372549,
+      "selectionPrecision" : 0.28703703703703703,
+      "selectionRecall" : 0.28703703703703703,
+      "totalImages" : 30
+    },
+    {
+      "albumId" : "0_74464146@N00",
+      "eventCoverage" : 0.625,
+      "groupingARI" : 0,
+      "rankingKendallTau" : 0.039094548039070254,
+      "rankingSpearmanRho" : 0.06035484259919935,
+      "selectionF1" : 0.5717592592592592,
+      "selectionJaccard" : 0.4066666666666667,
+      "selectionPrecision" : 0.5717592592592592,
+      "selectionRecall" : 0.5717592592592592,
+      "totalImages" : 32
+    },
+    {
+      "albumId" : "10_97144996@N00",
+      "eventCoverage" : 1,
+      "groupingARI" : 0,
+      "rankingKendallTau" : 0.21188750686185212,
+      "rankingSpearmanRho" : 0.26658940700223477,
+      "selectionF1" : 0.5835275835275835,
+      "selectionJaccard" : 0.4144736842105263,
+      "selectionPrecision" : 0.5835275835275835,
+      "selectionRecall" : 0.5835275835275835,
+      "totalImages" : 32
+    },
+    {
+      "albumId" : "12_33991563@N00",
+      "eventCoverage" : 0.8333333333333333,
+      "groupingARI" : 0,
+      "rankingKendallTau" : 0.31513743441228526,
+      "rankingSpearmanRho" : 0.37987364480039787,
+      "selectionF1" : 0.5182595182595183,
+      "selectionJaccard" : 0.36744639376218324,
+      "selectionPrecision" : 0.5182595182595183,
+      "selectionRecall" : 0.5182595182595183,
+      "totalImages" : 44
+    },
+    {
+      "albumId" : "1_50318385@N00",
+      "eventCoverage" : 0.875,
+      "groupingARI" : 0,
+      "rankingKendallTau" : -0.1259451196406476,
+      "rankingSpearmanRho" : -0.1629186310040523,
+      "selectionF1" : 0.06060606060606061,
+      "selectionJaccard" : 0.03333333333333333,
+      "selectionPrecision" : 0.06060606060606061,
+      "selectionRecall" : 0.06060606060606061,
+      "totalImages" : 35
+    },
+    {
+      "albumId" : "1_60509459@N00",
+      "eventCoverage" : 1,
+      "groupingARI" : 0,
+      "rankingKendallTau" : 0.13240747486985627,
+      "rankingSpearmanRho" : 0.16923811789648624,
+      "selectionF1" : 0.5178571428571429,
+      "selectionJaccard" : 0.35353535353535354,
+      "selectionPrecision" : 0.5178571428571429,
+      "selectionRecall" : 0.5178571428571429,
+      "totalImages" : 38
+    },
+    {
+      "albumId" : "2_79145585@N00",
+      "eventCoverage" : 0.8333333333333333,
+      "groupingARI" : 0,
+      "rankingKendallTau" : -0.0569619251265455,
+      "rankingSpearmanRho" : -0.06917422171692862,
+      "selectionF1" : 0.3738095238095238,
+      "selectionJaccard" : 0.2597701149425287,
+      "selectionPrecision" : 0.3738095238095238,
+      "selectionRecall" : 0.3738095238095238,
+      "totalImages" : 31
+    }
+  ],
+  "datasetName" : "AlbumBench \/ CUFED Wedding Benchmark",
+  "datasetSource" : "https:\/\/github.com\/byu-vision\/albumbench (CVPR 2026)",
+  "evaluatedAlbumsCount" : 8,
+  "meanEventCoverage" : 0.8520833333333333,
+  "meanF1" : 0.39163677757427756,
+  "meanGroupingARI" : 0,
+  "meanJaccard" : 0.2734140027583099,
+  "meanKendallTau" : 0.06919334734531807,
+  "meanPrecision" : 0.39163677757427756,
+  "meanRecall" : 0.39163677757427756,
+  "meanSpearmanRho" : 0.08682138408566968,
+  "timestamp" : "2026-09-17T22:07:58Z",
+  "totalImagesEvaluated" : 274
+}

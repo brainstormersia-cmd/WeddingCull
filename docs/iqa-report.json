@@ -1,0 +1,7 @@
+{
+  "dataset" : "SPAQ",
+  "message" : "Dataset directory not supplied or not present on public CI runner. To evaluate locally: download SPAQ dataset and run with --dataset-dir <PATH>",
+  "status" : "NOT_VERIFIED_IN_PUBLIC_CI",
+  "timestamp" : "2026-09-17T22:09:23Z",
+  "totalSamplesEvaluated" : 0
+}

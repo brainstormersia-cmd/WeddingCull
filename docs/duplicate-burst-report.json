@@ -1,0 +1,7 @@
+{
+  "burstWinnerAgreementRate" : 1,
+  "duplicateLeakageRate" : 0,
+  "timestamp" : "2026-09-17T22:13:10Z",
+  "totalBurstsDetected" : 2,
+  "totalDuplicatesDetected" : 5
+}

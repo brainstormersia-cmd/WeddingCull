@@ -1,0 +1,63 @@
+{
+  "title": "WeddingCull Final Release Dataset Validation Report",
+  "timestamp": "2026-09-17T22:31:22.271999+00:00",
+  "gitSHA": "aa751bea14c73b9809996dbcb7fed41670e50b5a",
+  "overallVerdict": "PASS",
+  "auditMatrix": {
+    "dualArchitecture1500Benchmark": {
+      "arm64_apple_silicon": {
+        "status": "EXECUTED",
+        "targetCardinality": 700,
+        "finalSelectedCount": 700,
+        "throughputPPS": 2.6,
+        "peakRSSMB": 60,
+        "wallClockSeconds": 566.77
+      },
+      "x86_64_native_intel": {
+        "status": "EXECUTED",
+        "targetCardinality": 700,
+        "finalSelectedCount": 700,
+        "throughputPPS": 1.4,
+        "peakRSSMB": 209,
+        "wallClockSeconds": 1085.33
+      }
+    },
+    "realPublicDatasetValidation": {
+      "albumBenchWedding": {
+        "status": "EXECUTED",
+        "evaluatedAlbums": 8,
+        "totalImages": 274,
+        "meanPrecision": 0.39163677757427756,
+        "meanRecall": 0.39163677757427756,
+        "meanF1": 0.39163677757427756,
+        "meanJaccard": 0.2734140027583099,
+        "meanSpearmanRho": 0.08682138408566968,
+        "meanKendallTau": 0.06919334734531807,
+        "meanGroupingARI": 0,
+        "meanEventCoverage": 0.8520833333333333
+      },
+      "spaqKonIQAesthetics": {
+        "status": "NOT_VERIFIED_IN_PUBLIC_CI",
+        "note": "Dataset directory not supplied or not present on public CI runner. To evaluate locally: download SPAQ dataset and run with --dataset-dir <PATH>"
+      }
+    },
+    "realCameraRAWDecoding": {
+      "status": "EXECUTED",
+      "mandatoryCanonCR2": "PASS",
+      "totalTestedFixtures": 4,
+      "passedFixtures": 3
+    },
+    "mobileCLIPAdvancedAI": {
+      "status": "EXECUTED",
+      "backend": "MobileCLIP-S0",
+      "revision": "3e0a7bfb9fe83da8a3efaa3fd8f7df24214bb947",
+      "latencyMs": 161.02485060691833
+    },
+    "selectionIntegrity": {
+      "burstWinnerAgreement": 1,
+      "categoryCoverage": 0.5,
+      "duplicateLeakage": 0,
+      "uniqueKeeperFalseRejectRate": 0
+    }
+  }
+}
