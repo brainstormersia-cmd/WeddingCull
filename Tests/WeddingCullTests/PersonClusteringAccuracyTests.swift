@@ -119,7 +119,6 @@ final class PersonClusteringAccuracyTests: XCTestCase {
         let landscapeItem = PhotoItem(id: "landscape_1", fileName: "landscape.jpg", sourceURL: URL(fileURLWithPath: "/tmp/l.jpg"))
 
         let clusters = clusterer.clusterPersonsWithIdentities(items: [landscapeItem], faceInstances: [:])
-        XCTAssertEqual(clusters.count, 1, "Fallback cluster is returned when no faces exist")
-        XCTAssertEqual(clusters.first?.photoIDs, ["landscape_1"])
+        XCTAssertTrue(clusters.isEmpty, "Zero faces must safely produce zero person clusters without crashing")
     }
 }

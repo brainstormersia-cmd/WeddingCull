@@ -157,10 +157,13 @@ public final class PersonClusterer: Sendable {
     }
 
     private func fallbackCluster(items: [PhotoItem]) -> [PersonCluster] {
+        let photosWithFaces = items.filter { $0.metrics.faceCount > 0 }
+        guard !photosWithFaces.isEmpty else { return [] }
+
         var clusterA = PersonCluster(id: "person_1", name: "Primary Person A", role: .partnerA, photoIDs: [], isSuggestedPrimary: true, confidence: 0.70)
         var clusterB = PersonCluster(id: "person_2", name: "Primary Person B", role: .partnerB, photoIDs: [], isSuggestedPrimary: true, confidence: 0.70)
 
-        for item in items where item.metrics.faceCount > 0 {
+        for item in photosWithFaces {
             if item.metrics.faceCount == 1 {
                 if item.category == .bride || item.category == .bridePrep {
                     clusterA.photoIDs.append(item.id)
