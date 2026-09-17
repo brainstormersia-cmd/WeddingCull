@@ -97,6 +97,25 @@ def list_and_download_artifacts(run_id, out_dir="artifacts_download"):
         except Exception as e:
             print(f"    Error downloading {a['name']}: {e}")
 
+def cancel_run(run_id):
+    url = f"https://api.github.com/repos/{REPO}/actions/runs/{run_id}/cancel"
+    req = urllib.request.Request(url, headers=HEADERS, method="POST")
+    try:
+        with urllib.request.urlopen(req) as resp:
+            print(f"Cancelled run {run_id}, status: {resp.status}")
+    except Exception as e:
+        print(f"Error cancelling run {run_id}: {e}")
+
+def dispatch_workflow(workflow_file="release-validation.yml", ref="main"):
+    url = f"https://api.github.com/repos/{REPO}/actions/workflows/{workflow_file}/dispatches"
+    data = json.dumps({"ref": ref}).encode("utf-8")
+    req = urllib.request.Request(url, data=data, headers=HEADERS, method="POST")
+    try:
+        with urllib.request.urlopen(req) as resp:
+            print(f"Dispatched workflow {workflow_file} on {ref}, status: {resp.status}")
+    except Exception as e:
+        print(f"Error dispatching workflow: {e}")
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         cmd = sys.argv[1]
@@ -109,6 +128,11 @@ if __name__ == "__main__":
             list_and_download_artifacts(sys.argv[2], out)
         elif cmd == "log" and len(sys.argv) > 2:
             get_job_log(sys.argv[2])
+        elif cmd == "dispatch":
+            wf = sys.argv[2] if len(sys.argv) > 2 else "release-validation.yml"
+            dispatch_workflow(wf)
+        elif cmd == "cancel" and len(sys.argv) > 2:
+            cancel_run(sys.argv[2])
         else:
             get_run_details(cmd)
     else:
