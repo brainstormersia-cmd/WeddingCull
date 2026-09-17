@@ -8,8 +8,9 @@ echo "===================================================="
 ARCH=$(uname -m)
 echo "Current Architecture: $ARCH"
 
-mkdir -p artifacts/screenshots
-mkdir -p artifacts/reports
+export ARTIFACTS_DIR="$(pwd)/artifacts"
+mkdir -p "$ARTIFACTS_DIR/screenshots"
+mkdir -p "$ARTIFACTS_DIR/reports"
 
 RUN_UNIT=true
 RUN_UI=true
@@ -37,7 +38,12 @@ if [ "$RUN_UI" = true ]; then
     if command -v xcodebuild &>/dev/null && [ -f "WeddingCull.xcodeproj/project.pbxproj" ]; then
         echo "Running UI automation tests via xcodebuild..."
         rm -rf artifacts/WeddingCullUITests.xcresult artifacts/WeddingCullUITests.xcresult.zip
-        perl -e 'alarm 450; exec @ARGV' xcodebuild test \
+        defaults write com.apple.screensaver idleTime 0 2>/dev/null || true
+        CAFF_CMD=""
+        if command -v caffeinate &>/dev/null; then
+            CAFF_CMD="caffeinate -dimsu"
+        fi
+        $CAFF_CMD perl -e 'alarm 450; exec @ARGV' xcodebuild test \
             -project WeddingCull.xcodeproj \
             -scheme WeddingCull \
             -only-testing:WeddingCullUITests \

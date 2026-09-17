@@ -56,14 +56,20 @@ download_and_verify() {
     fi
 }
 
-echo "1. Checking Real RAW (DNG) verification fixture..."
+echo "1. Checking Real RAW (Canon CR2) verification fixture..."
+CR2_FIXTURE="$DATASETS_DIR/raw_samples/sample_burst_frame.cr2"
+CR2_HASH="e0539843c36e6e3f39ffe15aa91f22624149ad18c63e3bef7b6f0e71cdc46c79"
+CR2_URL="https://raw.githubusercontent.com/drewnoakes/metadata-extractor-images/main/cr2/Canon%20EOS%20350D.CR2"
+download_and_verify "$CR2_FIXTURE" "$CR2_HASH" "$CR2_URL" "Canon EOS 350D Genuine RAW CR2 Sample" || true
+
+echo "2. Checking Real RAW (DNG) verification fixture..."
 # Google HDR+ / LibRaw open test DNG RAW sample for genuine ImageIO decoding verification
 DNG_FIXTURE="$DATASETS_DIR/raw_samples/sample_burst_frame.dng"
 DNG_URL="https://raw.githubusercontent.com/LibRaw/LibRaw-sample-data/master/raw/test.dng"
 # Fallback mirror for RAW test fixture
 download_and_verify "$DNG_FIXTURE" "SKIP_VERIFY" "$DNG_URL" "LibRaw Open DNG Sample" || true
 
-echo "2. Checking Closed Eyes in the Wild (CEW) benchmark crops..."
+echo "3. Checking Closed Eyes in the Wild (CEW) benchmark crops..."
 CEW_FIXTURE="$DATASETS_DIR/cew_samples/open_eye_01.jpg"
 # Verified sample URL
 CEW_URL="https://raw.githubusercontent.com/brainstormersia-cmd/WeddingCull/main/tests/fixtures/sample_eye.jpg"

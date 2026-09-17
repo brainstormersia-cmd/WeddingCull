@@ -102,7 +102,7 @@ public final class SyntheticWeddingGenerator: Sendable {
             if shouldGenerateBurst {
                 let burstCount = scale > 2.0 ? 2 : 1
                 for burstIdx in 0..<burstCount {
-                    let burstUUID = String(format: "BURST-%04d-%08x", burstIdx, rng.next())
+                    let burstUUID = String(format: "%08X-%04X-4000-8000-%012X", UInt32(burstIdx), UInt16(rng.next() & 0xFFFF), rng.next() & 0xFFFFFFFFFFFF)
                     let burstLength = isSmallDataset ? 3 : 5
                     let burstWinnerOffset = isSmallDataset ? 1 : 2
 

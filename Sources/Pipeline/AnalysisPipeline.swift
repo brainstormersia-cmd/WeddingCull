@@ -202,7 +202,7 @@ public actor AnalysisPipeline {
                 completedCount += 1
                 analysisResults[result.id] = result
 
-                if completedCount % 10 == 0 || completedCount == totalPhotos {
+                if totalPhotos <= 20 || completedCount % 10 == 0 || completedCount == totalPhotos {
                     report(
                         phase: .quality,
                         current: completedCount,

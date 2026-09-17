@@ -6,6 +6,7 @@ import WeddingCullCore
 @main
 public struct WeddingCullApp: App {
     @StateObject private var appState = AppState()
+    @State private var hasHandledCommandLine = false
 
     public init() {}
 
@@ -60,6 +61,9 @@ public struct WeddingCullApp: App {
     }
 
     private func handleCommandLineArguments() {
+        guard !hasHandledCommandLine else { return }
+        hasHandledCommandLine = true
+
         let args = ProcessInfo.processInfo.arguments
         let env = ProcessInfo.processInfo.environment
 

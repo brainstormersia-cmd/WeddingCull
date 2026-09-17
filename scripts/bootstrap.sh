@@ -32,4 +32,11 @@ if command -v xcodegen &> /dev/null; then
     fi
 fi
 
+# Fetch verified test datasets & genuine RAW fixtures
+if [ -f "scripts/fetch-test-datasets.sh" ]; then
+    echo "📦 Fetching verified public datasets & test fixtures..."
+    chmod +x scripts/fetch-test-datasets.sh
+    ./scripts/fetch-test-datasets.sh || true
+fi
+
 echo "✅ Bootstrap complete."
