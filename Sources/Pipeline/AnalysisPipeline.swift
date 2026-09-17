@@ -139,7 +139,7 @@ public actor AnalysisPipeline {
         // Uses bounded worker pool (hardware.recommendedConcurrency) with Collector Pattern
         report(phase: .quality, current: 0, total: totalPhotos, message: "Starting concurrent analysis...")
         
-        let maxConcurrency = max(1, hardware.recommendedConcurrency)
+        let maxConcurrency = max(1, min(hardware.recommendedConcurrency, 4))
         var analysisResults: [String: PhotoAnalysisResult] = [:]
         analysisResults.reserveCapacity(totalPhotos)
 
@@ -336,71 +336,76 @@ public actor AnalysisPipeline {
         await coordinator.waitIfPaused()
         try Task.checkCancellation()
 
-        return autoreleasepool {
-            _ = try? previewPipeline.generatePreviewAndThumbnail(for: item)
-            guard let previewCG = previewPipeline.loadPreviewCGImage(for: item) else {
-                return PhotoAnalysisResult(
-                    id: item.id,
-                    previewGenerated: false,
-                    metrics: item.metrics,
-                    perceptualHash: nil,
-                    featurePrint: nil,
-                    faces: [],
-                    category: item.category,
-                    categoryConfidence: 0.3
-                )
+        return await withCheckedContinuation { continuation in
+            DispatchQueue.global(qos: .userInitiated).async {
+                let result = autoreleasepool { () -> PhotoAnalysisResult in
+                    _ = try? previewPipeline.generatePreviewAndThumbnail(for: item)
+                    guard let previewCG = previewPipeline.loadPreviewCGImage(for: item) else {
+                        return PhotoAnalysisResult(
+                            id: item.id,
+                            previewGenerated: false,
+                            metrics: item.metrics,
+                            perceptualHash: nil,
+                            featurePrint: nil,
+                            faces: [],
+                            category: item.category,
+                            categoryConfidence: 0.3
+                        )
+                    }
+
+                    // Technical quality metrics
+                    let tech = qualityAnalyzer.analyze(cgImage: previewCG)
+                    var metrics = item.metrics
+                    metrics.rawSharpness = tech.rawSharpness
+                    metrics.meanLuminance = tech.meanLuminance
+                    metrics.shadowClipping = tech.shadowClipping
+                    metrics.highlightClipping = tech.highlightClipping
+                    metrics.dynamicRangeProxy = tech.dynamicRangeProxy
+                    metrics.contrastProxy = tech.contrastProxy
+                    metrics.compositionProxyScore = tech.compositionProxyScore
+                    metrics.isSevereUnderexposed = tech.isSevereUnderexposed
+                    metrics.isSevereOverexposed = tech.isSevereOverexposed
+
+                    // Perceptual dHash
+                    let pHash = PerceptualHash.computeDHash(from: previewCG)
+
+                    // Combined Single-Pass Vision Pipeline Execution (3x faster, single image decode)
+                    let fpRequest = VNGenerateImageFeaturePrintRequest()
+                    let faceRequest = VNDetectFaceLandmarksRequest()
+                    let sceneRequest = VNClassifyImageRequest()
+                    let handler = VNImageRequestHandler(cgImage: previewCG, options: [:])
+                    try? handler.perform([fpRequest, faceRequest, sceneRequest])
+
+                    // Visual image feature print
+                    let fPrint = fpRequest.results?.first as? VNFeaturePrintObservation
+
+                    // Real Face recognition & Identity embeddings
+                    let faces = faceRecognizer.processObservations(faceRequest.results ?? [])
+                    metrics.faceCount = faces.count
+                    if !faces.isEmpty {
+                        let totalQuality = faces.reduce(0.0) { $0 + $1.faceQuality }
+                        metrics.faceQualityScore = totalQuality / Double(faces.count)
+                        let totalEyes = faces.reduce(0.0) { $0 + $1.eyeOpenness }
+                        metrics.averageEyeOpenness = totalEyes / Double(faces.count)
+                        metrics.rawFaceSharpness = tech.rawSharpness * 1.2
+                    }
+
+                    // Scene / Concept classification
+                    let (category, conf) = classifier.classifyWithObservations(sceneRequest.results, metadata: item.metadata, faceCount: faces.count)
+
+                    return PhotoAnalysisResult(
+                        id: item.id,
+                        previewGenerated: true,
+                        metrics: metrics,
+                        perceptualHash: pHash,
+                        featurePrint: fPrint,
+                        faces: faces,
+                        category: category,
+                        categoryConfidence: conf
+                    )
+                }
+                continuation.resume(returning: result)
             }
-
-            // Technical quality metrics
-            let tech = qualityAnalyzer.analyze(cgImage: previewCG)
-            var metrics = item.metrics
-            metrics.rawSharpness = tech.rawSharpness
-            metrics.meanLuminance = tech.meanLuminance
-            metrics.shadowClipping = tech.shadowClipping
-            metrics.highlightClipping = tech.highlightClipping
-            metrics.dynamicRangeProxy = tech.dynamicRangeProxy
-            metrics.contrastProxy = tech.contrastProxy
-            metrics.compositionProxyScore = tech.compositionProxyScore
-            metrics.isSevereUnderexposed = tech.isSevereUnderexposed
-            metrics.isSevereOverexposed = tech.isSevereOverexposed
-
-            // Perceptual dHash
-            let pHash = PerceptualHash.computeDHash(from: previewCG)
-
-            // Combined Single-Pass Vision Pipeline Execution (3x faster, single image decode)
-            let fpRequest = VNGenerateImageFeaturePrintRequest()
-            let faceRequest = VNDetectFaceLandmarksRequest()
-            let sceneRequest = VNClassifyImageRequest()
-            let handler = VNImageRequestHandler(cgImage: previewCG, options: [:])
-            try? handler.perform([fpRequest, faceRequest, sceneRequest])
-
-            // Visual image feature print
-            let fPrint = fpRequest.results?.first as? VNFeaturePrintObservation
-
-            // Real Face recognition & Identity embeddings
-            let faces = faceRecognizer.processObservations(faceRequest.results ?? [])
-            metrics.faceCount = faces.count
-            if !faces.isEmpty {
-                let totalQuality = faces.reduce(0.0) { $0 + $1.faceQuality }
-                metrics.faceQualityScore = totalQuality / Double(faces.count)
-                let totalEyes = faces.reduce(0.0) { $0 + $1.eyeOpenness }
-                metrics.averageEyeOpenness = totalEyes / Double(faces.count)
-                metrics.rawFaceSharpness = tech.rawSharpness * 1.2
-            }
-
-            // Scene / Concept classification
-            let (category, conf) = classifier.classifyWithObservations(sceneRequest.results, metadata: item.metadata, faceCount: faces.count)
-
-            return PhotoAnalysisResult(
-                id: item.id,
-                previewGenerated: true,
-                metrics: metrics,
-                perceptualHash: pHash,
-                featurePrint: fPrint,
-                faces: faces,
-                category: category,
-                categoryConfidence: conf
-            )
         }
     }
 }
