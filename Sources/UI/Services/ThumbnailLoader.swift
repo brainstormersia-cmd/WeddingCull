@@ -16,8 +16,8 @@ public final class ThumbnailLoader: ObservableObject {
     @Published public private(set) var loadedThumbnailKeys: Set<String> = []
     @Published public private(set) var loadedPreviewKeys: Set<String> = []
 
-    private var activeThumbnailTasks: [String: Task<NSImage?, Never>] = [:]
-    private var activePreviewTasks: [String: Task<NSImage?, Never>] = [:]
+    private var activeThumbnailTasks: [String: Task<CGImage?, Never>] = [:]
+    private var activePreviewTasks: [String: Task<CGImage?, Never>] = [:]
 
     public init(previewPipeline: PreviewPipeline = PreviewPipeline()) {
         self.previewPipeline = previewPipeline
@@ -48,42 +48,36 @@ public final class ThumbnailLoader: ObservableObject {
             return cached
         }
 
+        let cgImage: CGImage?
         if let existingTask = activeThumbnailTasks[key] {
-            return await existingTask.value
-        }
+            cgImage = await existingTask.value
+        } else {
+            let pipeline = self.previewPipeline
+            let task = Task.detached(priority: .utility) { () -> CGImage? in
+                if Task.isCancelled { return nil }
 
-        let pipeline = self.previewPipeline
-        let task = Task.detached(priority: .utility) { () -> NSImage? in
-            // Check cancellation
-            if Task.isCancelled { return nil }
+                // Ensure thumbnail file exists or generate it
+                let thumbURL = pipeline.thumbnailURL(for: item)
+                if !FileManager.default.fileExists(atPath: thumbURL.path) {
+                    _ = try? pipeline.generatePreviewAndThumbnail(for: item)
+                }
 
-            // Ensure thumbnail file exists or generate it
-            let thumbURL = pipeline.thumbnailURL(for: item)
-            if !FileManager.default.fileExists(atPath: thumbURL.path) {
-                _ = try? pipeline.generatePreviewAndThumbnail(for: item)
+                if Task.isCancelled { return nil }
+                return pipeline.loadThumbnailCGImage(for: item)
             }
 
-            if Task.isCancelled { return nil }
-
-            guard let cgImage = pipeline.loadThumbnailCGImage(for: item) else {
-                return nil
-            }
-
-            let size = NSSize(width: cgImage.width, height: cgImage.height)
-            return NSImage(cgImage: cgImage, size: size)
+            activeThumbnailTasks[key] = task
+            cgImage = await task.value
+            activeThumbnailTasks.removeValue(forKey: key)
         }
 
-        activeThumbnailTasks[key] = task
-        let result = await task.value
-        activeThumbnailTasks.removeValue(forKey: key)
-
-        if let image = result {
-            let cost = Int(image.size.width * image.size.height * 4)
-            thumbnailCache.setObject(image, forKey: nsKey, cost: cost)
-            loadedThumbnailKeys.insert(key)
-        }
-
-        return result
+        guard let cg = cgImage else { return nil }
+        let size = NSSize(width: cg.width, height: cg.height)
+        let image = NSImage(cgImage: cg, size: size)
+        let cost = Int(image.size.width * image.size.height * 4)
+        thumbnailCache.setObject(image, forKey: nsKey, cost: cost)
+        loadedThumbnailKeys.insert(key)
+        return image
     }
 
     // MARK: - Preview API
@@ -103,40 +97,35 @@ public final class ThumbnailLoader: ObservableObject {
             return cached
         }
 
+        let cgImage: CGImage?
         if let existingTask = activePreviewTasks[key] {
-            return await existingTask.value
-        }
+            cgImage = await existingTask.value
+        } else {
+            let pipeline = self.previewPipeline
+            let task = Task.detached(priority: .userInitiated) { () -> CGImage? in
+                if Task.isCancelled { return nil }
 
-        let pipeline = self.previewPipeline
-        let task = Task.detached(priority: .userInitiated) { () -> NSImage? in
-            if Task.isCancelled { return nil }
+                let prevURL = pipeline.previewURL(for: item)
+                if !FileManager.default.fileExists(atPath: prevURL.path) {
+                    _ = try? pipeline.generatePreviewAndThumbnail(for: item)
+                }
 
-            let prevURL = pipeline.previewURL(for: item)
-            if !FileManager.default.fileExists(atPath: prevURL.path) {
-                _ = try? pipeline.generatePreviewAndThumbnail(for: item)
+                if Task.isCancelled { return nil }
+                return pipeline.loadPreviewCGImage(for: item)
             }
 
-            if Task.isCancelled { return nil }
-
-            guard let cgImage = pipeline.loadPreviewCGImage(for: item) else {
-                return nil
-            }
-
-            let size = NSSize(width: cgImage.width, height: cgImage.height)
-            return NSImage(cgImage: cgImage, size: size)
+            activePreviewTasks[key] = task
+            cgImage = await task.value
+            activePreviewTasks.removeValue(forKey: key)
         }
 
-        activePreviewTasks[key] = task
-        let result = await task.value
-        activePreviewTasks.removeValue(forKey: key)
-
-        if let image = result {
-            let cost = Int(image.size.width * image.size.height * 4)
-            previewCache.setObject(image, forKey: nsKey, cost: cost)
-            loadedPreviewKeys.insert(key)
-        }
-
-        return result
+        guard let cg = cgImage else { return nil }
+        let size = NSSize(width: cg.width, height: cg.height)
+        let image = NSImage(cgImage: cg, size: size)
+        let cost = Int(image.size.width * image.size.height * 4)
+        previewCache.setObject(image, forKey: nsKey, cost: cost)
+        loadedPreviewKeys.insert(key)
+        return image
     }
 
     // MARK: - Prefetch & Cancellation

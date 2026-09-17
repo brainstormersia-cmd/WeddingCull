@@ -1,7 +1,4 @@
 import SwiftUI
-#if canImport(WeddingCullCore)
-import WeddingCullCore
-#endif
 
 public struct BurstCompareView: View {
     @ObservedObject var appState: AppState
@@ -37,7 +34,7 @@ public struct BurstCompareView: View {
                         toggleLoupe()
                     }) {
                         Label(isLoupeActive ? "Vista Intera (Fit)" : "Loupe 1:1 (Nitidezza)",
-                              systemName: isLoupeActive ? "arrow.down.right.and.arrow.up.left" : "magnifyingglass")
+                              systemImage: isLoupeActive ? "arrow.down.right.and.arrow.up.left" : "magnifyingglass")
                     }
                     .buttonStyle(.bordered)
                     .accessibilityIdentifier(AccessibilityIdentifiers.burstZoomLoupeButton)
@@ -45,7 +42,7 @@ public struct BurstCompareView: View {
                     Button(action: {
                         focusFace()
                     }) {
-                        Label("Centra Volto", systemName: "person.crop.circle")
+                        Label("Centra Volto", systemImage: "person.crop.circle")
                     }
                     .buttonStyle(.bordered)
                     .accessibilityIdentifier(AccessibilityIdentifiers.burstFaceFocusButton)
