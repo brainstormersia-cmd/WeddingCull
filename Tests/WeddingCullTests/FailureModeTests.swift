@@ -1,5 +1,7 @@
 import XCTest
-#if canImport(WeddingCullCore)
+#if canImport(WeddingCull)
+@testable import WeddingCull
+#elseif canImport(WeddingCullCore)
 @testable import WeddingCullCore
 #endif
 
