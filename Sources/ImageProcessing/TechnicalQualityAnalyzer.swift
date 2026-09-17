@@ -109,14 +109,25 @@ public final class TechnicalQualityAnalyzer: Sendable {
         // [  0,  1,  0 ]
         // [  1, -4,  1 ]
         // [  0,  1,  0 ]
+        // 2. Sharpness & Composition via combined single-pass scan
         var laplacianSum: Double = 0.0
         var laplacianSqSum: Double = 0.0
         var validLaplacianCount = 0
+
+        // Composition proxy (Rule of thirds energy distribution)
+        let thirdsX1 = width / 3
+        let thirdsX2 = (width * 2) / 3
+        let thirdsY1 = height / 3
+        let thirdsY2 = (height * 2) / 3
+
+        var centralEnergy: Double = 0.0
+        var peripheralEnergy: Double = 0.0
 
         for y in 1..<(height - 1) {
             let rowOffset = y * width
             let topOffset = (y - 1) * width
             let bottomOffset = (y + 1) * width
+            let inYThirds = y >= thirdsY1 && y <= thirdsY2
 
             for x in 1..<(width - 1) {
                 let center = Int(grayBuffer[rowOffset + x])
@@ -130,6 +141,14 @@ public final class TechnicalQualityAnalyzer: Sendable {
                 laplacianSum += dLap
                 laplacianSqSum += dLap * dLap
                 validLaplacianCount += 1
+
+                let edgeVal = abs(top - bottom) + abs(left - right)
+                let inXThirds = x >= thirdsX1 && x <= thirdsX2
+                if inYThirds && inXThirds {
+                    centralEnergy += Double(edgeVal)
+                } else {
+                    peripheralEnergy += Double(edgeVal)
+                }
             }
         }
 
@@ -142,33 +161,6 @@ public final class TechnicalQualityAnalyzer: Sendable {
             rawSharpness = 0.0
         }
 
-        // 3. Composition proxy (Rule of thirds energy distribution)
-        let thirdsX1 = width / 3
-        let thirdsX2 = (width * 2) / 3
-        let thirdsY1 = height / 3
-        let thirdsY2 = (height * 2) / 3
-
-        var centralEnergy: Double = 0.0
-        var peripheralEnergy: Double = 0.0
-
-        for y in 1..<(height - 1) {
-            let inYThirds = y >= thirdsY1 && y <= thirdsY2
-            let rowOffset = y * width
-            for x in 1..<(width - 1) {
-                let inXThirds = x >= thirdsX1 && x <= thirdsX2
-                let top = Int(grayBuffer[(y - 1) * width + x])
-                let bottom = Int(grayBuffer[(y + 1) * width + x])
-                let left = Int(grayBuffer[rowOffset + x - 1])
-                let right = Int(grayBuffer[rowOffset + x + 1])
-                let edgeVal = abs(top - bottom) + abs(left - right)
-
-                if inYThirds && inXThirds {
-                    centralEnergy += Double(edgeVal)
-                } else {
-                    peripheralEnergy += Double(edgeVal)
-                }
-            }
-        }
         let totalEnergy = centralEnergy + peripheralEnergy
         let compositionProxyScore = totalEnergy > 0 ? max(0.2, min(1.0, (centralEnergy / totalEnergy) * 2.0)) : 0.5
 

@@ -386,7 +386,7 @@ public actor AnalysisPipeline {
             previewGenerationSeconds: Double(round(totalPreviewSeconds * 100) / 100),
             faceAndFeatureSeconds: Double(round(totalVisionSeconds * 100) / 100),
             qualityScoringSeconds: Double(round(totalQualitySeconds * 100) / 100),
-            sceneClassificationSeconds: Double(round(totalClassificationDuration * 100) / 100),
+            sceneClassificationSeconds: Double(round(totalClassificationSeconds * 100) / 100),
             burstAndDuplicateSeconds: Double(round(burstDuration * 100) / 100),
             clusteringAndSegmentationSeconds: Double(round(segAndClusteringDuration * 100) / 100),
             rankingAndSelectionSeconds: Double(round(rankingAndSelectionDuration * 100) / 100),
@@ -435,11 +435,12 @@ public actor AnalysisPipeline {
             DispatchQueue.global(qos: .userInitiated).async {
                 let result = autoreleasepool { () -> PhotoAnalysisResult in
                     let tPrevStart = CFAbsoluteTimeGetCurrent()
-                    _ = try? previewPipeline.generatePreviewAndThumbnail(for: item)
+                    let previewResult = try? previewPipeline.generatePreviewAndThumbnailWithImage(for: item)
                     let tPrevEnd = CFAbsoluteTimeGetCurrent()
                     let prevDuration = max(0.0, tPrevEnd - tPrevStart)
 
-                    guard let previewCG = previewPipeline.loadPreviewCGImage(for: item) else {
+                    let previewCG = previewResult?.previewImage ?? previewPipeline.loadPreviewCGImage(for: item)
+                    guard let previewCG = previewCG else {
                         return PhotoAnalysisResult(
                             id: item.id,
                             previewGenerated: false,

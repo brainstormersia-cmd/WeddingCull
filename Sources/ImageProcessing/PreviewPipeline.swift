@@ -100,19 +100,16 @@ public final class PreviewPipeline: Sendable {
             try saveCGImage(finalPreview, to: pURL, compressionQuality: 0.85)
             inMemoryPreview = finalPreview
 
-            // 2. Generate 320px grid thumbnail
-            var thumbCGImage: CGImage? = nil
-            let thumbOptions: [CFString: Any] = [
-                kCGImageSourceCreateThumbnailFromImageAlways: true,
-                kCGImageSourceShouldCacheImmediately: true,
-                kCGImageSourceCreateThumbnailWithTransform: true,
-                kCGImageSourceThumbnailMaxPixelSize: 320
-            ]
-            thumbCGImage = CGImageSourceCreateThumbnailAtIndex(imageSource, 0, thumbOptions as CFDictionary)
-
-            // Fallback for thumbnail: downsample from preview image
+            // 2. Generate 320px grid thumbnail directly from in-memory preview
+            var thumbCGImage = downsample(cgImage: finalPreview, maxPixelSize: 320)
             if thumbCGImage == nil {
-                thumbCGImage = downsample(cgImage: finalPreview, maxPixelSize: 320)
+                let thumbOptions: [CFString: Any] = [
+                    kCGImageSourceCreateThumbnailFromImageAlways: true,
+                    kCGImageSourceShouldCacheImmediately: true,
+                    kCGImageSourceCreateThumbnailWithTransform: true,
+                    kCGImageSourceThumbnailMaxPixelSize: 320
+                ]
+                thumbCGImage = CGImageSourceCreateThumbnailAtIndex(imageSource, 0, thumbOptions as CFDictionary)
             }
 
             guard let finalThumb = thumbCGImage else {
