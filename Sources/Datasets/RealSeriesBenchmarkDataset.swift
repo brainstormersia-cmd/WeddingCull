@@ -121,6 +121,42 @@ public struct GroundTruthPairwiseComparison: Codable, Sendable {
         self.derived_order_preference = derived_order_preference
         self.reasons = reasons
     }
+
+    enum CodingKeys: String, CodingKey {
+        case photo_a
+        case photo_b
+        case votes_a
+        case votes_b
+        case has_raw_votes
+        case derived_order_preference
+        case reasons
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        photo_a = try container.decode(String.self, forKey: .photo_a)
+        photo_b = try container.decode(String.self, forKey: .photo_b)
+        votes_a = try container.decodeIfPresent(Int.self, forKey: .votes_a)
+        votes_b = try container.decodeIfPresent(Int.self, forKey: .votes_b)
+        if let raw = try container.decodeIfPresent(Bool.self, forKey: .has_raw_votes) {
+            has_raw_votes = raw
+        } else {
+            has_raw_votes = (votes_a != nil && votes_b != nil)
+        }
+        derived_order_preference = try container.decodeIfPresent(String.self, forKey: .derived_order_preference)
+        reasons = try container.decodeIfPresent([String].self, forKey: .reasons)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(photo_a, forKey: .photo_a)
+        try container.encode(photo_b, forKey: .photo_b)
+        try container.encodeIfPresent(votes_a, forKey: .votes_a)
+        try container.encodeIfPresent(votes_b, forKey: .votes_b)
+        try container.encode(has_raw_votes, forKey: .has_raw_votes)
+        try container.encodeIfPresent(derived_order_preference, forKey: .derived_order_preference)
+        try container.encodeIfPresent(reasons, forKey: .reasons)
+    }
 }
 
 public struct SeriesGroundTruth: Codable, Sendable {

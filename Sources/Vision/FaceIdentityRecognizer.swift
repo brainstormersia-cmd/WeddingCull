@@ -48,6 +48,53 @@ public struct FaceInstance: Sendable, Codable {
         self.leftEyeLandmarksAvailable = leftEyeLandmarksAvailable
         self.rightEyeLandmarksAvailable = rightEyeLandmarksAvailable
     }
+
+    enum CodingKeys: String, CodingKey {
+        case boundingBox
+        case eyeOpenness
+        case detectionConfidence
+        case faceQuality
+        case faceCaptureQuality
+        case faceSharpness
+        case identityEmbedding
+        case descriptorType
+        case eyeOpennessMeasured
+        case leftEyeLandmarksAvailable
+        case rightEyeLandmarksAvailable
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        boundingBox = try container.decode(CGRect.self, forKey: .boundingBox)
+        eyeOpenness = try container.decode(Double.self, forKey: .eyeOpenness)
+        let conf = try container.decodeIfPresent(Double.self, forKey: .detectionConfidence)
+        let qual = try container.decodeIfPresent(Double.self, forKey: .faceQuality)
+        let resolvedConf = conf ?? qual ?? 0.8
+        detectionConfidence = resolvedConf
+        faceQuality = qual ?? resolvedConf
+        faceCaptureQuality = try container.decodeIfPresent(Double.self, forKey: .faceCaptureQuality)
+        faceSharpness = try container.decodeIfPresent(Double.self, forKey: .faceSharpness)
+        identityEmbedding = try container.decode([Float].self, forKey: .identityEmbedding)
+        descriptorType = try container.decodeIfPresent(DescriptorType.self, forKey: .descriptorType) ?? .geometric
+        eyeOpennessMeasured = try container.decodeIfPresent(Bool.self, forKey: .eyeOpennessMeasured) ?? false
+        leftEyeLandmarksAvailable = try container.decodeIfPresent(Bool.self, forKey: .leftEyeLandmarksAvailable) ?? false
+        rightEyeLandmarksAvailable = try container.decodeIfPresent(Bool.self, forKey: .rightEyeLandmarksAvailable) ?? false
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(boundingBox, forKey: .boundingBox)
+        try container.encode(eyeOpenness, forKey: .eyeOpenness)
+        try container.encode(detectionConfidence, forKey: .detectionConfidence)
+        try container.encode(faceQuality, forKey: .faceQuality)
+        try container.encodeIfPresent(faceCaptureQuality, forKey: .faceCaptureQuality)
+        try container.encodeIfPresent(faceSharpness, forKey: .faceSharpness)
+        try container.encode(identityEmbedding, forKey: .identityEmbedding)
+        try container.encode(descriptorType, forKey: .descriptorType)
+        try container.encode(eyeOpennessMeasured, forKey: .eyeOpennessMeasured)
+        try container.encode(leftEyeLandmarksAvailable, forKey: .leftEyeLandmarksAvailable)
+        try container.encode(rightEyeLandmarksAvailable, forKey: .rightEyeLandmarksAvailable)
+    }
 }
 
 public struct FaceExtractionResult: Sendable {
