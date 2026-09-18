@@ -221,7 +221,7 @@ struct WeddingCullFeatureExporterApp {
                let str = String(data: data, encoding: .utf8) {
                 let line = str + "\n"
                 if let lineData = line.data(using: .utf8) {
-                    _ = lineData.withUnsafeBytes { rawBuffer in
+                    lineData.withUnsafeBytes { rawBuffer in
                         if let baseAddress = rawBuffer.baseAddress {
                             outputStream.write(baseAddress.assumingMemoryBound(to: UInt8.self), maxLength: lineData.count)
                         }
@@ -494,8 +494,10 @@ struct WeddingCullFeatureExporterApp {
         print("Total Faces Extracted: \(totalExtractedFaces)")
         print("Decode Failures: \(totalDecodeFailures)")
         print("Vision Failures: \(totalVisionFailures)")
-        print("Execution Time: \(String(format: \"%.2f\", elapsed)) s")
-        print("Throughput: \(String(format: \"%.1f\", pps)) PPS")
+        let elapsedStr = String(format: "%.2f", elapsed)
+        let ppsStr = String(format: "%.1f", pps)
+        print("Execution Time: \(elapsedStr) s")
+        print("Throughput: \(ppsStr) PPS")
         print("Authentic Feature Cache written to: \(outputPath)")
     }
 }
