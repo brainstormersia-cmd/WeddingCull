@@ -129,4 +129,13 @@ targets:
     dependencies:
       - target: WeddingCull
 
+  WeddingCullFeatureExporter:
+    type: tool
+    platform: macOS
+    sources:
+      - path: Tools/WeddingCullFeatureExporter
+    dependencies:
+      - target: WeddingCull
+
+
 

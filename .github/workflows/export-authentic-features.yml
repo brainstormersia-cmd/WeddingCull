@@ -1,0 +1,55 @@
+name: Export Authentic Photo Triage Features
+
+on:
+  workflow_dispatch:
+    inputs:
+      prefer_train:
+        description: 'Export Train/Dev instead of Val'
+        required: false
+        default: false
+        type: boolean
+
+jobs:
+  export-authentic-features:
+    name: Export Authentic Features on macOS (Apple Silicon)
+    runs-on: macos-14
+    timeout-minutes: 60
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Audit Native macOS Environment
+        run: |
+          echo "=== NATIVE MACOS HARDWARE AUDIT ==="
+          uname -m
+          sw_vers
+
+      - name: Setup Environment
+        run: |
+          chmod +x ./scripts/*.sh
+          ./scripts/bootstrap.sh
+
+      - name: Unpack Validation Dataset Bundle
+        run: |
+          mkdir -p datasets/PhotoTriageValidation
+          if [ -f "PhotoTriageValidation.zip" ]; then
+            unzip -q PhotoTriageValidation.zip -d datasets/
+          fi
+
+      - name: Run Production WeddingCullFeatureExporter
+        run: |
+          export WEDDINGCULL_GIT_SHA=${{ github.sha }}
+          if [ -d "datasets/PhotoTriageValidation" ] && [ "$(ls -A datasets/PhotoTriageValidation)" ]; then
+            swift run WeddingCullFeatureExporter \
+              --dataset datasets/PhotoTriageValidation \
+              --output artifacts/photo_triage_val_features_authentic.jsonl
+          else
+            echo "::warning ::PhotoTriageValidation bundle not present on runner. Awaiting bundle transfer."
+          fi
+
+      - name: Upload Authentic Feature Cache Artifact
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: photo-triage-val-features-authentic
+          path: artifacts/photo_triage_val_features_authentic.jsonl

@@ -1,17 +1,34 @@
-# Photo Triage Empirical Baseline Benchmark Report (R0)
+# Photo Triage Proxy Heuristic Evaluation Report (Proxy R0)
 
-**Dataset**: Princeton Adobe Photo Triage (Validation Partition)  
-**Evaluated Series**: 195 (100% complete)  
-**Evaluated Pairs**: 483 (100% coverage)  
-**Baseline Model**: WeddingCull Production Heuristic (R0)
+> [!CAUTION]
+> **PROXY_EXPERIMENT — NOT PRODUCTION EQUIVALENT**
+> **Official Experiment State**: `EXECUTED_PROXY`
+> This experiment was executed on **Windows** using a **Python approximation** with OpenCV Haar cascades and synthetic fallback face quality (`faceQuality = 0.50`).
+> Apple Vision (`VNDetectFaceCaptureQualityRequest`, `VNDetectFaceLandmarksRequest`) did **NOT** execute.
+> These results do **NOT** represent the authentic production WeddingCull baseline and must never be cited as such.
+> Authentic evaluation requires macOS feature extraction via `WeddingCullFeatureExporter`.
 
 ---
 
-## 1. Overall Performance Summary
+## Provenance Metadata
+* **Experiment State**: `EXECUTED_PROXY`
+* **Source Dataset**: Princeton Adobe Photo Triage
+* **Split**: Validation Partition (Official 195 series)
+* **Exact Item Counts**: 195 series, 503 unique images, 483 evaluated pairs
+* **Git SHA**: `f4119869a84218eb85a539bc2b378eb81aa01460`
+* **Executable / Script**: `scripts/phototriage_baseline.py`
+* **Operating System**: Windows 11
+* **Feature Extractor Used**: Python OpenCV Haar cascade proxy
+* **Apple Vision Actually Executed**: `FALSE`
+* **Output Artifact Path**: `artifacts/photo-triage-baseline-r0.json`
 
-The initial empirical baseline measures the unmodified production culling and burst ranking heuristic on real, un-cherrypicked photo series with crowd-worker preference judgments.
+---
 
-| Metric | Production Baseline R0 | Product Target | Description |
+## 1. Overall Performance Summary (Proxy Heuristic)
+
+The preliminary proxy baseline measures an approximated heuristic on real photo series with crowd-worker preference judgments.
+
+| Metric | Proxy Heuristic R0 | Product Target | Description |
 | :--- | :---: | :---: | :--- |
 | **Pairwise Majority Accuracy** | **50.1%** | > 80.0% | Binary preference concordance across all valid pairs |
 | **Weighted Pairwise Agreement** | **50.7%** | > 85.0% | Accuracy weighted by crowd agreement strength |
@@ -61,6 +78,6 @@ Confidence proxy used: Score margin `|score_A - score_B|`.
 
 ## 4. Benchmark Baseline Conclusion (End of Stage A)
 
-1. **Baseline Established**: Current production WeddingCull heuristic achieves **50.1%** pairwise accuracy and **90.3% Top-2 recall** on untouched real photo series.
-2. **Safety Retention**: Top-3 recall is **95.9%**, meaning human-preferred photos are almost never lost if the top 2-3 alternatives are preserved for editorial review.
-3. **Future Objective**: In Stage B, learned ranking and feature ablations must beat Baseline R0, with the specific goal of raising the 80% coverage automated accuracy toward > 90%.
+1. **Proxy Evaluation Established**: The Python-approximated heuristic (Proxy R0) achieves **50.1%** pairwise accuracy and **90.3% Top-2 recall** on real photo series.
+2. **Safety Retention**: Top-3 recall is **95.9%**, confirming that human-preferred photos are retained in the top 2–3 alternatives.
+3. **Stage B Prerequisite**: This proxy evaluation will be replaced with authentic macOS measurements exported via `WeddingCullFeatureExporter`. Python modeling will strictly consume authentic feature caches and will not perform image analysis.
