@@ -105,8 +105,9 @@ final class WeddingCullUITests: XCTestCase {
 
         // 5. Verify real thumbnails are loaded in the grid (at least 1 loaded thumbnail)
         let loadedThumbPredicate = NSPredicate(format: "identifier == 'photo_thumbnail_loaded'")
-        let loadedThumbs = app.descendants(matching: .any).matching(loadedThumbPredicate)
-        _ = loadedThumbs.firstMatch.waitForExistence(timeout: 10.0)
+        let gridContainer = app.scrollViews["photo_grid"].exists ? app.scrollViews["photo_grid"] : app
+        let loadedThumbs = gridContainer.descendants(matching: .any).matching(loadedThumbPredicate)
+        XCTAssertTrue(loadedThumbs.firstMatch.waitForExistence(timeout: 20.0), "Grid must display real loaded thumbnails")
 
         let loadedCount = loadedThumbs.count
         XCTAssertGreaterThanOrEqual(loadedCount, 1, "Grid must display real loaded thumbnails, not empty placeholders")
@@ -134,7 +135,7 @@ final class WeddingCullUITests: XCTestCase {
             captureScreenshot(name: "06_Burst_Compare_Overview")
 
             // Verify burst preview images loaded
-            let burstPreviews = app.descendants(matching: .any).matching(NSPredicate(format: "identifier == 'photo_preview_loaded'"))
+            let burstPreviews = burstModal.descendants(matching: .any).matching(NSPredicate(format: "identifier == 'photo_preview_loaded'"))
             _ = burstPreviews.firstMatch.waitForExistence(timeout: 8.0)
 
             // Test 1:1 Loupe Zoom
@@ -208,8 +209,10 @@ final class WeddingCullUITests: XCTestCase {
 
         // 1. Wait for Photo Grid or Review Mode entry
         let photoGrid = perfApp.scrollViews["photo_grid"].firstMatch
+        XCTAssertTrue(photoGrid.waitForExistence(timeout: 25.0), "Photo grid must appear in UI")
+
         let loadedThumbPredicate = NSPredicate(format: "identifier == 'photo_thumbnail_loaded'")
-        let loadedThumbs = perfApp.descendants(matching: .any).matching(loadedThumbPredicate)
+        let loadedThumbs = photoGrid.descendants(matching: .any).matching(loadedThumbPredicate)
 
         // 2. Measure Folder Open -> First Rendered Thumbnail
         let firstThumbAppeared = loadedThumbs.firstMatch.waitForExistence(timeout: 25.0)
@@ -218,7 +221,6 @@ final class WeddingCullUITests: XCTestCase {
 
         // 3 & 4. Measure Folder Open -> 24 Rendered Cells & Successful Interactive Scroll
         // In SwiftUI LazyVGrid, offscreen cells instantiate as the user scrolls into view and may recycle.
-        XCTAssertTrue(photoGrid.waitForExistence(timeout: 25.0), "Photo grid must appear in UI")
         var seenThumbnails = Set<String>()
         func recordVisibleThumbs() {
             let all = loadedThumbs.allElementsBoundByIndex

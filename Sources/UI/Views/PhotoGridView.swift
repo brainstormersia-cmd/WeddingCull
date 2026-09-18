@@ -115,9 +115,6 @@ public struct PhotoGridView: View {
                             appState.thumbnailLoader.prefetchThumbnails(for: nextItems)
                         }
                     }
-                    .onDisappear {
-                        appState.thumbnailLoader.cancelThumbnailRequest(for: item)
-                    }
 
                 // Top left badge: Burst indicator
                 if let burstID = item.burstGroupID,
@@ -157,6 +154,7 @@ public struct PhotoGridView: View {
             }
             .padding(.horizontal, 2)
         }
+        .accessibilityElement(children: .contain)
     }
 
     @ViewBuilder
@@ -191,14 +189,14 @@ public struct AsyncThumbnailView: View {
     }
 
     public var body: some View {
+        let currentImage = thumbnailImage ?? loader.cachedThumbnail(for: item)
+        let isLoaded = (currentImage != nil)
+
         ZStack {
-            if let nsImage = thumbnailImage ?? loader.cachedThumbnail(for: item) {
+            if let nsImage = currentImage {
                 Image(nsImage: nsImage)
                     .resizable()
                     .aspectRatio(contentMode: .fill)
-                    .accessibilityElement(children: .ignore)
-                    .accessibilityIdentifier(AccessibilityIdentifiers.photoThumbnailLoaded)
-                    .accessibilityLabel(item.fileName)
             } else {
                 RoundedRectangle(cornerRadius: 6)
                     .fill(Color.secondary.opacity(0.15))
@@ -218,17 +216,20 @@ public struct AsyncThumbnailView: View {
                                 .foregroundColor(.secondary)
                         }
                     )
-                    .accessibilityElement(children: .ignore)
-                    .accessibilityIdentifier(AccessibilityIdentifiers.photoThumbnailPlaceholder)
-                    .accessibilityLabel(item.fileName)
             }
         }
         .aspectRatio(3/2, contentMode: .fit)
         .clipped()
         .cornerRadius(6)
+        .accessibilityElement(children: .ignore)
+        .accessibilityIdentifier(isLoaded ? AccessibilityIdentifiers.photoThumbnailLoaded : AccessibilityIdentifiers.photoThumbnailPlaceholder)
+        .accessibilityLabel(item.fileName)
         .task(id: item.previewCacheKey) {
             if thumbnailImage == nil {
-                thumbnailImage = await loader.requestThumbnail(for: item)
+                let img = await loader.requestThumbnail(for: item)
+                if let img = img {
+                    thumbnailImage = img
+                }
             }
         }
     }

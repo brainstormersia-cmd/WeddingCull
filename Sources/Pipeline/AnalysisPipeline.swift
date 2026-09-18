@@ -831,107 +831,114 @@ public actor AnalysisPipeline {
         try await coordinator.waitIfPaused()
         try Task.checkCancellation()
 
-        let tPrevStart = CFAbsoluteTimeGetCurrent()
-        let previewResult = try? await previewPipeline.generatePreviewAndThumbnailWithImage(for: item)
-        let tPrevEnd = CFAbsoluteTimeGetCurrent()
-        let prevDuration = max(0.0, tPrevEnd - tPrevStart)
+        return await withCheckedContinuation { continuation in
+            DispatchQueue.global(qos: .userInitiated).async {
+                let out = autoreleasepool { () -> StageAOutput in
+                    let tPrevStart = CFAbsoluteTimeGetCurrent()
+                    let previewResult = try? previewPipeline.generatePreviewAndThumbnailWithImage(for: item)
+                    let tPrevEnd = CFAbsoluteTimeGetCurrent()
+                    let prevDuration = max(0.0, tPrevEnd - tPrevStart)
 
-        let previewCG = previewResult?.previewImage ?? previewPipeline.loadPreviewCGImage(for: item)
-        guard let previewCG = previewCG else {
-            return StageAOutput(
-                item: item,
-                previewDurationSeconds: prevDuration,
-                qualityDurationSeconds: 0,
-                faceDurationSeconds: 0,
-                featurePrintDurationSeconds: 0,
-                previewCG: nil,
-                faceCG: nil,
-                sceneCG: nil,
-                metrics: item.metrics,
-                perceptualHash: nil,
-                featurePrint: nil,
-                faces: []
-            )
+                    let previewCG = previewResult?.previewImage ?? previewPipeline.loadPreviewCGImage(for: item)
+                    guard let previewCG = previewCG else {
+                        return StageAOutput(
+                            item: item,
+                            previewDurationSeconds: prevDuration,
+                            qualityDurationSeconds: 0,
+                            faceDurationSeconds: 0,
+                            featurePrintDurationSeconds: 0,
+                            previewCG: nil,
+                            faceCG: nil,
+                            sceneCG: nil,
+                            metrics: item.metrics,
+                            perceptualHash: nil,
+                            featurePrint: nil,
+                            faces: []
+                        )
+                    }
+
+                    // Technical quality metrics
+                    let tQualStart = CFAbsoluteTimeGetCurrent()
+                    let tech = qualityAnalyzer.analyze(cgImage: previewCG)
+                    var metrics = item.metrics
+                    metrics.rawSharpness = tech.rawSharpness
+                    metrics.meanLuminance = tech.meanLuminance
+                    metrics.shadowClipping = tech.shadowClipping
+                    metrics.highlightClipping = tech.highlightClipping
+                    metrics.dynamicRangeProxy = tech.dynamicRangeProxy
+                    metrics.contrastProxy = tech.contrastProxy
+                    metrics.compositionProxyScore = tech.compositionProxyScore
+                    metrics.isSevereUnderexposed = tech.isSevereUnderexposed
+                    metrics.isSevereOverexposed = tech.isSevereOverexposed
+
+                    // Perceptual dHash
+                    let pHash = PerceptualHash.computeDHash(from: previewCG)
+                    let tQualEnd = CFAbsoluteTimeGetCurrent()
+                    let qualDuration = max(0.0, tQualEnd - tQualStart)
+
+                    // Dedicated downscaled Vision inputs
+                    let faceCG: CGImage
+                    if faceInputMaxPixelSize < 1000, let down = previewPipeline.downsample(cgImage: previewCG, maxPixelSize: faceInputMaxPixelSize) {
+                        faceCG = down
+                    } else {
+                        faceCG = previewCG
+                    }
+
+                    let sceneCG: CGImage
+                    if sceneInputMaxPixelSize < 1000, let down = previewPipeline.downsample(cgImage: previewCG, maxPixelSize: sceneInputMaxPixelSize) {
+                        sceneCG = down
+                    } else {
+                        sceneCG = previewCG
+                    }
+
+                    // Face Detection & Identity Landmarks
+                    let tFaceStart = CFAbsoluteTimeGetCurrent()
+                    let faceHandler = VNImageRequestHandler(cgImage: faceCG, options: [:])
+                    let faceRequest = VNDetectFaceLandmarksRequest()
+                    try? faceHandler.perform([faceRequest])
+                    let faces = faceRecognizer.processObservations(faceRequest.results ?? [])
+                    metrics.faceCount = faces.count
+                    if !faces.isEmpty {
+                        let totalQuality = faces.reduce(0.0) { $0 + $1.faceQuality }
+                        metrics.faceQualityScore = totalQuality / Double(faces.count)
+                        let totalEyes = faces.reduce(0.0) { $0 + $1.eyeOpenness }
+                        metrics.averageEyeOpenness = totalEyes / Double(faces.count)
+                        metrics.rawFaceSharpness = tech.rawSharpness * 1.2
+                    }
+                    let tFaceEnd = CFAbsoluteTimeGetCurrent()
+                    let faceDuration = max(0.0, tFaceEnd - tFaceStart)
+
+                    // FeaturePrint (eager mode only)
+                    var fPrint: VNFeaturePrintObservation? = nil
+                    var fpDuration: Double = 0.0
+                    if !lazyFeaturePrint {
+                        let tFpStart = CFAbsoluteTimeGetCurrent()
+                        let fpHandler = VNImageRequestHandler(cgImage: previewCG, options: [:])
+                        let fpRequest = VNGenerateImageFeaturePrintRequest()
+                        try? fpHandler.perform([fpRequest])
+                        fPrint = fpRequest.results?.first as? VNFeaturePrintObservation
+                        let tFpEnd = CFAbsoluteTimeGetCurrent()
+                        fpDuration = max(0.0, tFpEnd - tFpStart)
+                    }
+
+                    return StageAOutput(
+                        item: item,
+                        previewDurationSeconds: prevDuration,
+                        qualityDurationSeconds: qualDuration,
+                        faceDurationSeconds: faceDuration,
+                        featurePrintDurationSeconds: fpDuration,
+                        previewCG: previewCG,
+                        faceCG: faceCG,
+                        sceneCG: sceneCG,
+                        metrics: metrics,
+                        perceptualHash: pHash,
+                        featurePrint: fPrint,
+                        faces: faces
+                    )
+                }
+                continuation.resume(returning: out)
+            }
         }
-
-        // Technical quality metrics
-        let tQualStart = CFAbsoluteTimeGetCurrent()
-        let tech = qualityAnalyzer.analyze(cgImage: previewCG)
-        var metrics = item.metrics
-        metrics.rawSharpness = tech.rawSharpness
-        metrics.meanLuminance = tech.meanLuminance
-        metrics.shadowClipping = tech.shadowClipping
-        metrics.highlightClipping = tech.highlightClipping
-        metrics.dynamicRangeProxy = tech.dynamicRangeProxy
-        metrics.contrastProxy = tech.contrastProxy
-        metrics.compositionProxyScore = tech.compositionProxyScore
-        metrics.isSevereUnderexposed = tech.isSevereUnderexposed
-        metrics.isSevereOverexposed = tech.isSevereOverexposed
-
-        // Perceptual dHash
-        let pHash = PerceptualHash.computeDHash(from: previewCG)
-        let tQualEnd = CFAbsoluteTimeGetCurrent()
-        let qualDuration = max(0.0, tQualEnd - tQualStart)
-
-        // Dedicated downscaled Vision inputs
-        let faceCG: CGImage
-        if faceInputMaxPixelSize < 1000, let down = previewPipeline.downsample(cgImage: previewCG, maxPixelSize: faceInputMaxPixelSize) {
-            faceCG = down
-        } else {
-            faceCG = previewCG
-        }
-
-        let sceneCG: CGImage
-        if sceneInputMaxPixelSize < 1000, let down = previewPipeline.downsample(cgImage: previewCG, maxPixelSize: sceneInputMaxPixelSize) {
-            sceneCG = down
-        } else {
-            sceneCG = previewCG
-        }
-
-        // Face Detection & Identity Landmarks
-        let tFaceStart = CFAbsoluteTimeGetCurrent()
-        let faceHandler = VNImageRequestHandler(cgImage: faceCG, options: [:])
-        let faceRequest = VNDetectFaceLandmarksRequest()
-        try? faceHandler.perform([faceRequest])
-        let faces = faceRecognizer.processObservations(faceRequest.results ?? [])
-        metrics.faceCount = faces.count
-        if !faces.isEmpty {
-            let totalQuality = faces.reduce(0.0) { $0 + $1.faceQuality }
-            metrics.faceQualityScore = totalQuality / Double(faces.count)
-            let totalEyes = faces.reduce(0.0) { $0 + $1.eyeOpenness }
-            metrics.averageEyeOpenness = totalEyes / Double(faces.count)
-            metrics.rawFaceSharpness = tech.rawSharpness * 1.2
-        }
-        let tFaceEnd = CFAbsoluteTimeGetCurrent()
-        let faceDuration = max(0.0, tFaceEnd - tFaceStart)
-
-        // FeaturePrint (eager mode only)
-        var fPrint: VNFeaturePrintObservation? = nil
-        var fpDuration: Double = 0.0
-        if !lazyFeaturePrint {
-            let tFpStart = CFAbsoluteTimeGetCurrent()
-            let fpHandler = VNImageRequestHandler(cgImage: previewCG, options: [:])
-            let fpRequest = VNGenerateImageFeaturePrintRequest()
-            try? fpHandler.perform([fpRequest])
-            fPrint = fpRequest.results?.first as? VNFeaturePrintObservation
-            let tFpEnd = CFAbsoluteTimeGetCurrent()
-            fpDuration = max(0.0, tFpEnd - tFpStart)
-        }
-
-        return StageAOutput(
-            item: item,
-            previewDurationSeconds: prevDuration,
-            qualityDurationSeconds: qualDuration,
-            faceDurationSeconds: faceDuration,
-            featurePrintDurationSeconds: fpDuration,
-            previewCG: previewCG,
-            faceCG: faceCG,
-            sceneCG: sceneCG,
-            metrics: metrics,
-            perceptualHash: pHash,
-            featurePrint: fPrint,
-            faces: faces
-        )
     }
 
     private static func processStageB(
@@ -961,46 +968,55 @@ public actor AnalysisPipeline {
             )
         }
 
-        let tClassStart = CFAbsoluteTimeGetCurrent()
-        var category = stageA.item.category
-        var conf = 0.3
-
-        if classifier.isCoreMLModelLoaded {
-            let res = classifier.classifyWithBackend(cgImage: sceneCG, metadata: stageA.item.metadata, faceCount: stageA.faces.count)
-            category = res.category
-            conf = res.confidence
-        } else {
-            let sceneHandler = VNImageRequestHandler(cgImage: sceneCG, options: [:])
-            let sceneRequest = VNClassifyImageRequest()
-            if let gate = classifierGate {
-                await gate.acquire()
-                try? sceneHandler.perform([sceneRequest])
-                await gate.release()
-            } else {
-                try? sceneHandler.perform([sceneRequest])
-            }
-            let res = classifier.classifyWithObservations(sceneRequest.results, metadata: stageA.item.metadata, faceCount: stageA.faces.count)
-            category = res.0
-            conf = res.1
+        if let gate = classifierGate {
+            await gate.acquire()
         }
-        let tClassEnd = CFAbsoluteTimeGetCurrent()
-        let classDuration = max(0.0, tClassEnd - tClassStart)
 
-        return PhotoAnalysisResult(
-            id: stageA.item.id,
-            previewGenerated: true,
-            metrics: stageA.metrics,
-            perceptualHash: stageA.perceptualHash,
-            featurePrint: stageA.featurePrint,
-            faces: stageA.faces,
-            category: category,
-            categoryConfidence: conf,
-            previewDurationSeconds: stageA.previewDurationSeconds,
-            qualityDurationSeconds: stageA.qualityDurationSeconds,
-            faceDurationSeconds: stageA.faceDurationSeconds,
-            featurePrintDurationSeconds: stageA.featurePrintDurationSeconds,
-            classificationDurationSeconds: classDuration
-        )
+        return await withCheckedContinuation { continuation in
+            DispatchQueue.global(qos: .userInitiated).async {
+                let result = autoreleasepool { () -> PhotoAnalysisResult in
+                    let tClassStart = CFAbsoluteTimeGetCurrent()
+                    var category = stageA.item.category
+                    var conf = 0.3
+
+                    if classifier.isCoreMLModelLoaded {
+                        let res = classifier.classifyWithBackend(cgImage: sceneCG, metadata: stageA.item.metadata, faceCount: stageA.faces.count)
+                        category = res.category
+                        conf = res.confidence
+                    } else {
+                        let sceneHandler = VNImageRequestHandler(cgImage: sceneCG, options: [:])
+                        let sceneRequest = VNClassifyImageRequest()
+                        try? sceneHandler.perform([sceneRequest])
+                        let res = classifier.classifyWithObservations(sceneRequest.results, metadata: stageA.item.metadata, faceCount: stageA.faces.count)
+                        category = res.0
+                        conf = res.1
+                    }
+                    let tClassEnd = CFAbsoluteTimeGetCurrent()
+                    let classDuration = max(0.0, tClassEnd - tClassStart)
+
+                    if let gate = classifierGate {
+                        Task { await gate.release() }
+                    }
+
+                    return PhotoAnalysisResult(
+                        id: stageA.item.id,
+                        previewGenerated: true,
+                        metrics: stageA.metrics,
+                        perceptualHash: stageA.perceptualHash,
+                        featurePrint: stageA.featurePrint,
+                        faces: stageA.faces,
+                        category: category,
+                        categoryConfidence: conf,
+                        previewDurationSeconds: stageA.previewDurationSeconds,
+                        qualityDurationSeconds: stageA.qualityDurationSeconds,
+                        faceDurationSeconds: stageA.faceDurationSeconds,
+                        featurePrintDurationSeconds: stageA.featurePrintDurationSeconds,
+                        classificationDurationSeconds: classDuration
+                    )
+                }
+                continuation.resume(returning: result)
+            }
+        }
     }
 
     private static func processItem(

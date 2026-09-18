@@ -195,6 +195,7 @@ public struct BurstCompareView: View {
         .padding()
         .background(Color.secondary.opacity(0.06))
         .cornerRadius(12)
+        .accessibilityElement(children: .contain)
     }
 
     private func toggleLoupe() {
@@ -245,9 +246,12 @@ public struct AsyncBurstPreviewView: View {
     }
 
     public var body: some View {
+        let currentImage = previewImage ?? loader.cachedPreview(for: item) ?? loader.cachedThumbnail(for: item)
+        let isLoaded = (currentImage != nil)
+
         GeometryReader { geo in
             ZStack {
-                if let nsImage = previewImage ?? loader.cachedPreview(for: item) ?? loader.cachedThumbnail(for: item) {
+                if let nsImage = currentImage {
                     Image(nsImage: nsImage)
                         .resizable()
                         .aspectRatio(contentMode: .fit)
@@ -259,9 +263,6 @@ public struct AsyncBurstPreviewView: View {
                                     onPan(val.translation)
                                 }
                         )
-                        .accessibilityElement(children: .ignore)
-                        .accessibilityIdentifier(AccessibilityIdentifiers.photoPreviewLoaded)
-                        .accessibilityLabel(item.fileName)
                 } else {
                     RoundedRectangle(cornerRadius: 8)
                         .fill(Color.secondary.opacity(0.15))
@@ -279,16 +280,19 @@ public struct AsyncBurstPreviewView: View {
                                     .foregroundColor(.secondary)
                             }
                         )
-                        .accessibilityElement(children: .ignore)
-                        .accessibilityIdentifier(AccessibilityIdentifiers.photoPreviewPlaceholder)
-                        .accessibilityLabel(item.fileName)
                 }
             }
             .frame(width: geo.size.width, height: geo.size.height)
+            .accessibilityElement(children: .ignore)
+            .accessibilityIdentifier(isLoaded ? AccessibilityIdentifiers.photoPreviewLoaded : AccessibilityIdentifiers.photoPreviewPlaceholder)
+            .accessibilityLabel(item.fileName)
         }
         .task(id: item.previewCacheKey) {
             if previewImage == nil {
-                previewImage = await loader.requestPreview(for: item)
+                let img = await loader.requestPreview(for: item)
+                if let img = img {
+                    previewImage = img
+                }
             }
         }
     }
