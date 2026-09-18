@@ -191,14 +191,14 @@ final class WeddingCullUITests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: perfTempDir) }
 
         let generator = SyntheticWeddingGenerator()
-        let config = SyntheticWeddingGenerator.GeneratorConfig(targetTotalPhotos: 36)
+        let config = SyntheticWeddingGenerator.GeneratorConfig(targetTotalPhotos: 48)
         _ = try generator.generateDataset(at: perfTempDir, config: config)
 
         let perfApp = XCUIApplication()
         perfApp.launchArguments = [
             "--ui-testing",
             "--source-folder", perfTempDir.path,
-            "--target-count", "18"
+            "--target-count", "24"
         ]
         perfApp.launchEnvironment["UI_TESTING"] = "YES"
         perfApp.launchEnvironment["UI_TEST_SOURCE_FOLDER"] = perfTempDir.path
@@ -234,17 +234,25 @@ final class WeddingCullUITests: XCTestCase {
 
         var totalScrollTime = 0.0
         let scrollDeadline = CFAbsoluteTimeGetCurrent() + 25.0
+        var swipeDirectionUp = true
         while max(seenThumbnails.count, loadedThumbs.count) < 24 && CFAbsoluteTimeGetCurrent() < scrollDeadline {
             let tS = CFAbsoluteTimeGetCurrent()
-            photoGrid.swipeUp()
+            if swipeDirectionUp {
+                photoGrid.swipeUp()
+            } else {
+                photoGrid.swipeDown()
+            }
             totalScrollTime += (CFAbsoluteTimeGetCurrent() - tS)
-            Thread.sleep(forTimeInterval: 0.25)
+            Thread.sleep(forTimeInterval: 0.3)
             recordVisibleThumbs()
+            if seenThumbnails.count >= 18 && seenThumbnails.count < 24 {
+                swipeDirectionUp.toggle()
+            }
         }
         let t24Cells = CFAbsoluteTimeGetCurrent() - tFolderOpenStart
         let scrollDuration = max(0.01, totalScrollTime)
         let renderedCount = max(seenThumbnails.count, loadedThumbs.count)
-        XCTAssertGreaterThanOrEqual(renderedCount, min(24, 36), "At least 24 thumbnail cells must render after interactive scroll")
+        XCTAssertGreaterThanOrEqual(renderedCount, min(24, 48), "At least 24 thumbnail cells must render after interactive scroll")
 
         print("====================================================")
         print("📊 REAL UI READINESS & SCROLL MEASUREMENT")
