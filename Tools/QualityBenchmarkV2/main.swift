@@ -60,6 +60,7 @@ struct SeriesRankingMetrics: Codable, Sendable {
     let evaluationMode: String // "REAL_IMAGE_ANALYSIS" or "SYNTHETIC_LOGIC_VALIDATION"
     let configurationName: String
     let enableFaceCaptureQuality: Bool
+    let totalSeriesEvaluated: Int
     let manifestSeriesCount: Int
     let evaluatedSeriesCount: Int
     let excludedSeriesCount: Int
@@ -711,6 +712,7 @@ struct QualityBenchmarkV2Runner {
             evaluationMode: "REAL_IMAGE_ANALYSIS",
             configurationName: "Real Image Baseline (Confidence Only)",
             enableFaceCaptureQuality: false,
+            totalSeriesEvaluated: evaluatedSeriesCount,
             manifestSeriesCount: manifestCount,
             evaluatedSeriesCount: evaluatedSeriesCount,
             excludedSeriesCount: excludedSeriesCount,
@@ -734,6 +736,7 @@ struct QualityBenchmarkV2Runner {
             evaluationMode: "REAL_IMAGE_ANALYSIS",
             configurationName: "Real Image Experimental (+FaceCaptureQuality)",
             enableFaceCaptureQuality: true,
+            totalSeriesEvaluated: evaluatedSeriesCount,
             manifestSeriesCount: manifestCount,
             evaluatedSeriesCount: evaluatedSeriesCount,
             excludedSeriesCount: excludedSeriesCount,
@@ -880,6 +883,7 @@ struct QualityBenchmarkV2Runner {
                 evaluationMode: "SYNTHETIC_LOGIC_VALIDATION",
                 configurationName: configName,
                 enableFaceCaptureQuality: detector.enableFaceCaptureQuality,
+                totalSeriesEvaluated: fixture.series.count,
                 manifestSeriesCount: fixture.series.count,
                 evaluatedSeriesCount: fixture.series.count,
                 excludedSeriesCount: 0,
