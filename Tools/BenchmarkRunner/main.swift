@@ -816,12 +816,12 @@ struct BenchmarkRunner {
                 let maxScoreDiff = scoreDiffs.max() ?? 0.0
                 let meanScoreDiff = scoreDiffs.isEmpty ? 0.0 : (scoreDiffs.reduce(0.0, +) / Double(scoreDiffs.count))
 
-                let bgA = runA.session.burstGroups
-                let bgB = runB.session.burstGroups
+                let bgA = Dictionary(uniqueKeysWithValues: runA.session.burstGroups.map { ($0.id, $0) })
+                let bgB = Dictionary(uniqueKeysWithValues: runB.session.burstGroups.map { ($0.id, $0) })
                 var burstWinnerMismatches = 0
                 for (id, groupA) in bgA {
                     if let groupB = bgB[id] {
-                        if groupA.canonicalPhotoID != groupB.canonicalPhotoID {
+                        if groupA.winnerID != groupB.winnerID {
                             burstWinnerMismatches += 1
                         }
                     } else {
@@ -850,8 +850,8 @@ struct BenchmarkRunner {
                     burstGroupsCountB: bgB.count,
                     burstWinnersMatch: (burstWinnerMismatches == 0 && bgA.count == bgB.count),
                     burstWinnerMismatchCount: burstWinnerMismatches,
-                    segmentsCountA: runA.session.temporalSegments.count,
-                    segmentsCountB: runB.session.temporalSegments.count,
+                    segmentsCountA: runA.session.segments.count,
+                    segmentsCountB: runB.session.segments.count,
                     maxOverallScoreDiff: Double(round(maxScoreDiff * 100000) / 100000),
                     meanOverallScoreDiff: Double(round(meanScoreDiff * 100000) / 100000),
                     isByteIdentical: isByteIdentical,
@@ -1268,7 +1268,7 @@ struct BenchmarkRunner {
             }
             print(String(format: "  Session round-trip status: %@ (Reopen Latency: %.3f s, Target: < 2.0s)", sessionReloadSuccess ? "PASS" : "FAIL", sessionReopenLatencySeconds))
 
-            let backendUsed = pipeline.classifierBackendUsed.rawValue
+            let backendUsed = await pipeline.classifierBackendUsed.rawValue
 
             print("\n====================================================")
             print("📊 BENCHMARK EXECUTION RESULTS (100% MEASURED)")
@@ -1598,12 +1598,14 @@ struct BenchmarkRunner {
             }
 
             if strictModel && classificationBackendArg == "mobileclip" {
-                if !pipeline.isCoreMLModelLoaded {
+                let modelLoaded = await pipeline.isCoreMLModelLoaded
+                if !modelLoaded {
                     print("\n❌ STRICT MODEL ERROR: MobileCLIP-S0 Core ML model is not loaded!")
                     exit(1)
                 }
-                if pipeline.classifierBackendUsed != .mobileCLIP {
-                    print("\n❌ STRICT MODEL ERROR: Classifier fell back to \(pipeline.classifierBackendUsed.rawValue) instead of MobileCLIP-S0!")
+                let actualBackend = await pipeline.classifierBackendUsed
+                if actualBackend != .mobileCLIP {
+                    print("\n❌ STRICT MODEL ERROR: Classifier fell back to \(actualBackend.rawValue) instead of MobileCLIP-S0!")
                     exit(1)
                 }
                 print("✅ Strict model validation PASSED: MobileCLIP-S0 ran authentically via Core ML.")
