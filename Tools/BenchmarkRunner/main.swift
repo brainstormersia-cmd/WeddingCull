@@ -1242,9 +1242,11 @@ struct BenchmarkRunner {
                 rawHandling: .rawAndJpegPair
             )
 
+            let selectedPhotos = session.photos.filter { $0.isSelected }
+            let expectedExportFiles = selectedPhotos.reduce(0) { $0 + ($1.hasRawJpegPair ? 2 : 1) }
             let exportedFileCount = exportResult?.exportedCount ?? 0
-            let exportSuccess = (exportedFileCount > 0) && (exportedFileCount == selectedCount || selectedCount == 0)
-            print("  Exported files: \(exportedFileCount), Expected selection: \(selectedCount), Status: \(exportSuccess ? "PASS" : "FAIL")")
+            let exportSuccess = (exportedFileCount > 0) && (exportedFileCount == expectedExportFiles || selectedCount == 0)
+            print("  Exported files: \(exportedFileCount), Expected files: \(expectedExportFiles) (\(selectedCount) selected photos), Status: \(exportSuccess ? "PASS" : "FAIL")")
 
             // Test Session Persistence
             print("💾 Verifying SessionManager save/reload round-trip...")
