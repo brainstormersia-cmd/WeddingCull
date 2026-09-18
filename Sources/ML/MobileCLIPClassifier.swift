@@ -3,6 +3,9 @@ import CoreGraphics
 import CoreML
 import Vision
 import Accelerate
+#if canImport(Metal)
+import Metal
+#endif
 
 public enum ClassificationBackend: String, Sendable {
     case mobileCLIP = "MobileCLIP-S0"
@@ -12,6 +15,7 @@ public enum ClassificationBackend: String, Sendable {
 public final class MobileCLIPClassifier: ImageClassifierProtocol, @unchecked Sendable {
     private let fallbackClassifier = VisionSceneClassifier()
     private let isAppleSilicon: Bool
+    private let predictionLock = NSLock()
     private var coreMLModel: MLModel?
     private var conceptEmbeddings: [WeddingCategory: [Float]] = [:]
     public private(set) var isCoreMLModelLoaded: Bool = false
@@ -93,8 +97,21 @@ public final class MobileCLIPClassifier: ImageClassifierProtocol, @unchecked Sen
             }
             let config = MLModelConfiguration()
             // On Apple Silicon: .all (Neural Engine + GPU + CPU)
-            // On Intel: .cpuAndGPU (Intel Core CPU + integrated/discrete GPU)
-            config.computeUnits = isAppleSilicon ? .all : .cpuAndGPU
+            // On Intel: Check if running under Apple Paravirtual device (e.g. GitHub Actions macOS VM)
+            // where MPSGraph / Metal driver has known command-buffer hang/callback errors. Fall back to .cpuOnly.
+            if isAppleSilicon {
+                config.computeUnits = .all
+            } else {
+                #if canImport(Metal)
+                if let dev = MTLCreateSystemDefaultDevice(), dev.name.localizedCaseInsensitiveContains("paravirtual") {
+                    config.computeUnits = .cpuOnly
+                } else {
+                    config.computeUnits = .cpuAndGPU
+                }
+                #else
+                config.computeUnits = .cpuOnly
+                #endif
+            }
             self.coreMLModel = try MLModel(contentsOf: compiledURL, configuration: config)
             self.isCoreMLModelLoaded = true
             self.lastUsedBackend = .mobileCLIP
@@ -150,6 +167,8 @@ public final class MobileCLIPClassifier: ImageClassifierProtocol, @unchecked Sen
         // 4. Run Core ML prediction
         let outputProvider: MLFeatureProvider
         do {
+            predictionLock.lock()
+            defer { predictionLock.unlock() }
             outputProvider = try model.prediction(from: featureProvider)
         } catch {
             return nil

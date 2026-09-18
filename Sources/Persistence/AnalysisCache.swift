@@ -67,21 +67,10 @@ public struct CachedAnalysisRecord: Codable, Sendable {
 
 public final class AnalysisCache: Sendable {
     public let cacheDirectory: URL
-    private let encoder: JSONEncoder
-    private let decoder: JSONDecoder
 
     public init(baseCacheDirectory: URL) {
         self.cacheDirectory = baseCacheDirectory.appendingPathComponent("analysis", isDirectory: true)
         try? FileManager.default.createDirectory(at: self.cacheDirectory, withIntermediateDirectories: true)
-
-        let enc = JSONEncoder()
-        enc.outputFormatting = [.sortedKeys]
-        enc.dateEncodingStrategy = .iso8601
-        self.encoder = enc
-
-        let dec = JSONDecoder()
-        dec.dateDecodingStrategy = .iso8601
-        self.decoder = dec
     }
 
     public func recordURL(for cacheKey: String, backend: String? = nil) -> URL {
@@ -106,6 +95,8 @@ public final class AnalysisCache: Sendable {
             }
         }
 
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
         guard let data = try? Data(contentsOf: resolvedURL),
               let record = try? decoder.decode(CachedAnalysisRecord.self, from: data) else {
             return nil
@@ -127,6 +118,9 @@ public final class AnalysisCache: Sendable {
 
     public func saveRecord(_ record: CachedAnalysisRecord) {
         let fileURL = recordURL(for: record.previewCacheKey, backend: record.classificationBackend)
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        encoder.dateEncodingStrategy = .iso8601
         guard let data = try? encoder.encode(record) else { return }
         try? data.write(to: fileURL, options: .atomic)
     }

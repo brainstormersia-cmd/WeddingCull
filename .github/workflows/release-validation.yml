@@ -93,7 +93,7 @@ jobs:
   dataset-validation-intel:
     name: 1,500→700 Benchmark (Native Intel x86_64)
     runs-on: macos-15-intel
-    timeout-minutes: 60
+    timeout-minutes: 90
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -179,6 +179,7 @@ jobs:
             --count "${{ github.event.inputs.dataset_size || '1500' }}" \
             --target "${{ github.event.inputs.target_count || '700' }}" \
             --workers 2 \
+            --classify-slots 1 \
             --classification-backend mobileclip \
             --custom-cache-dir artifacts/cache_intel_2workers \
             --clean-cache \

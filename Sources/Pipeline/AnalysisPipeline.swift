@@ -1080,34 +1080,30 @@ public actor AnalysisPipeline {
             await gate.acquire()
         }
 
-        return await withCheckedContinuation { continuation in
+        let result: PhotoAnalysisResult = await withCheckedContinuation { continuation in
             DispatchQueue.global(qos: .userInitiated).async {
-                let result = autoreleasepool { () -> PhotoAnalysisResult in
+                let res = autoreleasepool { () -> PhotoAnalysisResult in
                     let tClassStart = CFAbsoluteTimeGetCurrent()
                     var category = stageA.item.category
                     var conf = 0.3
                     var scores: [WeddingCategory: Double] = [:]
 
                     if classifier.isCoreMLModelLoaded {
-                        let res = classifier.classifyWithBackend(cgImage: sceneCG, metadata: stageA.item.metadata, faceCount: stageA.faces.count)
-                        category = res.category
-                        conf = res.confidence
-                        scores[res.category] = res.confidence
+                        let classRes = classifier.classifyWithBackend(cgImage: sceneCG, metadata: stageA.item.metadata, faceCount: stageA.faces.count)
+                        category = classRes.category
+                        conf = classRes.confidence
+                        scores[classRes.category] = classRes.confidence
                     } else {
                         let sceneHandler = VNImageRequestHandler(cgImage: sceneCG, options: [:])
                         let sceneRequest = VNClassifyImageRequest()
                         try? sceneHandler.perform([sceneRequest])
-                        let res = classifier.classifyWithObservations(sceneRequest.results, metadata: stageA.item.metadata, faceCount: stageA.faces.count)
-                        category = res.0
-                        conf = res.1
-                        scores[res.0] = res.1
+                        let classRes = classifier.classifyWithObservations(sceneRequest.results, metadata: stageA.item.metadata, faceCount: stageA.faces.count)
+                        category = classRes.0
+                        conf = classRes.1
+                        scores[classRes.0] = classRes.1
                     }
                     let tClassEnd = CFAbsoluteTimeGetCurrent()
                     let classDuration = max(0.0, tClassEnd - tClassStart)
-
-                    if let gate = classifierGate {
-                        Task { await gate.release() }
-                    }
 
                     // Save authoritative analysis record for deterministic warm cache reuse
                     var fpData: Data? = nil
@@ -1146,9 +1142,15 @@ public actor AnalysisPipeline {
                         classificationDurationSeconds: classDuration
                     )
                 }
-                continuation.resume(returning: result)
+                continuation.resume(returning: res)
             }
         }
+
+        if let gate = classifierGate {
+            await gate.release()
+        }
+
+        return result
     }
 
     private static func processItem(
