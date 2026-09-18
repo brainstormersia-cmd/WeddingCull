@@ -33,7 +33,9 @@ public struct PhotoAnalysisResult: Sendable {
     public let categoryConfidence: Double
     public let previewDurationSeconds: Double
     public let qualityDurationSeconds: Double
-    public let visionDurationSeconds: Double
+    public let faceDurationSeconds: Double
+    public let featurePrintDurationSeconds: Double
+    public var visionDurationSeconds: Double { faceDurationSeconds + featurePrintDurationSeconds }
     public let classificationDurationSeconds: Double
 }
 
@@ -193,6 +195,8 @@ public actor AnalysisPipeline {
 
         var totalPreviewSeconds = 0.0
         var totalQualitySeconds = 0.0
+        var totalFaceSeconds = 0.0
+        var totalFeaturePrintSeconds = 0.0
         var totalVisionSeconds = 0.0
         var totalClassificationSeconds = 0.0
 
@@ -220,6 +224,8 @@ public actor AnalysisPipeline {
                 analysisResults[result.id] = result
                 totalPreviewSeconds += result.previewDurationSeconds
                 totalQualitySeconds += result.qualityDurationSeconds
+                totalFaceSeconds += result.faceDurationSeconds
+                totalFeaturePrintSeconds += result.featurePrintDurationSeconds
                 totalVisionSeconds += result.visionDurationSeconds
                 totalClassificationSeconds += result.classificationDurationSeconds
 
@@ -384,6 +390,8 @@ public actor AnalysisPipeline {
         let timings = PhaseTimings(
             discoverySeconds: Double(round(discoveryDuration * 100) / 100),
             previewGenerationSeconds: Double(round(totalPreviewSeconds * 100) / 100),
+            faceDetectionSeconds: Double(round(totalFaceSeconds * 100) / 100),
+            featurePrintSeconds: Double(round(totalFeaturePrintSeconds * 100) / 100),
             faceAndFeatureSeconds: Double(round(totalVisionSeconds * 100) / 100),
             qualityScoringSeconds: Double(round(totalQualitySeconds * 100) / 100),
             sceneClassificationSeconds: Double(round(totalClassificationSeconds * 100) / 100),
@@ -452,7 +460,8 @@ public actor AnalysisPipeline {
                             categoryConfidence: 0.3,
                             previewDurationSeconds: prevDuration,
                             qualityDurationSeconds: 0,
-                            visionDurationSeconds: 0,
+                            faceDurationSeconds: 0,
+                            featurePrintDurationSeconds: 0,
                             classificationDurationSeconds: 0
                         )
                     }
@@ -476,18 +485,12 @@ public actor AnalysisPipeline {
                     let tQualEnd = CFAbsoluteTimeGetCurrent()
                     let qualDuration = max(0.0, tQualEnd - tQualStart)
 
-                    // Combined Single-Pass Vision Pipeline Execution
-                    let tVisStart = CFAbsoluteTimeGetCurrent()
-                    let fpRequest = VNGenerateImageFeaturePrintRequest()
-                    let faceRequest = VNDetectFaceLandmarksRequest()
-                    let sceneRequest = VNClassifyImageRequest()
                     let handler = VNImageRequestHandler(cgImage: previewCG, options: [:])
-                    try? handler.perform([fpRequest, faceRequest, sceneRequest])
 
-                    // Visual image feature print
-                    let fPrint = fpRequest.results?.first as? VNFeaturePrintObservation
-
-                    // Real Face recognition & Identity embeddings
+                    // 1. Face Detection & Identity Landmarks
+                    let tFaceStart = CFAbsoluteTimeGetCurrent()
+                    let faceRequest = VNDetectFaceLandmarksRequest()
+                    try? handler.perform([faceRequest])
                     let faces = faceRecognizer.processObservations(faceRequest.results ?? [])
                     metrics.faceCount = faces.count
                     if !faces.isEmpty {
@@ -497,10 +500,18 @@ public actor AnalysisPipeline {
                         metrics.averageEyeOpenness = totalEyes / Double(faces.count)
                         metrics.rawFaceSharpness = tech.rawSharpness * 1.2
                     }
-                    let tVisEnd = CFAbsoluteTimeGetCurrent()
-                    let visDuration = max(0.0, tVisEnd - tVisStart)
+                    let tFaceEnd = CFAbsoluteTimeGetCurrent()
+                    let faceDuration = max(0.0, tFaceEnd - tFaceStart)
 
-                    // Scene / Concept classification
+                    // 2. FeaturePrint Generation
+                    let tFpStart = CFAbsoluteTimeGetCurrent()
+                    let fpRequest = VNGenerateImageFeaturePrintRequest()
+                    try? handler.perform([fpRequest])
+                    let fPrint = fpRequest.results?.first as? VNFeaturePrintObservation
+                    let tFpEnd = CFAbsoluteTimeGetCurrent()
+                    let fpDuration = max(0.0, tFpEnd - tFpStart)
+
+                    // 3. Scene & Concept Classification
                     let tClassStart = CFAbsoluteTimeGetCurrent()
                     let (category, conf): (WeddingCategory, Double)
                     if classifier.isCoreMLModelLoaded {
@@ -508,6 +519,8 @@ public actor AnalysisPipeline {
                         category = res.category
                         conf = res.confidence
                     } else {
+                        let sceneRequest = VNClassifyImageRequest()
+                        try? handler.perform([sceneRequest])
                         let res = classifier.classifyWithObservations(sceneRequest.results, metadata: item.metadata, faceCount: faces.count)
                         category = res.0
                         conf = res.1
@@ -526,7 +539,8 @@ public actor AnalysisPipeline {
                         categoryConfidence: conf,
                         previewDurationSeconds: prevDuration,
                         qualityDurationSeconds: qualDuration,
-                        visionDurationSeconds: visDuration,
+                        faceDurationSeconds: faceDuration,
+                        featurePrintDurationSeconds: fpDuration,
                         classificationDurationSeconds: classDuration
                     )
                 }

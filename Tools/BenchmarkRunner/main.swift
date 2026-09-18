@@ -40,6 +40,11 @@ struct BenchmarkRunner {
         var explicitGitSHA: String? = nil
         var explicitBuildConfig: String? = nil
         var workerOverride: Int? = nil
+        var sweepConcurrency = false
+        var sweepWorkersList: [Int] = [1, 2, 3, 4]
+        var outputSweepJSONPath: String? = nil
+        var sweepPhotoCount: Int? = nil
+        var sweepOnly = false
 
         var i = 1
         while i < args.count {
@@ -94,6 +99,24 @@ struct BenchmarkRunner {
                     workerOverride = w
                     i += 1
                 }
+            case "--sweep-concurrency":
+                sweepConcurrency = true
+                if i + 1 < args.count, let count = Int(args[i + 1]) {
+                    sweepPhotoCount = count
+                    i += 1
+                }
+            case "--sweep-workers":
+                if i + 1 < args.count {
+                    sweepWorkersList = args[i + 1].split(separator: ",").compactMap { Int($0.trimmingCharacters(in: .whitespaces)) }
+                    i += 1
+                }
+            case "--output-sweep-json":
+                if i + 1 < args.count {
+                    outputSweepJSONPath = args[i + 1]
+                    i += 1
+                }
+            case "--sweep-only":
+                sweepOnly = true
             case "--strict":
                 strictMode = true
             default:
@@ -152,6 +175,135 @@ struct BenchmarkRunner {
             }
         } else {
             print("ℹ️ Using existing dataset at \(datasetFolder.path) (\(existingFiles.count) files).")
+        }
+
+        if sweepConcurrency {
+            let sweepTargetCount = sweepPhotoCount ?? datasetPhotoCount
+            let sweepFolder: URL
+            if let customPath = datasetPath {
+                sweepFolder = URL(fileURLWithPath: customPath)
+            } else if sweepPhotoCount != nil {
+                sweepFolder = URL(fileURLWithPath: "artifacts/benchmark_dataset_sweep_\(sweepTargetCount)")
+            } else {
+                sweepFolder = datasetFolder
+            }
+
+            let sweepExisting = (try? fileManager.contentsOfDirectory(atPath: sweepFolder.path)) ?? []
+            if sweepExisting.count < sweepTargetCount {
+                print("📦 Generating \(sweepTargetCount) photos for concurrency sweep...")
+                try? fileManager.removeItem(at: sweepFolder)
+                let generator = SyntheticWeddingGenerator()
+                let config = SyntheticWeddingGenerator.GeneratorConfig(
+                    generateLargeImages: true,
+                    targetTotalPhotos: sweepTargetCount,
+                    datasetMode: datasetMode
+                )
+                _ = try? generator.generateDataset(at: sweepFolder, config: config)
+            }
+
+            print("\n🔄 Running Concurrency Sweep across workers: \(sweepWorkersList) on \(sweepTargetCount) photos...")
+            struct ConcurrencyResult: Codable {
+                let workers: Int
+                let wallClockSeconds: Double
+                let throughputPPS: Double
+                let peakMemoryMB: Int
+                let faceDetectionSeconds: Double
+                let faceMsPerPhoto: Double
+                let featurePrintSeconds: Double
+                let fpMsPerPhoto: Double
+                let sceneClassificationSeconds: Double
+                let sceneMsPerPhoto: Double
+                let rankingAndSelectionSeconds: Double
+            }
+            var sweepResults: [ConcurrencyResult] = []
+
+            for w in sweepWorkersList {
+                print("\n--- Testing with \(w) worker(s) ---")
+                var currentPeak: UInt64 = 0
+                let samplingTask = Task {
+                    while !Task.isCancelled {
+                        let usage = getCurrentResidentMemoryBytes()
+                        if usage > currentPeak {
+                            currentPeak = usage
+                        }
+                        try? await Task.sleep(nanoseconds: 50_000_000)
+                    }
+                }
+
+                let hw = HardwareCapabilities(concurrencyOverride: w)
+                let pipe = AnalysisPipeline(hardware: hw)
+                let tStart = Date()
+                let sess = try await pipe.runAnalysis(
+                    sourceFolder: sweepFolder,
+                    targetCount: min(sweepTargetCount / 2, 700)
+                ) { _ in }
+                samplingTask.cancel()
+                let tWall = max(0.001, Date().timeIntervalSince(tStart))
+                let pps = Double(sess.photos.count) / tWall
+                let peakMB = Int(round(Double(currentPeak) / (1024.0 * 1024.0)))
+                let count = Double(max(1, sess.photos.count))
+                let pt = sess.phaseTimings ?? PhaseTimings()
+
+                let res = ConcurrencyResult(
+                    workers: w,
+                    wallClockSeconds: Double(round(tWall * 100) / 100),
+                    throughputPPS: Double(round(pps * 100) / 100),
+                    peakMemoryMB: peakMB,
+                    faceDetectionSeconds: pt.faceDetectionSeconds,
+                    faceMsPerPhoto: Double(round((pt.faceDetectionSeconds / count) * 10000) / 10),
+                    featurePrintSeconds: pt.featurePrintSeconds,
+                    fpMsPerPhoto: Double(round((pt.featurePrintSeconds / count) * 10000) / 10),
+                    sceneClassificationSeconds: pt.sceneClassificationSeconds,
+                    sceneMsPerPhoto: Double(round((pt.sceneClassificationSeconds / count) * 10000) / 10),
+                    rankingAndSelectionSeconds: pt.rankingAndSelectionSeconds
+                )
+                sweepResults.append(res)
+                print(String(format: "  Worker count %d: %.2fs wall, %.2f PPS, %d MB RSS | Face: %.1f ms/photo, FP: %.1f ms/photo, Scene: %.1f ms/photo",
+                             w, tWall, pps, peakMB, res.faceMsPerPhoto, res.fpMsPerPhoto, res.sceneMsPerPhoto))
+            }
+
+            #if arch(arm64)
+            let sweepArchName = "arm64"
+            #elseif arch(x86_64)
+            let sweepArchName = "x86_64"
+            #else
+            let sweepArchName = "unknown"
+            #endif
+
+            print("\n====================================================")
+            print("📊 CONCURRENCY SWEEP SUMMARY (\(sweepArchName))")
+            print("====================================================")
+            print("| Workers | Wall (s) | Throughput (PPS) | Peak RSS (MB) | Face (ms/p) | FeaturePrint (ms/p) | Scene (ms/p) | Diversity (s) |")
+            print("| :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |")
+            for r in sweepResults {
+                print(String(format: "| %d | %.2f | %.2f | %d | %.1f | %.1f | %.1f | %.2f |",
+                             r.workers, r.wallClockSeconds, r.throughputPPS, r.peakMemoryMB,
+                             r.faceMsPerPhoto, r.fpMsPerPhoto, r.sceneMsPerPhoto, r.rankingAndSelectionSeconds))
+            }
+            print("====================================================\n")
+
+            if let best = sweepResults.max(by: { $0.throughputPPS < $1.throughputPPS }) {
+                print("🏆 Best measured configuration: \(best.workers) worker(s) at \(best.throughputPPS) PPS (Wall: \(best.wallClockSeconds)s)")
+                if workerOverride == nil {
+                    workerOverride = best.workers
+                }
+            }
+
+            if let outPath = outputSweepJSONPath {
+                let url = URL(fileURLWithPath: outPath)
+                try? fileManager.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+                let enc = JSONEncoder()
+                enc.outputFormatting = [.prettyPrinted, .sortedKeys]
+                if let data = try? enc.encode(sweepResults) {
+                    try? data.write(to: url)
+                    print("✅ Saved concurrency sweep JSON to \(outPath)")
+                }
+            }
+
+            if sweepOnly {
+                print("✅ Sweep-only mode completed successfully.")
+                return
+            }
         }
 
         var peakMemoryBytes: UInt64 = getCurrentResidentMemoryBytes()
@@ -305,15 +457,25 @@ struct BenchmarkRunner {
             print("Export Validation: \(exportSuccess ? "PASS" : "FAIL")")
             print("Session Persistence: \(sessionReloadSuccess ? "PASS" : "FAIL")")
             if let pt = session.phaseTimings {
-                print("--- Phase Timings ---")
+                let photoCount = Double(max(1, session.photos.count))
+                let faceMs = (pt.faceDetectionSeconds / photoCount) * 1000.0
+                let fpMs = (pt.featurePrintSeconds / photoCount) * 1000.0
+                let sceneMs = (pt.sceneClassificationSeconds / photoCount) * 1000.0
+                let previewMs = (pt.previewGenerationSeconds / photoCount) * 1000.0
+                let qualMs = (pt.qualityScoringSeconds / photoCount) * 1000.0
+                let visionMs = (pt.faceAndFeatureSeconds / photoCount) * 1000.0
+
+                print("--- Phase Timings (Worker Cumulative & Per-Photo) ---")
                 print("  Discovery & Metadata: \(pt.discoverySeconds) s")
-                print("  Preview Generation (cumulative worker): \(pt.previewGenerationSeconds) s")
-                print("  Face & Feature Detection (cumulative worker): \(pt.faceAndFeatureSeconds) s")
-                print("  Quality Scoring (cumulative worker): \(pt.qualityScoringSeconds) s")
-                print("  Scene Classification (cumulative worker): \(pt.sceneClassificationSeconds) s")
+                print(String(format: "  Preview Generation (cumulative worker): %.2f s (%.1f ms/photo)", pt.previewGenerationSeconds, previewMs))
+                print(String(format: "  Face Detection & Landmarks (cumulative worker): %.2f s (%.1f ms/photo)", pt.faceDetectionSeconds, faceMs))
+                print(String(format: "  FeaturePrint Generation (cumulative worker): %.2f s (%.1f ms/photo)", pt.featurePrintSeconds, fpMs))
+                print(String(format: "  Total Face & Feature (cumulative worker): %.2f s (%.1f ms/photo)", pt.faceAndFeatureSeconds, visionMs))
+                print(String(format: "  Quality Scoring (cumulative worker): %.2f s (%.1f ms/photo)", pt.qualityScoringSeconds, qualMs))
+                print(String(format: "  Scene Classification (cumulative worker): %.2f s (%.1f ms/photo)", pt.sceneClassificationSeconds, sceneMs))
                 print("  Burst & Duplicate Detection: \(pt.burstAndDuplicateSeconds) s")
                 print("  Clustering & Segmentation: \(pt.clusteringAndSegmentationSeconds) s")
-                print("  Ranking & Diversity Selection: \(pt.rankingAndSelectionSeconds) s")
+                print(String(format: "  Ranking & Diversity Selection: %.2f s (%.1f ms/photo)", pt.rankingAndSelectionSeconds, (pt.rankingAndSelectionSeconds / photoCount) * 1000.0))
                 print("  Session Persistence Write: \(pt.sessionPersistenceSeconds) s")
                 print("  Total Wall Clock: \(pt.totalWallClockSeconds) s")
             }
@@ -506,23 +668,35 @@ struct BenchmarkRunner {
             """
 
             if let pt = session.phaseTimings {
+                let count = Double(max(1, session.photos.count))
+                let faceMs = (pt.faceDetectionSeconds / count) * 1000.0
+                let fpMs = (pt.featurePrintSeconds / count) * 1000.0
+                let sceneMs = (pt.sceneClassificationSeconds / count) * 1000.0
+                let previewMs = (pt.previewGenerationSeconds / count) * 1000.0
+                let qualMs = (pt.qualityScoringSeconds / count) * 1000.0
+                let visionMs = (pt.faceAndFeatureSeconds / count) * 1000.0
+                let divMs = (pt.rankingAndSelectionSeconds / count) * 1000.0
+                let wallMs = (pt.totalWallClockSeconds / count) * 1000.0
+
                 mdContent += """
 
 
                 ## Phase Timings Breakdown
 
-                | Pipeline Phase | Time (Seconds) |
-                | :--- | :--- |
-                | **Discovery & Metadata Indexing** | \(pt.discoverySeconds) s |
-                | **Preview & Thumbnail Generation (worker cumulative)** | \(pt.previewGenerationSeconds) s |
-                | **Face Detection & Identity Landmarks (worker cumulative)** | \(pt.faceAndFeatureSeconds) s |
-                | **Quality & Sharpness Scoring (worker cumulative)** | \(pt.qualityScoringSeconds) s |
-                | **Scene & Semantic Classification (worker cumulative)** | \(pt.sceneClassificationSeconds) s |
-                | **Burst & Duplicate Detection** | \(pt.burstAndDuplicateSeconds) s |
-                | **Temporal Segmentation & Grouping** | \(pt.clusteringAndSegmentationSeconds) s |
-                | **Ranking & Diversity Selection** | \(pt.rankingAndSelectionSeconds) s |
-                | **Session Persistence Write** | \(pt.sessionPersistenceSeconds) s |
-                | **Total Wall Clock Time** | **\(pt.totalWallClockSeconds) s** |
+                | Pipeline Phase | Cumulative Worker Time | Per-Photo Time |
+                | :--- | :--- | :--- |
+                | **Discovery & Metadata Indexing** | \(pt.discoverySeconds) s | - |
+                | **Preview & Thumbnail Generation (worker cumulative)** | \(pt.previewGenerationSeconds) s | \(String(format: "%.1f", previewMs)) ms |
+                | **Face Detection & Landmarks (worker cumulative)** | \(pt.faceDetectionSeconds) s | \(String(format: "%.1f", faceMs)) ms |
+                | **FeaturePrint Generation (worker cumulative)** | \(pt.featurePrintSeconds) s | \(String(format: "%.1f", fpMs)) ms |
+                | **Total Face & Feature (combined)** | \(pt.faceAndFeatureSeconds) s | \(String(format: "%.1f", visionMs)) ms |
+                | **Quality & Sharpness Scoring (worker cumulative)** | \(pt.qualityScoringSeconds) s | \(String(format: "%.1f", qualMs)) ms |
+                | **Scene & Semantic Classification (worker cumulative)** | \(pt.sceneClassificationSeconds) s | \(String(format: "%.1f", sceneMs)) ms |
+                | **Burst & Duplicate Detection** | \(pt.burstAndDuplicateSeconds) s | - |
+                | **Temporal Segmentation & Grouping** | \(pt.clusteringAndSegmentationSeconds) s | - |
+                | **Ranking & Diversity Selection** | \(pt.rankingAndSelectionSeconds) s | \(String(format: "%.1f", divMs)) ms |
+                | **Session Persistence Write** | \(pt.sessionPersistenceSeconds) s | - |
+                | **Total Wall Clock Time** | **\(pt.totalWallClockSeconds) s** | **\(String(format: "%.1f", wallMs)) ms** |
                 """
             }
 

@@ -169,6 +169,13 @@ def main():
     albumbench_exec_time = f"{albumbench['executionTimeSeconds']:.1f}s" if albumbench and "executionTimeSeconds" in albumbench else "N/A"
     albumbench_f1 = f"{albumbench['meanF1']*100:.1f}%" if albumbench and 'meanF1' in albumbench else "N/A"
 
+    sweep_arm64 = read_json_safe(os.path.join(output_dir, "concurrency-sweep-arm64.json"))
+    sweep_intel = read_json_safe(os.path.join(output_dir, "concurrency-sweep-intel.json"))
+    if sweep_arm64:
+        report["concurrencySweepARM64"] = sweep_arm64
+    if sweep_intel:
+        report["concurrencySweepIntel"] = sweep_intel
+
     md_content = f"""# WeddingCull Final Release Dataset Validation Report
 
 * **Git Commit**: `{git_sha}`
@@ -191,6 +198,52 @@ def main():
 | **MobileCLIP Core ML Model** | **{mobileclip_status}** | {mobileclip.get('classificationBackend', 'N/A') if mobileclip else 'N/A'}, Latency={f"{mobileclip['averageLatencyMs']:.1f}ms" if mobileclip and 'averageLatencyMs' in mobileclip else 'N/A'} |
 | **Public IQA Benchmark Framework** | **{iqa_status}** | {iqa_report.get('message', 'Framework ready for local execution') if iqa_report else 'Framework ready for local execution'} |
 """
+
+    if sweep_intel:
+        md_content += "\n## Native Intel Concurrency Sweep (x86_64)\n\n"
+        md_content += "| Workers | Wall Clock (s) | Throughput (PPS) | Peak RSS (MB) | Face Detection (ms/photo) | FeaturePrint (ms/photo) | Scene Classify (ms/photo) | Diversity Selection (s) |\n"
+        md_content += "| :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |\n"
+        for r in sweep_intel:
+            md_content += f"| {r.get('workers')} | {r.get('wallClockSeconds'):.2f}s | **{r.get('throughputPPS'):.2f} PPS** | {r.get('peakMemoryMB')} MB | {r.get('faceMsPerPhoto'):.1f} ms | {r.get('fpMsPerPhoto'):.1f} ms | {r.get('sceneMsPerPhoto'):.1f} ms | {r.get('rankingAndSelectionSeconds'):.2f}s |\n"
+
+    if sweep_arm64:
+        md_content += "\n## Apple Silicon Concurrency Sweep (arm64)\n\n"
+        md_content += "| Workers | Wall Clock (s) | Throughput (PPS) | Peak RSS (MB) | Face Detection (ms/photo) | FeaturePrint (ms/photo) | Scene Classify (ms/photo) | Diversity Selection (s) |\n"
+        md_content += "| :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |\n"
+        for r in sweep_arm64:
+            md_content += f"| {r.get('workers')} | {r.get('wallClockSeconds'):.2f}s | **{r.get('throughputPPS'):.2f} PPS** | {r.get('peakMemoryMB')} MB | {r.get('faceMsPerPhoto'):.1f} ms | {r.get('fpMsPerPhoto'):.1f} ms | {r.get('sceneMsPerPhoto'):.1f} ms | {r.get('rankingAndSelectionSeconds'):.2f}s |\n"
+
+    pt_arm = bench_arm64.get("phaseTimings") if bench_arm64 else None
+    pt_int = bench_intel.get("phaseTimings") if bench_intel else None
+    if pt_arm or pt_int:
+        count_arm = float(bench_arm64.get("inputCount", 1500)) if bench_arm64 else 1500.0
+        count_int = float(bench_intel.get("inputCount", 1500)) if bench_intel else 1500.0
+        md_content += "\n## Comparative Phase Timings Breakdown\n\n"
+        md_content += "| Pipeline Phase | Apple Silicon Cumulative | Apple Silicon Per-Photo | Native Intel Cumulative | Native Intel Per-Photo |\n"
+        md_content += "| :--- | :--- | :--- | :--- | :--- |\n"
+
+        phases = [
+            ("Discovery & Metadata", "discoverySeconds", False),
+            ("Preview Generation", "previewGenerationSeconds", True),
+            ("Face Detection & Landmarks", "faceDetectionSeconds", True),
+            ("FeaturePrint Generation", "featurePrintSeconds", True),
+            ("Total Face & Feature", "faceAndFeatureSeconds", True),
+            ("Quality Scoring", "qualityScoringSeconds", True),
+            ("Scene Classification", "sceneClassificationSeconds", True),
+            ("Burst & Duplicate", "burstAndDuplicateSeconds", False),
+            ("Temporal Segmentation", "clusteringAndSegmentationSeconds", False),
+            ("Ranking & Diversity Selection", "rankingAndSelectionSeconds", True),
+            ("Session Persistence Write", "sessionPersistenceSeconds", False),
+            ("Total Wall Clock Time", "totalWallClockSeconds", True),
+        ]
+        for name, key, is_per_photo in phases:
+            val_arm = pt_arm.get(key) if pt_arm else None
+            val_int = pt_int.get(key) if pt_int else None
+            str_arm_cum = f"{val_arm:.2f}s" if val_arm is not None else "-"
+            str_arm_per = f"{(val_arm / count_arm) * 1000.0:.1f} ms" if (val_arm is not None and is_per_photo) else "-"
+            str_int_cum = f"{val_int:.2f}s" if val_int is not None else "-"
+            str_int_per = f"{(val_int / count_int) * 1000.0:.1f} ms" if (val_int is not None and is_per_photo) else "-"
+            md_content += f"| **{name}** | {str_arm_cum} | {str_arm_per} | {str_int_cum} | {str_int_per} |\n"
     with open(output_md_path, "w", encoding="utf-8") as f:
         f.write(md_content)
     print(f"[OK] Generated master markdown: {output_md_path}")

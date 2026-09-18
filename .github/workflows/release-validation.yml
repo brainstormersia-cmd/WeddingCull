@@ -41,6 +41,17 @@ jobs:
           chmod +x ./scripts/*.sh
           ./scripts/bootstrap.sh
 
+      - name: Execute Apple Silicon Concurrency Sweep (1, 2, 3, 4 Workers)
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          swift build -c release --product BenchmarkRunner
+          .build/release/BenchmarkRunner \
+            --sweep-concurrency 250 \
+            --sweep-workers 1,2,3,4 \
+            --output-sweep-json artifacts/concurrency-sweep-arm64.json \
+            --sweep-only
+
       - name: Execute 1,500→700 Pipeline Benchmark on Apple Silicon
         run: |
           set -euo pipefail
@@ -66,6 +77,7 @@ jobs:
             artifacts/benchmark-arm64.json
             artifacts/baseline-arm64-release.json
             artifacts/baseline-phase-timings-arm64.json
+            artifacts/concurrency-sweep-arm64.json
             artifacts/BENCHMARKS-arm64.md
 
   dataset-validation-intel:
@@ -92,6 +104,17 @@ jobs:
           chmod +x ./scripts/*.sh
           ./scripts/bootstrap.sh
 
+      - name: Execute Intel Concurrency Sweep (1, 2, 3, 4 Workers)
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          swift build -c release --product BenchmarkRunner
+          .build/release/BenchmarkRunner \
+            --sweep-concurrency 250 \
+            --sweep-workers 1,2,3,4 \
+            --output-sweep-json artifacts/concurrency-sweep-intel.json \
+            --sweep-only
+
       - name: Execute 1,500→700 Pipeline Benchmark on Native Intel Hardware
         run: |
           set -euo pipefail
@@ -117,6 +140,7 @@ jobs:
             artifacts/benchmark-intel.json
             artifacts/baseline-intel-release.json
             artifacts/baseline-phase-timings-intel.json
+            artifacts/concurrency-sweep-intel.json
             artifacts/BENCHMARKS-intel.md
 
   albumbench-validation:

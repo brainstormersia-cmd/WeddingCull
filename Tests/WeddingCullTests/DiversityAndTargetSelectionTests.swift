@@ -221,5 +221,340 @@ final class DiversityAndTargetSelectionTests: XCTestCase {
         let selected6 = result6.updatedItems.filter { $0.selectionState.isIncludedInFinal }
         XCTAssertEqual(selected6.count, 6, "Must select exactly 6 photos even when there are 7 segments")
     }
+
+    // MARK: - Legacy Reference Implementation for Equivalence Proof
+
+    private func legacySelectPhotos(
+        items: [PhotoItem],
+        segments: [TemporalSegment],
+        bursts: [BurstGroup],
+        targetCount: Int
+    ) -> SelectionResult {
+        guard !items.isEmpty else {
+            return SelectionResult(updatedItems: [], selectedCount: 0, targetCount: targetCount, message: "No photos to select")
+        }
+
+        var userSelectedIDs = Set<String>()
+        var userRejectedIDs = Set<String>()
+        var candidates: [PhotoItem] = []
+
+        for item in items {
+            switch item.selectionState {
+            case .userSelected:
+                userSelectedIDs.insert(item.id)
+            case .userRejected:
+                userRejectedIDs.insert(item.id)
+            case .selected, .alternative, .rejected:
+                if !item.isDuplicate && !item.metadata.isCorrupt {
+                    candidates.append(item)
+                }
+            }
+        }
+
+        let totalEligibleCount = userSelectedIDs.count + candidates.count
+        let effectiveTarget = min(targetCount, totalEligibleCount)
+
+        var burstWinnerIDs = Set<String>()
+        var burstAlternativeIDs = Set<String>()
+        for b in bursts {
+            burstWinnerIDs.insert(b.winnerID)
+            for alt in b.alternativeIDs {
+                burstAlternativeIDs.insert(alt)
+            }
+        }
+
+        var segmentQuotas: [String: Int] = [:]
+        let remainingTargetAfterUser = max(0, effectiveTarget - userSelectedIDs.count)
+
+        if !segments.isEmpty && remainingTargetAfterUser > 0 {
+            let totalWeights: Double = segments.reduce(0.0) { sum, seg in
+                let categoryWeight = seg.inferredCategory.selectionWeight
+                let photoFactor = log2(Double(max(2, seg.photoIDs.count)))
+                return sum + (categoryWeight * photoFactor)
+            }
+
+            var allocated = 0
+            for seg in segments {
+                let categoryWeight = seg.inferredCategory.selectionWeight
+                let photoFactor = log2(Double(max(2, seg.photoIDs.count)))
+                let segWeight = categoryWeight * photoFactor
+                let share = totalWeights > 0 ? (segWeight / totalWeights) : (1.0 / Double(segments.count))
+                let quota = max(1, Int(round(Double(remainingTargetAfterUser) * share)))
+                segmentQuotas[seg.id] = quota
+                allocated += quota
+            }
+
+            var diff = remainingTargetAfterUser - allocated
+            if diff > 0 {
+                let sortedSegIDs = segments.sorted(by: { $0.photoIDs.count > $1.photoIDs.count }).map { $0.id }
+                var idx = 0
+                while diff > 0 && !sortedSegIDs.isEmpty {
+                    let segID = sortedSegIDs[idx % sortedSegIDs.count]
+                    segmentQuotas[segID, default: 0] += 1
+                    diff -= 1
+                    idx += 1
+                }
+            } else if diff < 0 {
+                let smallestFirst = segments.sorted(by: { $0.photoIDs.count < $1.photoIDs.count }).map { $0.id }
+                var madeProgress = true
+                while diff < 0 && madeProgress {
+                    madeProgress = false
+                    for segID in smallestFirst {
+                        if diff < 0 && (segmentQuotas[segID] ?? 0) > 1 {
+                            segmentQuotas[segID, default: 1] -= 1
+                            diff += 1
+                            madeProgress = true
+                        }
+                    }
+                }
+                if diff < 0 {
+                    for segID in smallestFirst {
+                        if diff < 0 && (segmentQuotas[segID] ?? 0) > 0 {
+                            segmentQuotas[segID, default: 0] -= 1
+                            diff += 1
+                        }
+                    }
+                }
+            }
+        }
+
+        var selectedIDs = Set(userSelectedIDs)
+        var selectedItemsList: [PhotoItem] = items.filter { userSelectedIDs.contains($0.id) }
+        var selectedCategories = Set<WeddingCategory>(selectedItemsList.map(\.category))
+        var segmentSelectedCounts: [String: Int] = [:]
+
+        for item in selectedItemsList {
+            if let segID = item.temporalSegmentID {
+                segmentSelectedCounts[segID, default: 0] += 1
+            }
+        }
+
+        let maxSegmentCap = max(1, Int(ceil(Double(effectiveTarget) * 0.60)))
+        let remainingCandidates = candidates.filter { !userSelectedIDs.contains($0.id) }
+
+        func maxSimilarityToSelected(_ candidate: PhotoItem) -> Double {
+            guard let hashCand = candidate.perceptualHash else { return 0.0 }
+            var maxSim = 0.0
+            for sel in selectedItemsList {
+                if let selHash = sel.perceptualHash {
+                    let sim = PerceptualHash.similarity(hashCand, selHash)
+                    if sim > maxSim {
+                        maxSim = sim
+                    }
+                }
+            }
+            return maxSim
+        }
+
+        for seg in segments {
+            guard let quota = segmentQuotas[seg.id], quota > 0 else { continue }
+            let segCandidates = remainingCandidates
+                .filter { $0.temporalSegmentID == seg.id }
+                .sorted { $0.metrics.overallScore > $1.metrics.overallScore }
+
+            var segSelectedCount = segmentSelectedCounts[seg.id] ?? 0
+
+            for cand in segCandidates {
+                if selectedIDs.count >= effectiveTarget { break }
+                if segSelectedCount >= quota { break }
+
+                let sim = maxSimilarityToSelected(cand)
+                if sim > 0.85 && !burstWinnerIDs.contains(cand.id) {
+                    continue
+                }
+
+                selectedIDs.insert(cand.id)
+                selectedItemsList.append(cand)
+                selectedCategories.insert(cand.category)
+                segSelectedCount += 1
+                segmentSelectedCounts[seg.id] = segSelectedCount
+            }
+        }
+
+        let lambda = 0.65
+        while selectedIDs.count < effectiveTarget {
+            let unselected = remainingCandidates.filter { !selectedIDs.contains($0.id) }
+            guard !unselected.isEmpty else { break }
+
+            var bestCandidate: PhotoItem? = nil
+            var bestMMRScore = -Double.greatestFiniteMagnitude
+
+            for cand in unselected {
+                if let segID = cand.temporalSegmentID, (segmentSelectedCounts[segID] ?? 0) >= maxSegmentCap {
+                    let nonCappedExist = unselected.contains { item in
+                        guard let s = item.temporalSegmentID else { return true }
+                        return (segmentSelectedCounts[s] ?? 0) < maxSegmentCap
+                    }
+                    if nonCappedExist {
+                        continue
+                    }
+                }
+
+                let categoryBonus = selectedCategories.contains(cand.category) ? 0.0 : 0.15
+                let burstBonus = burstWinnerIDs.contains(cand.id) ? 0.20 : 0.0
+                let burstPenalty = burstAlternativeIDs.contains(cand.id) ? 0.25 : 0.0
+
+                let quality = cand.metrics.overallScore + categoryBonus + burstBonus - burstPenalty
+                let sim = maxSimilarityToSelected(cand)
+                let mmrScore = (lambda * quality) - ((1.0 - lambda) * sim * 1.5)
+
+                if mmrScore > bestMMRScore {
+                    bestMMRScore = mmrScore
+                    bestCandidate = cand
+                }
+            }
+
+            guard let chosen = bestCandidate else { break }
+            selectedIDs.insert(chosen.id)
+            selectedItemsList.append(chosen)
+            selectedCategories.insert(chosen.category)
+            if let segID = chosen.temporalSegmentID {
+                segmentSelectedCounts[segID] = (segmentSelectedCounts[segID] ?? 0) + 1
+            }
+        }
+
+        if selectedIDs.count < effectiveTarget {
+            let unselected = remainingCandidates
+                .filter { !selectedIDs.contains($0.id) }
+                .sorted { $0.metrics.overallScore > $1.metrics.overallScore }
+
+            for cand in unselected {
+                if selectedIDs.count >= effectiveTarget { break }
+                selectedIDs.insert(cand.id)
+                selectedItemsList.append(cand)
+                selectedCategories.insert(cand.category)
+                if let segID = cand.temporalSegmentID {
+                    segmentSelectedCounts[segID] = (segmentSelectedCounts[segID] ?? 0) + 1
+                }
+            }
+        }
+
+        var finalItems: [PhotoItem] = []
+        finalItems.reserveCapacity(items.count)
+
+        for var item in items {
+            if item.selectionState == .userSelected {
+                finalItems.append(item)
+            } else if item.selectionState == .userRejected {
+                finalItems.append(item)
+            } else if selectedIDs.contains(item.id) {
+                item.selectionState = .selected
+                finalItems.append(item)
+            } else if item.isDuplicate || item.metadata.isCorrupt || item.metrics.isTechnicallyLowQuality {
+                item.selectionState = .rejected
+                finalItems.append(item)
+            } else {
+                item.selectionState = .alternative
+                finalItems.append(item)
+            }
+        }
+
+        return SelectionResult(
+            updatedItems: finalItems,
+            selectedCount: selectedIDs.count,
+            targetCount: targetCount,
+            message: "Legacy selection"
+        )
+    }
+
+    func testEquivalenceBetweenIncrementalAndLegacySelection() {
+        var items: [PhotoItem] = []
+        var segments: [TemporalSegment] = []
+        var bursts: [BurstGroup] = []
+
+        let categories: [WeddingCategory] = [
+            .bridePrep, .groomPrep, .ceremony, .bride, .groom, .couple, .reception, .details
+        ]
+
+        // Create 300 test photos across 6 temporal segments
+        let segmentCount = 6
+        var segPhotoMap: [String: [String]] = [:]
+        for s in 0..<segmentCount {
+            segPhotoMap["seg_\(s)"] = []
+        }
+
+        for i in 0..<300 {
+            let photoID = "photo_\(i)"
+            var item = PhotoItem(
+                id: photoID,
+                fileName: "\(photoID).jpg",
+                sourceURL: URL(fileURLWithPath: "/tmp/\(photoID).jpg")
+            )
+            let segID = "seg_\(i % segmentCount)"
+            segPhotoMap[segID]?.append(photoID)
+            item.temporalSegmentID = segID
+            item.category = categories[(i / 10) % categories.count]
+            item.metrics.overallScore = 0.30 + Double((i * 37) % 70) / 100.0
+            // Realistic varying perceptual hashes
+            item.perceptualHash = UInt64((i * 1234567) & 0xFFFFFFFF)
+
+            // Inject a few user decisions
+            if i == 5 { item.selectionState = .userSelected }
+            if i == 15 { item.selectionState = .userRejected }
+
+            items.append(item)
+        }
+
+        for s in 0..<segmentCount {
+            let segID = "seg_\(s)"
+            segments.append(TemporalSegment(
+                id: segID,
+                startTime: Date().addingTimeInterval(Double(s * 1800)),
+                endTime: Date().addingTimeInterval(Double((s + 1) * 1800)),
+                photoIDs: segPhotoMap[segID] ?? []
+            ))
+        }
+
+        // Create 5 burst groups
+        for b in 0..<5 {
+            let burstID = "burst_\(b)"
+            let memberIDs = ["photo_\(b * 10)", "photo_\(b * 10 + 1)", "photo_\(b * 10 + 2)"]
+            bursts.append(BurstGroup(
+                id: burstID,
+                memberIDs: memberIDs,
+                winnerID: memberIDs[1],
+                alternativeIDs: [memberIDs[0], memberIDs[2]]
+            ))
+        }
+
+        let selector = DiversitySelector()
+
+        // Test at multiple target counts
+        for target in [25, 75, 120, 200] {
+            let legacyResult = legacySelectPhotos(items: items, segments: segments, bursts: bursts, targetCount: target)
+            let incrementalResult = selector.selectPhotos(items: items, segments: segments, bursts: bursts, targetCount: target)
+
+            let legacySelected = legacyResult.updatedItems.filter { $0.selectionState.isIncludedInFinal }
+            let incrementalSelected = incrementalResult.updatedItems.filter { $0.selectionState.isIncludedInFinal }
+
+            XCTAssertEqual(
+                incrementalSelected.count,
+                legacySelected.count,
+                "Target \(target): Selected counts must match exactly"
+            )
+
+            let legacyIDs = legacySelected.map(\.id)
+            let incrementalIDs = incrementalSelected.map(\.id)
+
+            XCTAssertEqual(
+                incrementalIDs,
+                legacyIDs,
+                "Target \(target): Selected photo IDs must be 100% identical between incremental and legacy selection"
+            )
+
+            for (idx, (inc, leg)) in zip(incrementalResult.updatedItems, legacyResult.updatedItems).enumerated() {
+                XCTAssertEqual(
+                    inc.id,
+                    leg.id,
+                    "Item \(idx) ID mismatch"
+                )
+                XCTAssertEqual(
+                    inc.selectionState,
+                    leg.selectionState,
+                    "Item \(inc.id) selectionState must match exactly: incremental=\(inc.selectionState), legacy=\(leg.selectionState)"
+                )
+            }
+        }
+    }
 }
 

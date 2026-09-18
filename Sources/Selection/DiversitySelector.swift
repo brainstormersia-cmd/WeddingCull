@@ -134,19 +134,45 @@ public final class DiversitySelector: Sendable {
         // Candidate pool sorted by base utility
         let remainingCandidates = candidates.filter { !userSelectedIDs.contains($0.id) }
 
-        // Helper: compute similarity penalty against already selected photos
-        func maxSimilarityToSelected(_ candidate: PhotoItem) -> Double {
-            guard let hashCand = candidate.perceptualHash else { return 0.0 }
-            var maxSim = 0.0
-            for sel in selectedItemsList {
-                if let selHash = sel.perceptualHash {
-                    let sim = PerceptualHash.similarity(hashCand, selHash)
-                    if sim > maxSim {
-                        maxSim = sim
+        // Incremental maximum similarity to any selected photo
+        var maxSimToSelected: [String: Double] = [:]
+        maxSimToSelected.reserveCapacity(remainingCandidates.count)
+        for cand in remainingCandidates {
+            maxSimToSelected[cand.id] = 0.0
+        }
+
+        // Helper to register an item as selected and incrementally update maxSimToSelected
+        func registerSelection(_ chosen: PhotoItem) {
+            selectedIDs.insert(chosen.id)
+            selectedItemsList.append(chosen)
+            selectedCategories.insert(chosen.category)
+            if let segID = chosen.temporalSegmentID {
+                segmentSelectedCounts[segID, default: 0] += 1
+            }
+            if let chosenHash = chosen.perceptualHash {
+                for cand in remainingCandidates where !selectedIDs.contains(cand.id) {
+                    if let candHash = cand.perceptualHash {
+                        let sim = PerceptualHash.similarity(candHash, chosenHash)
+                        if sim > (maxSimToSelected[cand.id] ?? 0.0) {
+                            maxSimToSelected[cand.id] = sim
+                        }
                     }
                 }
             }
-            return maxSim
+        }
+
+        // Initialize similarity against initially user-selected photos
+        for userItem in selectedItemsList {
+            if let userHash = userItem.perceptualHash {
+                for cand in remainingCandidates {
+                    if let candHash = cand.perceptualHash {
+                        let sim = PerceptualHash.similarity(candHash, userHash)
+                        if sim > (maxSimToSelected[cand.id] ?? 0.0) {
+                            maxSimToSelected[cand.id] = sim
+                        }
+                    }
+                }
+            }
         }
 
         // Pass A: Quota-constrained selection per segment
@@ -165,17 +191,14 @@ public final class DiversitySelector: Sendable {
                 if selectedIDs.count >= effectiveTarget { break }
                 if segSelectedCount >= quota { break }
 
-                let sim = maxSimilarityToSelected(cand)
+                let sim = maxSimToSelected[cand.id] ?? 0.0
                 // Skip if too similar to an already selected photo (unless it's a burst winner with good score)
                 if sim > 0.85 && !burstWinnerIDs.contains(cand.id) {
                     continue
                 }
 
-                selectedIDs.insert(cand.id)
-                selectedItemsList.append(cand)
-                selectedCategories.insert(cand.category)
+                registerSelection(cand)
                 segSelectedCount += 1
-                segmentSelectedCounts[seg.id] = segSelectedCount
             }
         }
 
@@ -185,20 +208,19 @@ public final class DiversitySelector: Sendable {
             let unselected = remainingCandidates.filter { !selectedIDs.contains($0.id) }
             guard !unselected.isEmpty else { break }
 
+            // Pre-evaluate once per outer MMR iteration: check if any unselected candidate is in a non-capped segment
+            let nonCappedExist = unselected.contains { item in
+                guard let s = item.temporalSegmentID else { return true }
+                return (segmentSelectedCounts[s, default: 0]) < maxSegmentCap
+            }
+
             var bestCandidate: PhotoItem? = nil
             var bestMMRScore = -Double.greatestFiniteMagnitude
 
             for cand in unselected {
                 // Check segment cap
-                if let segID = cand.temporalSegmentID, (segmentSelectedCounts[segID] ?? 0) >= maxSegmentCap {
-                    // Check if other candidates from non-capped segments exist
-                    let nonCappedExist = unselected.contains { item in
-                        guard let s = item.temporalSegmentID else { return true }
-                        return (segmentSelectedCounts[s] ?? 0) < maxSegmentCap
-                    }
-                    if nonCappedExist {
-                        continue
-                    }
+                if nonCappedExist, let segID = cand.temporalSegmentID, (segmentSelectedCounts[segID] ?? 0) >= maxSegmentCap {
+                    continue
                 }
 
                 // Category coverage bonus for unrepresented categories
@@ -207,7 +229,7 @@ public final class DiversitySelector: Sendable {
                 let burstPenalty = burstAlternativeIDs.contains(cand.id) ? 0.25 : 0.0
 
                 let quality = cand.metrics.overallScore + categoryBonus + burstBonus - burstPenalty
-                let sim = maxSimilarityToSelected(cand)
+                let sim = maxSimToSelected[cand.id] ?? 0.0
                 let mmrScore = (lambda * quality) - ((1.0 - lambda) * sim * 1.5)
 
                 if mmrScore > bestMMRScore {
@@ -217,12 +239,7 @@ public final class DiversitySelector: Sendable {
             }
 
             guard let chosen = bestCandidate else { break }
-            selectedIDs.insert(chosen.id)
-            selectedItemsList.append(chosen)
-            selectedCategories.insert(chosen.category)
-            if let segID = chosen.temporalSegmentID {
-                segmentSelectedCounts[segID, default: 0] += 1
-            }
+            registerSelection(chosen)
         }
 
         // Pass C: EXACT TARGET COUNT GUARANTEE
@@ -234,12 +251,7 @@ public final class DiversitySelector: Sendable {
 
             for cand in unselected {
                 if selectedIDs.count >= effectiveTarget { break }
-                selectedIDs.insert(cand.id)
-                selectedItemsList.append(cand)
-                selectedCategories.insert(cand.category)
-                if let segID = cand.temporalSegmentID {
-                    segmentSelectedCounts[segID, default: 0] += 1
-                }
+                registerSelection(cand)
             }
         }
 
