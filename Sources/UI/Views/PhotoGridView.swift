@@ -204,8 +204,14 @@ public struct AsyncThumbnailView: View {
                     .fill(Color.secondary.opacity(0.15))
                     .overlay(
                         VStack(spacing: 4) {
-                            ProgressView()
-                                .scaleEffect(0.6)
+                            if ProcessInfo.processInfo.arguments.contains("--ui-testing") || ProcessInfo.processInfo.environment["UI_TESTING"] == "YES" {
+                                Image(systemName: "photo")
+                                    .font(.system(size: 14))
+                                    .foregroundColor(.secondary)
+                            } else {
+                                ProgressView()
+                                    .scaleEffect(0.6)
+                            }
                             Text(item.fileName)
                                 .font(.system(size: 8))
                                 .lineLimit(1)

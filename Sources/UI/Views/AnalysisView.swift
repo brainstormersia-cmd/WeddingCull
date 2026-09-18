@@ -12,9 +12,16 @@ public struct AnalysisView: View {
             Spacer()
 
             VStack(spacing: 12) {
-                ProgressView()
-                    .scaleEffect(1.5)
-                    .accessibilityIdentifier(AccessibilityIdentifiers.analysisProgressIndicator)
+                if ProcessInfo.processInfo.arguments.contains("--ui-testing") || ProcessInfo.processInfo.environment["UI_TESTING"] == "YES" {
+                    Image(systemName: "circle.dotted")
+                        .font(.system(size: 32))
+                        .foregroundColor(.accentColor)
+                        .accessibilityIdentifier(AccessibilityIdentifiers.analysisProgressIndicator)
+                } else {
+                    ProgressView()
+                        .scaleEffect(1.5)
+                        .accessibilityIdentifier(AccessibilityIdentifiers.analysisProgressIndicator)
+                }
 
                 Text("Analisi in corso")
                     .font(.title2)

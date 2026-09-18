@@ -267,7 +267,13 @@ public struct AsyncBurstPreviewView: View {
                         .fill(Color.secondary.opacity(0.15))
                         .overlay(
                             VStack(spacing: 8) {
-                                ProgressView()
+                                if ProcessInfo.processInfo.arguments.contains("--ui-testing") || ProcessInfo.processInfo.environment["UI_TESTING"] == "YES" {
+                                    Image(systemName: "photo")
+                                        .font(.system(size: 24))
+                                        .foregroundColor(.secondary)
+                                } else {
+                                    ProgressView()
+                                }
                                 Text(item.fileName)
                                     .font(.caption2)
                                     .foregroundColor(.secondary)
