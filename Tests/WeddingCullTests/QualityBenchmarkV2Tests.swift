@@ -250,6 +250,10 @@ final class QualityBenchmarkV2Tests: XCTestCase {
         metrics.highlightClipping = 0.10
         metrics.faceCount = 1
         metrics.exposureScore = 0.50 // Uninitialized default
+        metrics.overallScore = 0.123
+        metrics.selectionReason = "test_unscored"
+        metrics.sharpnessScore = 0.234
+        metrics.technicalScore = 0.345
 
         let initialItem = PhotoItem(
             id: "test_pre_burst",
@@ -258,10 +262,10 @@ final class QualityBenchmarkV2Tests: XCTestCase {
             metrics: metrics
         )
 
-        XCTAssertEqual(initialItem.metrics.overallScore, 0.0)
-        XCTAssertNil(initialItem.metrics.selectionReason)
-        XCTAssertEqual(initialItem.metrics.sharpnessScore, 0.0)
-        XCTAssertEqual(initialItem.metrics.technicalScore, 0.0)
+        XCTAssertEqual(initialItem.metrics.overallScore, 0.123)
+        XCTAssertEqual(initialItem.metrics.selectionReason, "test_unscored")
+        XCTAssertEqual(initialItem.metrics.sharpnessScore, 0.234)
+        XCTAssertEqual(initialItem.metrics.technicalScore, 0.345)
         XCTAssertEqual(initialItem.metrics.exposureScore, 0.50)
 
         let preparedItems = scorer.preparePreBurstMetrics(items: [initialItem])
@@ -278,10 +282,10 @@ final class QualityBenchmarkV2Tests: XCTestCase {
         XCTAssertNotEqual(prepared.metrics.exposureScore, 0.50)
 
         // ALL other derived scoring fields must remain untouched!
-        XCTAssertEqual(prepared.metrics.overallScore, 0.0, "overallScore must NOT be modified by pre-burst preparation")
-        XCTAssertNil(prepared.metrics.selectionReason, "selectionReason must NOT be populated by pre-burst preparation")
-        XCTAssertEqual(prepared.metrics.sharpnessScore, 0.0, "sharpnessScore must NOT be populated by pre-burst preparation")
-        XCTAssertEqual(prepared.metrics.technicalScore, 0.0, "technicalScore must NOT be populated by pre-burst preparation")
+        XCTAssertEqual(prepared.metrics.overallScore, 0.123, "overallScore must NOT be modified by pre-burst preparation")
+        XCTAssertEqual(prepared.metrics.selectionReason, "test_unscored", "selectionReason must NOT be modified by pre-burst preparation")
+        XCTAssertEqual(prepared.metrics.sharpnessScore, 0.234, "sharpnessScore must NOT be modified by pre-burst preparation")
+        XCTAssertEqual(prepared.metrics.technicalScore, 0.345, "technicalScore must NOT be modified by pre-burst preparation")
         XCTAssertEqual(prepared.metrics.rawSharpness, 420.0)
         XCTAssertEqual(prepared.metrics.rawFaceSharpness, 380.0)
     }
