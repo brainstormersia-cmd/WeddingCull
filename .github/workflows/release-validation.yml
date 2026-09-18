@@ -69,15 +69,6 @@ jobs:
             --output-md artifacts/BENCHMARKS-arm64.md
           cp artifacts/benchmark-arm64.json artifacts/baseline-arm64-release.json
 
-      - name: Execute ARM64 Vision Configurations & Resolution Sweep
-        run: |
-          set -euo pipefail
-          mkdir -p artifacts
-          .build/release/BenchmarkRunner \
-            --sweep-vision-configs 150 \
-            --output-vision-configs-json artifacts/vision-configs-sweep-arm64.json \
-            --sweep-only
-
       - name: Execute Determinism Diagnostics on Apple Silicon
         run: |
           set -euo pipefail
@@ -96,7 +87,6 @@ jobs:
             artifacts/baseline-arm64-release.json
             artifacts/baseline-phase-timings-arm64.json
             artifacts/concurrency-sweep-arm64.json
-            artifacts/vision-configs-sweep-arm64.json
             artifacts/determinism-diagnostics-arm64.json
             artifacts/BENCHMARKS-arm64.md
 
