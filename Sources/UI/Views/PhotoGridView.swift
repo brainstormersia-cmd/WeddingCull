@@ -196,6 +196,7 @@ public struct AsyncThumbnailView: View {
                 Image(nsImage: nsImage)
                     .resizable()
                     .aspectRatio(contentMode: .fill)
+                    .accessibilityElement(children: .ignore)
                     .accessibilityIdentifier(AccessibilityIdentifiers.photoThumbnailLoaded)
                     .accessibilityLabel(item.fileName)
             } else {
@@ -211,6 +212,7 @@ public struct AsyncThumbnailView: View {
                                 .foregroundColor(.secondary)
                         }
                     )
+                    .accessibilityElement(children: .ignore)
                     .accessibilityIdentifier(AccessibilityIdentifiers.photoThumbnailPlaceholder)
                     .accessibilityLabel(item.fileName)
             }

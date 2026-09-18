@@ -105,7 +105,7 @@ final class WeddingCullUITests: XCTestCase {
 
         // 5. Verify real thumbnails are loaded in the grid (at least 1 loaded thumbnail)
         let loadedThumbPredicate = NSPredicate(format: "identifier == 'photo_thumbnail_loaded'")
-        let loadedThumbs = app.images.matching(loadedThumbPredicate)
+        let loadedThumbs = app.descendants(matching: .any).matching(loadedThumbPredicate)
         _ = loadedThumbs.firstMatch.waitForExistence(timeout: 10.0)
 
         let loadedCount = loadedThumbs.count
@@ -134,7 +134,7 @@ final class WeddingCullUITests: XCTestCase {
             captureScreenshot(name: "06_Burst_Compare_Overview")
 
             // Verify burst preview images loaded
-            let burstPreviews = app.images.matching(NSPredicate(format: "identifier == 'photo_preview_loaded'"))
+            let burstPreviews = app.descendants(matching: .any).matching(NSPredicate(format: "identifier == 'photo_preview_loaded'"))
             _ = burstPreviews.firstMatch.waitForExistence(timeout: 8.0)
 
             // Test 1:1 Loupe Zoom
@@ -209,7 +209,7 @@ final class WeddingCullUITests: XCTestCase {
         // 1. Wait for Photo Grid or Review Mode entry
         let photoGrid = perfApp.scrollViews["photo_grid"].firstMatch
         let loadedThumbPredicate = NSPredicate(format: "identifier == 'photo_thumbnail_loaded'")
-        let loadedThumbs = perfApp.images.matching(loadedThumbPredicate)
+        let loadedThumbs = perfApp.descendants(matching: .any).matching(loadedThumbPredicate)
 
         // 2. Measure Folder Open -> First Rendered Thumbnail
         let firstThumbAppeared = loadedThumbs.firstMatch.waitForExistence(timeout: 25.0)

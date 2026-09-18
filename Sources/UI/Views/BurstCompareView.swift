@@ -259,7 +259,9 @@ public struct AsyncBurstPreviewView: View {
                                     onPan(val.translation)
                                 }
                         )
+                        .accessibilityElement(children: .ignore)
                         .accessibilityIdentifier(AccessibilityIdentifiers.photoPreviewLoaded)
+                        .accessibilityLabel(item.fileName)
                 } else {
                     RoundedRectangle(cornerRadius: 8)
                         .fill(Color.secondary.opacity(0.15))
@@ -271,7 +273,9 @@ public struct AsyncBurstPreviewView: View {
                                     .foregroundColor(.secondary)
                             }
                         )
+                        .accessibilityElement(children: .ignore)
                         .accessibilityIdentifier(AccessibilityIdentifiers.photoPreviewPlaceholder)
+                        .accessibilityLabel(item.fileName)
                 }
             }
             .frame(width: geo.size.width, height: geo.size.height)
