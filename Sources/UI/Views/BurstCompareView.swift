@@ -228,6 +228,7 @@ public struct AsyncBurstPreviewView: View {
     let zoomScale: CGFloat
     let panOffset: CGSize
     let onPan: (CGSize) -> Void
+    @State private var previewImage: NSImage?
 
     public init(
         item: PhotoItem,
@@ -246,7 +247,7 @@ public struct AsyncBurstPreviewView: View {
     public var body: some View {
         GeometryReader { geo in
             ZStack {
-                if let nsImage = loader.cachedPreview(for: item) ?? loader.cachedThumbnail(for: item) {
+                if let nsImage = previewImage ?? loader.cachedPreview(for: item) ?? loader.cachedThumbnail(for: item) {
                     Image(nsImage: nsImage)
                         .resizable()
                         .aspectRatio(contentMode: .fit)
@@ -276,7 +277,9 @@ public struct AsyncBurstPreviewView: View {
             .frame(width: geo.size.width, height: geo.size.height)
         }
         .task(id: item.previewCacheKey) {
-            _ = await loader.requestPreview(for: item)
+            if previewImage == nil {
+                previewImage = await loader.requestPreview(for: item)
+            }
         }
     }
 }

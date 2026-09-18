@@ -183,6 +183,7 @@ public struct PhotoGridView: View {
 public struct AsyncThumbnailView: View {
     let item: PhotoItem
     @ObservedObject var loader: ThumbnailLoader
+    @State private var thumbnailImage: NSImage?
 
     public init(item: PhotoItem, loader: ThumbnailLoader) {
         self.item = item
@@ -191,7 +192,7 @@ public struct AsyncThumbnailView: View {
 
     public var body: some View {
         ZStack {
-            if let nsImage = loader.cachedThumbnail(for: item) {
+            if let nsImage = thumbnailImage ?? loader.cachedThumbnail(for: item) {
                 Image(nsImage: nsImage)
                     .resizable()
                     .aspectRatio(contentMode: .fill)
@@ -218,7 +219,9 @@ public struct AsyncThumbnailView: View {
         .clipped()
         .cornerRadius(6)
         .task(id: item.previewCacheKey) {
-            _ = await loader.requestThumbnail(for: item)
+            if thumbnailImage == nil {
+                thumbnailImage = await loader.requestThumbnail(for: item)
+            }
         }
     }
 }
