@@ -165,6 +165,50 @@ actor BoundedChannel<T: Sendable> {
     }
 }
 
+actor StageAFeeder {
+    private let items: [PhotoItem]
+    private var index = 0
+
+    init(items: [PhotoItem]) {
+        self.items = items
+    }
+
+    func nextItem() -> PhotoItem? {
+        guard index < items.count else { return nil }
+        let item = items[index]
+        index += 1
+        return item
+    }
+}
+
+actor AsyncSemaphore {
+    private var permits: Int
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+
+    init(permits: Int) {
+        self.permits = max(1, permits)
+    }
+
+    func acquire() async {
+        if permits > 0 {
+            permits -= 1
+            return
+        }
+        await withCheckedContinuation { cont in
+            waiters.append(cont)
+        }
+    }
+
+    func release() {
+        if !waiters.isEmpty {
+            let waiter = waiters.removeFirst()
+            waiter.resume()
+        } else {
+            permits += 1
+        }
+    }
+}
+
 public struct StageAOutput: Sendable {
     public let item: PhotoItem
     public let previewDurationSeconds: Double
@@ -341,23 +385,13 @@ public actor AnalysisPipeline {
             let stageAWorkerCount = max(1, self.stageAWorkers)
             let stageBWorkerCount = max(1, self.stageBWorkers)
 
+            let feeder = StageAFeeder(items: items)
             let stageATask = Task {
                 await withTaskGroup(of: Void.self) { aGroup in
-                    var stageAIndex = 0
-                    let stageALock = NSLock()
-
                     for _ in 0..<stageAWorkerCount {
                         aGroup.addTask {
-                            while true {
+                            while let item = await feeder.nextItem() {
                                 if Task.isCancelled { break }
-                                let nextItem: PhotoItem? = stageALock.withLock {
-                                    guard stageAIndex < totalPhotos else { return nil }
-                                    let item = items[stageAIndex]
-                                    stageAIndex += 1
-                                    return item
-                                }
-                                guard let item = nextItem else { break }
-
                                 do {
                                     let stageAOut = try await Self.processStageA(
                                         item: item,
@@ -382,78 +416,84 @@ public actor AnalysisPipeline {
             }
 
             var completedCount = 0
-            let stageBLock = NSLock()
             var updateBatch: [PhotoItem] = []
 
-            try await withThrowingTaskGroup(of: Void.self) { bGroup in
-                for _ in 0..<stageBWorkerCount {
+            try await withThrowingTaskGroup(of: PhotoAnalysisResult.self) { bGroup in
+                var activeBWorkers = 0
+
+                func handleCompletedResult(_ res: PhotoAnalysisResult) {
+                    completedCount += 1
+                    analysisResults[res.id] = res
+                    totalPreviewSeconds += res.previewDurationSeconds
+                    totalQualitySeconds += res.qualityDurationSeconds
+                    totalFaceSeconds += res.faceDurationSeconds
+                    totalFeaturePrintSeconds += res.featurePrintDurationSeconds
+                    totalVisionSeconds += res.visionDurationSeconds
+                    totalClassificationSeconds += res.classificationDurationSeconds
+
+                    let elapsedSoFar = CFAbsoluteTimeGetCurrent() - wallStart
+                    if completedCount == 1 {
+                        if timeToFirstThumbnail == 0.0 {
+                            timeToFirstThumbnail = elapsedSoFar
+                        }
+                        timeToFirstAnalyzedPhoto = elapsedSoFar
+                    }
+                    if completedCount == min(24, totalPhotos) && timeToInteractiveGrid == 0.0 {
+                        timeToInteractiveGrid = elapsedSoFar
+                    }
+
+                    if let itemIdx = items.firstIndex(where: { $0.id == res.id }) {
+                        items[itemIdx].metrics = res.metrics
+                        items[itemIdx].perceptualHash = res.perceptualHash
+                        items[itemIdx].category = res.category
+                        items[itemIdx].categoryConfidence = res.categoryConfidence
+                        updateBatch.append(items[itemIdx])
+                    }
+
+                    if updateBatch.count >= 10 || completedCount == totalPhotos {
+                        onPhotosUpdated?(updateBatch)
+                        updateBatch.removeAll(keepingCapacity: true)
+                    }
+
+                    if totalPhotos <= 20 || completedCount % 10 == 0 || completedCount == totalPhotos {
+                        report(
+                            phase: .quality,
+                            current: completedCount,
+                            total: totalPhotos,
+                            message: "Two-stage analyzed \(completedCount)/\(totalPhotos) photos (A: \(stageAWorkerCount)w, B: \(stageBWorkerCount)w, Q: \(self.queueCapacity))"
+                        )
+                    }
+                }
+
+                while let stageAOut = await channel.receive() {
+                    try Task.checkCancellation()
                     bGroup.addTask {
-                        while let stageAOut = await channel.receive() {
-                            try Task.checkCancellation()
-                            let res = try await Self.processStageB(
-                                stageA: stageAOut,
-                                coordinator: pipelineCoordinator,
-                                classifier: mlClassifier
-                            )
-
-                            let (countSoFar, batchToSend) = stageBLock.withLock { () -> (Int, [PhotoItem]?) in
-                                completedCount += 1
-                                analysisResults[res.id] = res
-                                totalPreviewSeconds += res.previewDurationSeconds
-                                totalQualitySeconds += res.qualityDurationSeconds
-                                totalFaceSeconds += res.faceDurationSeconds
-                                totalFeaturePrintSeconds += res.featurePrintDurationSeconds
-                                totalVisionSeconds += res.visionDurationSeconds
-                                totalClassificationSeconds += res.classificationDurationSeconds
-
-                                let elapsedSoFar = CFAbsoluteTimeGetCurrent() - wallStart
-                                if completedCount == 1 {
-                                    timeToFirstThumbnail = elapsedSoFar
-                                    timeToFirstAnalyzedPhoto = elapsedSoFar
-                                }
-                                if completedCount == min(24, totalPhotos) && timeToInteractiveGrid == 0.0 {
-                                    timeToInteractiveGrid = elapsedSoFar
-                                }
-
-                                if let itemIdx = items.firstIndex(where: { $0.id == res.id }) {
-                                    items[itemIdx].metrics = res.metrics
-                                    items[itemIdx].perceptualHash = res.perceptualHash
-                                    items[itemIdx].category = res.category
-                                    items[itemIdx].categoryConfidence = res.categoryConfidence
-                                    updateBatch.append(items[itemIdx])
-                                }
-
-                                if updateBatch.count >= 10 || completedCount == totalPhotos {
-                                    let copy = updateBatch
-                                    updateBatch.removeAll(keepingCapacity: true)
-                                    return (completedCount, copy)
-                                }
-                                return (completedCount, nil)
-                            }
-
-                            if let batch = batchToSend {
-                                onPhotosUpdated?(batch)
-                            }
-
-                            if totalPhotos <= 20 || countSoFar % 10 == 0 || countSoFar == totalPhotos {
-                                report(
-                                    phase: .quality,
-                                    current: countSoFar,
-                                    total: totalPhotos,
-                                    message: "Two-stage analyzed \(countSoFar)/\(totalPhotos) photos (A: \(stageAWorkerCount)w, B: \(stageBWorkerCount)w, Q: \(self.queueCapacity))"
-                                )
-                            }
+                        return try await Self.processStageB(
+                            stageA: stageAOut,
+                            coordinator: pipelineCoordinator,
+                            classifier: mlClassifier
+                        )
+                    }
+                    activeBWorkers += 1
+                    if activeBWorkers >= stageBWorkerCount {
+                        if let res = try await bGroup.next() {
+                            activeBWorkers -= 1
+                            handleCompletedResult(res)
                         }
                     }
+                }
+
+                while let res = try await bGroup.next() {
+                    handleCompletedResult(res)
                 }
             }
             _ = try await stageATask.value
         } else {
             // Unified Execution Engine with progressive stream
             let maxConcurrency = hardware.recommendedConcurrency
-            let classifierGate: DispatchSemaphore?
+            let classifierGate: AsyncSemaphore?
             if let slots = self.sceneClassificationConcurrency {
-                classifierGate = DispatchSemaphore(value: max(1, slots))
+                classifierGate = AsyncSemaphore(permits: max(1, slots))
             } else {
                 classifierGate = nil
             }
@@ -898,7 +938,7 @@ public actor AnalysisPipeline {
         stageA: StageAOutput,
         coordinator: AnalysisCoordinator,
         classifier: MobileCLIPClassifier,
-        classifierGate: DispatchSemaphore? = nil
+        classifierGate: AsyncSemaphore? = nil
     ) async throws -> PhotoAnalysisResult {
         try await coordinator.waitIfPaused()
         try Task.checkCancellation()
@@ -933,9 +973,9 @@ public actor AnalysisPipeline {
             let sceneHandler = VNImageRequestHandler(cgImage: sceneCG, options: [:])
             let sceneRequest = VNClassifyImageRequest()
             if let gate = classifierGate {
-                gate.wait()
+                await gate.acquire()
                 try? sceneHandler.perform([sceneRequest])
-                gate.signal()
+                await gate.release()
             } else {
                 try? sceneHandler.perform([sceneRequest])
             }
@@ -975,7 +1015,7 @@ public actor AnalysisPipeline {
         visionExecutionMode: VisionExecutionMode,
         faceInputMaxPixelSize: Int,
         sceneInputMaxPixelSize: Int,
-        classifierGate: DispatchSemaphore? = nil
+        classifierGate: AsyncSemaphore? = nil
     ) async throws -> PhotoAnalysisResult {
         try await coordinator.waitIfPaused()
         try Task.checkCancellation()
@@ -1000,9 +1040,9 @@ public actor AnalysisPipeline {
             let sceneRequest = VNClassifyImageRequest()
             let tVisionStart = CFAbsoluteTimeGetCurrent()
             if let gate = classifierGate {
-                gate.wait()
+                await gate.acquire()
                 try? handler.perform([faceRequest, sceneRequest])
-                gate.signal()
+                await gate.release()
             } else {
                 try? handler.perform([faceRequest, sceneRequest])
             }

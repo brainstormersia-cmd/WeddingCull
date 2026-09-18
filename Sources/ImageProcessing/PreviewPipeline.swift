@@ -228,7 +228,7 @@ public final class PreviewPipeline: Sendable {
         let fm = FileManager.default
         do {
             if fm.fileExists(atPath: fileURL.path) {
-                _ = try fm.replaceItemAt(fileURL, withItemAt: tempURL, backupItemName: nil, options: [], resultingItemURL: nil)
+                _ = try fm.replaceItemAt(fileURL, withItemAt: tempURL, backupItemName: nil, options: [])
             } else {
                 try fm.moveItem(at: tempURL, to: fileURL)
             }
