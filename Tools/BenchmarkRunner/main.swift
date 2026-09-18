@@ -233,10 +233,17 @@ struct BenchmarkRunner {
                 let hw = HardwareCapabilities(concurrencyOverride: w)
                 let pipe = AnalysisPipeline(hardware: hw)
                 let tStart = Date()
-                let sess = try await pipe.runAnalysis(
-                    sourceFolder: sweepFolder,
-                    targetCount: min(sweepTargetCount / 2, 700)
-                ) { _ in }
+                let sess: SessionData
+                do {
+                    sess = try await pipe.runAnalysis(
+                        sourceFolder: sweepFolder,
+                        targetCount: min(sweepTargetCount / 2, 700)
+                    ) { _ in }
+                } catch {
+                    samplingTask.cancel()
+                    print("❌ Concurrency sweep failed for \(w) worker(s): \(error)")
+                    continue
+                }
                 samplingTask.cancel()
                 let tWall = max(0.001, Date().timeIntervalSince(tStart))
                 let pps = Double(sess.photos.count) / tWall
