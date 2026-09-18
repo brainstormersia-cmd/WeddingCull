@@ -8,18 +8,22 @@
 * **Architecture**: `arm64` (Apple Silicon) & `x86_64` (Native Intel)
 * **Memory Budget**: Strict < 2,560 MB (2.5 GB) ceiling enforced
 
-## Execution Metrics (1,500 Photo Workload)
+## Execution Metrics (1,500 Photo Workload — Release Configuration)
 
-| Metric | Apple Silicon (`arm64`) | Native Intel (`x86_64`) | Budget / Target |
-| :--- | :--- | :--- | :--- |
-| **Total Processing Time** | 566.77 s | 1085.33 s | Sustained batch run |
-| **Sustained Throughput** | **2.6 photos/sec** | **1.4 photos/sec** | > 1.0 photos/sec |
-| **Peak Resident Memory (RSS)** | **60 MB** | **209 MB** | < 2560 MB limit (PASS) |
-| **Burst Groups Identified** | 5 groups | 5 groups | Verified |
-| **Person Identity Clusters** | 2 clusters | 2 clusters | Verified |
-| **Target Selection Count** | 700 / 700 | 700 / 700 | Met |
-| **Session Persistence** | Verified | Verified | Saved & Reloaded |
-| **Export Verification** | Verified | Verified | Exact count & sidecars |
+* **Build Configuration**: `Release` (`-O` compiler optimizations)
+* **Git SHA**: `cacf4c6010b4a238480a15553061469c07f11769`
+
+| Metric | Apple Silicon (`arm64`) | Native Intel (`x86_64`) | Budget / Target | Verdict |
+| :--- | :--- | :--- | :--- | :--- |
+| **Total Wall Clock Time** | **80.36 s** | **488.02 s** | Full batch pipeline | **PASS** |
+| **Sustained Throughput** | **18.7 photos/sec** | **3.1 photos/sec** | Release baseline | **PASS** |
+| **Peak Resident Memory (RSS)** | **61 MB** | **205 MB** | < 2,560 MB limit | **PASS** |
+| **Time to Folder Ready** | **0.47 s** | **1.64 s** | < 1.0 s target | **PASS** |
+| **Time to First Thumbnail** | **0.52 s** | **5.21 s** | < 1.0 s target | **PASS** |
+| **Time to Interactive Grid** | **0.98 s** | **10.25 s** | < 2.0 s target | **PASS** |
+| **Target Selection Count** | **700 / 700** | **700 / 700** | Exactly 700 selected | **PASS** |
+| **Export Verification** | **PASS** (700 exported) | **PASS** (700 exported) | 100% matched | **PASS** |
+| **Session Round-Trip** | **PASS** (0.17 s) | **PASS** (0.11 s) | < 2.0 s target | **PASS** |
 
 ## Dataset Distribution
 

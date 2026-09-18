@@ -163,7 +163,7 @@ def main():
 
     with open(output_report_path, "w", encoding="utf-8") as f:
         json.dump(report, f, indent=2)
-    print(f"✅ Generated master report: {output_report_path}")
+    print(f"[OK] Generated master report: {output_report_path}")
 
     # Generate Markdown Summary
     albumbench_exec_time = f"{albumbench['executionTimeSeconds']:.1f}s" if albumbench and "executionTimeSeconds" in albumbench else "N/A"
@@ -178,14 +178,14 @@ def main():
 ## Release Performance Baseline
 
 * **BASELINE_RELEASE_ARM64**: {bench_arm64.get('photosPerSecond', 'N/A') if bench_arm64 else 'N/A'} PPS, {bench_arm64.get('peakMemoryMB', 'N/A') if bench_arm64 else 'N/A'} MB RSS, {bench_arm64.get('wallClockSeconds', 'N/A') if bench_arm64 else 'N/A'}s wall clock (Release build, Apple Silicon)
-* **BASELINE_RELEASE_INTEL**: {bench_intel.get('photosPerSecond', 'N/A') if bench_intel else 'N/A'} PPS, {bench_intel.get('peakMemoryMB', 'N/A') if bench_intel else 'N/A'} MB RSS, {bench_intel.get('wallClockSeconds', 'N/A') if bench_intel else 'N/A'}s wall clock (Release build, Native Intel x86_64)
+* **BASELINE_RELEASE_INTEL**: {bench_intel.get('photosPerSecond', 'N/A') if bench_intel else 'N/A'} PPS, {bench_intel.get('peakMemoryMB', 'N/A') if bench_intel else 'N/A'} MB RSS, {bench_intel.get('wallClockSeconds', 'N/A') if bench_intel else 'N/A'}s wall clock (Release build, Native Intel)
 
-## Subsystem Audit Matrix
+## Subsystem Validation Matrix
 
 | Subsystem / Benchmark | Status | Details |
 | :--- | :--- | :--- |
-| **Apple Silicon (arm64) 1500→700** | **{arm64_status}** | {bench_arm64.get('photosPerSecond', 'N/A') if bench_arm64 else 'N/A'} PPS, {bench_arm64.get('peakMemoryMB', 'N/A') if bench_arm64 else 'N/A'} MB RSS ({bench_arm64.get('buildConfiguration', 'release') if bench_arm64 else 'release'}) |
-| **Native Intel (x86_64) 1500→700** | **{intel_status}** | {bench_intel.get('photosPerSecond', 'N/A') if bench_intel else 'N/A'} PPS, {bench_intel.get('peakMemoryMB', 'N/A') if bench_intel else 'N/A'} MB RSS ({bench_intel.get('buildConfiguration', 'release') if bench_intel else 'release'}) |
+| **Apple Silicon (arm64) 1500->700** | **{arm64_status}** | {bench_arm64.get('photosPerSecond', 'N/A') if bench_arm64 else 'N/A'} PPS, {bench_arm64.get('peakMemoryMB', 'N/A') if bench_arm64 else 'N/A'} MB RSS ({bench_arm64.get('buildConfiguration', 'release') if bench_arm64 else 'release'}) |
+| **Native Intel (x86_64) 1500->700** | **{intel_status}** | {bench_intel.get('photosPerSecond', 'N/A') if bench_intel else 'N/A'} PPS, {bench_intel.get('peakMemoryMB', 'N/A') if bench_intel else 'N/A'} MB RSS ({bench_intel.get('buildConfiguration', 'release') if bench_intel else 'release'}) |
 | **AlbumBench Real Wedding Dataset** | **{albumbench_status}** | {albumbench.get('evaluatedAlbumsCount', 0) if albumbench else 0} albums ({albumbench.get('totalImagesEvaluated', 0) if albumbench else 0} photos), F1={albumbench_f1}, Time={albumbench_exec_time} (Photographic tuning frozen; regression reference) |
 | **Strict Real Camera RAWs** | **{raw_status}** | {raw_format_summary} |
 | **MobileCLIP Core ML Model** | **{mobileclip_status}** | {mobileclip.get('classificationBackend', 'N/A') if mobileclip else 'N/A'}, Latency={f"{mobileclip['averageLatencyMs']:.1f}ms" if mobileclip and 'averageLatencyMs' in mobileclip else 'N/A'} |
@@ -193,7 +193,7 @@ def main():
 """
     with open(output_md_path, "w", encoding="utf-8") as f:
         f.write(md_content)
-    print(f"✅ Generated master markdown: {output_md_path}")
+    print(f"[OK] Generated master markdown: {output_md_path}")
 
 if __name__ == "__main__":
     main()

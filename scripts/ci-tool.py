@@ -55,6 +55,17 @@ def get_run_details(run_id):
                 sname = step['name'].encode('ascii', errors='replace').decode('ascii')
                 print(f"        Step: {sname} : {step['status']} ({step['conclusion']})")
 
+def get_job_info(job_id):
+    url = f"https://api.github.com/repos/{REPO}/actions/jobs/{job_id}"
+    req = urllib.request.Request(url, headers=HEADERS)
+    with urllib.request.urlopen(req) as resp:
+        job = json.loads(resp.read().decode("utf-8"))
+    name = job.get('name', '').encode('ascii', errors='replace').decode('ascii')
+    print(f"Job: {name} | Status: {job.get('status')} | Conclusion: {job.get('conclusion')} | Started: {job.get('started_at')}")
+    for step in job.get('steps', []):
+        sname = step.get('name', '').encode('ascii', errors='replace').decode('ascii')
+        print(f"  Step: {sname} : {step.get('status')} ({step.get('conclusion')})")
+
 def get_job_log(job_id):
     url = f"https://api.github.com/repos/{REPO}/actions/jobs/{job_id}/logs"
     class NoAuthRedirectHandler(urllib.request.HTTPRedirectHandler):
@@ -81,13 +92,19 @@ def list_and_download_artifacts(run_id, out_dir="artifacts_download"):
     os.makedirs(out_dir, exist_ok=True)
     artifacts = data.get("artifacts", [])
     print(f"Found {len(artifacts)} artifacts for run {run_id}:")
+    class NoAuthRedirectHandler(urllib.request.HTTPRedirectHandler):
+        def redirect_request(self, req, fp, code, msg, headers, newurl):
+            return urllib.request.Request(newurl)
+
+    opener = urllib.request.build_opener(NoAuthRedirectHandler())
+
     for a in artifacts:
         print(f"  Artifact: {a['name']} ({a['size_in_bytes']} bytes)")
         download_url = a["archive_download_url"]
         dl_req = urllib.request.Request(download_url, headers=HEADERS)
         zip_path = os.path.join(out_dir, f"{a['name']}.zip")
         try:
-            with urllib.request.urlopen(dl_req) as dl_resp, open(zip_path, "wb") as out_f:
+            with opener.open(dl_req) as dl_resp, open(zip_path, "wb") as out_f:
                 out_f.write(dl_resp.read())
             extract_dir = os.path.join(out_dir, a["name"])
             os.makedirs(extract_dir, exist_ok=True)
@@ -126,6 +143,8 @@ if __name__ == "__main__":
         elif cmd == "download" and len(sys.argv) > 2:
             out = sys.argv[3] if len(sys.argv) > 3 else "artifacts_download"
             list_and_download_artifacts(sys.argv[2], out)
+        elif cmd == "job" and len(sys.argv) > 2:
+            get_job_info(sys.argv[2])
         elif cmd == "log" and len(sys.argv) > 2:
             get_job_log(sys.argv[2])
         elif cmd == "dispatch":

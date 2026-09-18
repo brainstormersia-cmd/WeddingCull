@@ -1,0 +1,69 @@
+{
+  "architecture" : "x86_64",
+  "buildConfiguration" : "release",
+  "burstGroupsDetected" : 5,
+  "classificationBackend" : "Apple Vision (Built-in)",
+  "datasetMode" : "LOW_RES_SCALE",
+  "datasetSize" : 1499,
+  "datasetType" : "synthetic-wedding-benchmark",
+  "exportValidation" : true,
+  "finalSelectedCount" : 700,
+  "formatDistribution" : {
+    "CR3" : 1,
+    "JPG" : 1498
+  },
+  "gitSHA" : "cacf4c6010b4a238480a15553061469c07f11769",
+  "hardware" : {
+    "architecture" : "x86_64",
+    "logicalProcessors" : 4,
+    "metalAvailable" : true,
+    "neuralEngineAvailable" : false,
+    "physicalMemoryGB" : 14,
+    "recommendedConcurrency" : 4
+  },
+  "importedLogicalPhotos" : 1499,
+  "inputCount" : 1500,
+  "inputFiles" : 1500,
+  "jpegFileCount" : 1498,
+  "logicalPhotoCount" : 1499,
+  "macOSVersion" : "Version 15.7.9 (Build 24G830)",
+  "megapixelStats" : {
+    "maxMP" : 12,
+    "medianMP" : 0.48,
+    "minMP" : 0.48,
+    "p95MP" : 0.48
+  },
+  "memoryBudgetMB" : 2560,
+  "memoryWithinBudget" : true,
+  "peakMemoryMB" : 205,
+  "perceivedSpeedMetrics" : {
+    "timeToFinalSelection" : 488.01,
+    "timeToFirstAnalyzedPhoto" : 5.21,
+    "timeToFirstThumbnail" : 5.21,
+    "timeToFolderReady" : 1.64,
+    "timeToInteractiveGrid" : 10.25,
+    "timeToPreliminarySelection" : 355.55
+  },
+  "personClustersFormed" : 2,
+  "phaseTimings" : {
+    "burstAndDuplicateSeconds" : 0.15,
+    "clusteringAndSegmentationSeconds" : 0.07,
+    "discoverySeconds" : 1.64,
+    "faceAndFeatureSeconds" : 1365.56,
+    "previewGenerationSeconds" : 28.24,
+    "qualityScoringSeconds" : 15.31,
+    "rankingAndSelectionSeconds" : 132.39,
+    "sceneClassificationSeconds" : 0.31,
+    "sessionPersistenceSeconds" : 0.11,
+    "totalWallClockSeconds" : 488.01
+  },
+  "photosPerSecond" : 3.1,
+  "rawFileCount" : 1,
+  "rawJpegPairs" : 1,
+  "rejectedCorrupt" : 1,
+  "sessionPersistence" : true,
+  "targetCardinality" : 700,
+  "totalBytes" : 31648035,
+  "totalProcessingTimeSeconds" : 488.02,
+  "wallClockSeconds" : 488.02
+}

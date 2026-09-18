@@ -1,0 +1,31 @@
+{
+  "architecture" : "arm64",
+  "buildConfiguration" : "release",
+  "datasetMode" : "LOW_RES_SCALE",
+  "gitSHA" : "cacf4c6010b4a238480a15553061469c07f11769",
+  "inputFiles" : 1500,
+  "logicalPhotos" : 1499,
+  "peakMemoryMB" : 61,
+  "perceivedSpeedMetrics" : {
+    "timeToFinalSelection" : 80.36,
+    "timeToFirstAnalyzedPhoto" : 0.52,
+    "timeToFirstThumbnail" : 0.52,
+    "timeToFolderReady" : 0.47,
+    "timeToInteractiveGrid" : 0.98,
+    "timeToPreliminarySelection" : 37.21
+  },
+  "phaseTimings" : {
+    "burstAndDuplicateSeconds" : 0.06,
+    "clusteringAndSegmentationSeconds" : 0.02,
+    "discoverySeconds" : 0.47,
+    "faceAndFeatureSeconds" : 91.06,
+    "previewGenerationSeconds" : 9.51,
+    "qualityScoringSeconds" : 7.99,
+    "rankingAndSelectionSeconds" : 43.13,
+    "sceneClassificationSeconds" : 0.01,
+    "sessionPersistenceSeconds" : 0.17,
+    "totalWallClockSeconds" : 80.36
+  },
+  "photosPerSecond" : 18.7,
+  "wallClockSeconds" : 80.36
+}
