@@ -613,17 +613,20 @@ struct BenchmarkRunner {
 
             let sessionManager = SessionManager()
             var sessionReloadSuccess = false
+            var sessionReopenLatencySeconds: Double = 0.0
             let tSaveStart = CFAbsoluteTimeGetCurrent()
             if (try? sessionManager.saveSession(session, to: sessionTempFile)) != nil {
                 let saveDuration = CFAbsoluteTimeGetCurrent() - tSaveStart
                 session.phaseTimings?.sessionPersistenceSeconds = Double(round(saveDuration * 100) / 100)
+                let tLoadStart = CFAbsoluteTimeGetCurrent()
                 if let reloaded = try? sessionManager.loadSession(from: sessionTempFile) {
+                    sessionReopenLatencySeconds = CFAbsoluteTimeGetCurrent() - tLoadStart
                     sessionReloadSuccess = (reloaded.photos.count == session.photos.count &&
                                             reloaded.targetSelectionCount == session.targetSelectionCount &&
                                             reloaded.burstGroups.count == session.burstGroups.count)
                 }
             }
-            print("  Session round-trip status: \(sessionReloadSuccess ? "PASS" : "FAIL")")
+            print(String(format: "  Session round-trip status: %@ (Reopen Latency: %.3f s, Target: < 2.0s)", sessionReloadSuccess ? "PASS" : "FAIL", sessionReopenLatencySeconds))
 
             let backendUsed = (FileManager.default.fileExists(atPath: "models/mobileclip_s0_image.mlmodelc") ||
                                FileManager.default.fileExists(atPath: "models/mobileclip_s0_image.mlpackage")) ? "MobileCLIP-S0" : "Apple Vision (Built-in)"
@@ -649,6 +652,7 @@ struct BenchmarkRunner {
             print("Final Selected Count: \(selectedCount)")
             print("Export Validation: \(exportSuccess ? "PASS" : "FAIL")")
             print("Session Persistence: \(sessionReloadSuccess ? "PASS" : "FAIL")")
+            print(String(format: "Session Reopen Latency: %.3f s (< 2.0s target)", sessionReopenLatencySeconds))
             if let pt = session.phaseTimings {
                 let photoCount = Double(max(1, session.photos.count))
                 let faceMs = (pt.faceDetectionSeconds / photoCount) * 1000.0
@@ -672,8 +676,9 @@ struct BenchmarkRunner {
                 print("  Session Persistence Write: \(pt.sessionPersistenceSeconds) s")
                 print("  Total Wall Clock: \(pt.totalWallClockSeconds) s")
             }
-            if let psm = session.perceivedSpeedMetrics {
-                print("--- Perceived Speed Metrics ---")
+            let readiness = session.pipelineReadinessMetrics ?? session.perceivedSpeedMetrics
+            if let psm = readiness {
+                print("--- Pipeline Readiness Metrics ---")
                 print("  Time to Folder Ready: \(psm.timeToFolderReady) s")
                 print("  Time to First Thumbnail: \(psm.timeToFirstThumbnail) s")
                 print("  Time to Interactive Grid: \(psm.timeToInteractiveGrid) s")
@@ -732,8 +737,10 @@ struct BenchmarkRunner {
                 let personClustersFormed: Int
                 let exportValidation: Bool
                 let sessionPersistence: Bool
+                let sessionReopenLatencySeconds: Double
                 let phaseTimings: PhaseTimings?
-                let perceivedSpeedMetrics: PerceivedSpeedMetrics?
+                let pipelineReadinessMetrics: PipelineReadinessMetrics?
+                let perceivedSpeedMetrics: PipelineReadinessMetrics?
             }
 
             let reportData = BenchmarkReportData(
@@ -781,8 +788,10 @@ struct BenchmarkRunner {
                 personClustersFormed: session.personClusters.count,
                 exportValidation: exportSuccess,
                 sessionPersistence: sessionReloadSuccess,
+                sessionReopenLatencySeconds: Double(round(sessionReopenLatencySeconds * 1000) / 1000),
                 phaseTimings: session.phaseTimings,
-                perceivedSpeedMetrics: session.perceivedSpeedMetrics
+                pipelineReadinessMetrics: session.pipelineReadinessMetrics ?? session.perceivedSpeedMetrics,
+                perceivedSpeedMetrics: session.pipelineReadinessMetrics ?? session.perceivedSpeedMetrics
             )
 
             let jsonEncoder = JSONEncoder()
@@ -806,8 +815,10 @@ struct BenchmarkRunner {
                     let wallClockSeconds: Double
                     let photosPerSecond: Double
                     let peakMemoryMB: Int
+                    let sessionReopenLatencySeconds: Double
                     let phaseTimings: PhaseTimings?
-                    let perceivedSpeedMetrics: PerceivedSpeedMetrics?
+                    let pipelineReadinessMetrics: PipelineReadinessMetrics?
+                    let perceivedSpeedMetrics: PipelineReadinessMetrics?
                 }
 
                 let ptReport = PhaseTimingsReport(
@@ -820,8 +831,10 @@ struct BenchmarkRunner {
                     wallClockSeconds: Double(round(totalTime * 100) / 100),
                     photosPerSecond: Double(round(throughput * 10) / 10),
                     peakMemoryMB: peakMB,
+                    sessionReopenLatencySeconds: Double(round(sessionReopenLatencySeconds * 1000) / 1000),
                     phaseTimings: session.phaseTimings,
-                    perceivedSpeedMetrics: session.perceivedSpeedMetrics
+                    pipelineReadinessMetrics: session.pipelineReadinessMetrics ?? session.perceivedSpeedMetrics,
+                    perceivedSpeedMetrics: session.pipelineReadinessMetrics ?? session.perceivedSpeedMetrics
                 )
                 if let ptData = try? jsonEncoder.encode(ptReport) {
                     let ptURL = URL(fileURLWithPath: phasePath)
@@ -893,20 +906,22 @@ struct BenchmarkRunner {
                 """
             }
 
-            if let psm = session.perceivedSpeedMetrics {
+            let readiness = session.pipelineReadinessMetrics ?? session.perceivedSpeedMetrics
+            if let psm = readiness {
                 mdContent += """
 
 
-                ## Perceived Speed & Responsiveness Metrics
+                ## Pipeline Readiness & Responsiveness Metrics
 
-                | Milestone | Measured Time |
-                | :--- | :--- |
-                | **timeToFolderReady** (metadata indexed, placeholders visible) | \(psm.timeToFolderReady) s |
-                | **timeToFirstThumbnail** (first visible image in UI) | \(psm.timeToFirstThumbnail) s |
-                | **timeToInteractiveGrid** (user can browse & scroll) | \(psm.timeToInteractiveGrid) s |
-                | **timeToFirstAnalyzedPhoto** (first scored photo ready) | \(psm.timeToFirstAnalyzedPhoto) s |
-                | **timeToPreliminarySelection** (initial keepers visible) | \(psm.timeToPreliminarySelection) s |
-                | **timeToFinalSelection** (full analysis complete) | **\(psm.timeToFinalSelection) s** |
+                | Milestone | Measured Time | Target / Status |
+                | :--- | :--- | :--- |
+                | **timeToFolderReady** (metadata indexed, placeholders visible) | \(psm.timeToFolderReady) s | Instant metadata presentation |
+                | **timeToFirstThumbnail** (first visible image in UI) | \(psm.timeToFirstThumbnail) s | Progressive thumbnail streaming |
+                | **timeToInteractiveGrid** (user can browse & scroll 24 cells) | \(psm.timeToInteractiveGrid) s | Non-blocking grid interactivity |
+                | **timeToFirstAnalyzedPhoto** (first scored photo ready) | \(psm.timeToFirstAnalyzedPhoto) s | Incremental pipeline stream |
+                | **timeToPreliminarySelection** (initial keepers visible) | \(psm.timeToPreliminarySelection) s | Early cull visibility |
+                | **timeToFinalSelection** (full analysis complete) | **\(psm.timeToFinalSelection) s** | Full selection finalized |
+                | **sessionReopenLatencySeconds** (reopening shoot from disk) | **\(String(format: "%.3f", sessionReopenLatencySeconds)) s** | Target: < 2.0s (\(sessionReopenLatencySeconds < 2.0 ? "PASS" : "FAIL")) |
                 """
             }
 

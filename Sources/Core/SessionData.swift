@@ -17,7 +17,11 @@ public struct SessionData: Codable, Sendable {
     public var personClusters: [PersonCluster]
     public var completedPhases: [String]
     public var phaseTimings: PhaseTimings?
-    public var perceivedSpeedMetrics: PerceivedSpeedMetrics?
+    public var pipelineReadinessMetrics: PipelineReadinessMetrics?
+    public var perceivedSpeedMetrics: PipelineReadinessMetrics? {
+        get { pipelineReadinessMetrics }
+        set { pipelineReadinessMetrics = newValue }
+    }
 
     public init(
         schemaVersion: Int = SessionData.currentSchemaVersion,
@@ -33,7 +37,8 @@ public struct SessionData: Codable, Sendable {
         personClusters: [PersonCluster] = [],
         completedPhases: [String] = [],
         phaseTimings: PhaseTimings? = nil,
-        perceivedSpeedMetrics: PerceivedSpeedMetrics? = nil
+        pipelineReadinessMetrics: PipelineReadinessMetrics? = nil,
+        perceivedSpeedMetrics: PipelineReadinessMetrics? = nil
     ) {
         self.schemaVersion = schemaVersion
         self.algorithmVersion = algorithmVersion
@@ -48,7 +53,51 @@ public struct SessionData: Codable, Sendable {
         self.personClusters = personClusters
         self.completedPhases = completedPhases
         self.phaseTimings = phaseTimings
-        self.perceivedSpeedMetrics = perceivedSpeedMetrics
+        self.pipelineReadinessMetrics = pipelineReadinessMetrics ?? perceivedSpeedMetrics
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case schemaVersion, algorithmVersion, sessionID, createdAt, modifiedAt
+        case sourceFolderPath, targetSelectionCount, photos, burstGroups, segments
+        case personClusters, completedPhases, phaseTimings
+        case pipelineReadinessMetrics, perceivedSpeedMetrics
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.schemaVersion = try container.decode(Int.self, forKey: .schemaVersion)
+        self.algorithmVersion = try container.decode(Int.self, forKey: .algorithmVersion)
+        self.sessionID = try container.decode(String.self, forKey: .sessionID)
+        self.createdAt = try container.decode(Date.self, forKey: .createdAt)
+        self.modifiedAt = try container.decode(Date.self, forKey: .modifiedAt)
+        self.sourceFolderPath = try container.decode(String.self, forKey: .sourceFolderPath)
+        self.targetSelectionCount = try container.decode(Int.self, forKey: .targetSelectionCount)
+        self.photos = try container.decode([PhotoItem].self, forKey: .photos)
+        self.burstGroups = try container.decode([BurstGroup].self, forKey: .burstGroups)
+        self.segments = try container.decode([TemporalSegment].self, forKey: .segments)
+        self.personClusters = try container.decode([PersonCluster].self, forKey: .personClusters)
+        self.completedPhases = try container.decode([String].self, forKey: .completedPhases)
+        self.phaseTimings = try container.decodeIfPresent(PhaseTimings.self, forKey: .phaseTimings)
+        self.pipelineReadinessMetrics = (try container.decodeIfPresent(PipelineReadinessMetrics.self, forKey: .pipelineReadinessMetrics)) ?? (try container.decodeIfPresent(PipelineReadinessMetrics.self, forKey: .perceivedSpeedMetrics))
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(schemaVersion, forKey: .schemaVersion)
+        try container.encode(algorithmVersion, forKey: .algorithmVersion)
+        try container.encode(sessionID, forKey: .sessionID)
+        try container.encode(createdAt, forKey: .createdAt)
+        try container.encode(modifiedAt, forKey: .modifiedAt)
+        try container.encode(sourceFolderPath, forKey: .sourceFolderPath)
+        try container.encode(targetSelectionCount, forKey: .targetSelectionCount)
+        try container.encode(photos, forKey: .photos)
+        try container.encode(burstGroups, forKey: .burstGroups)
+        try container.encode(segments, forKey: .segments)
+        try container.encode(personClusters, forKey: .personClusters)
+        try container.encode(completedPhases, forKey: .completedPhases)
+        try container.encodeIfPresent(phaseTimings, forKey: .phaseTimings)
+        try container.encodeIfPresent(pipelineReadinessMetrics, forKey: .pipelineReadinessMetrics)
+        try container.encodeIfPresent(pipelineReadinessMetrics, forKey: .perceivedSpeedMetrics)
     }
 }
 
@@ -94,19 +143,11 @@ public struct PhaseTimings: Codable, Sendable {
         self.totalWallClockSeconds = totalWallClockSeconds
     }
 
-    private enum CodingKeys: String, CodingKey {
-        case discoverySeconds
-        case previewGenerationSeconds
-        case faceDetectionSeconds
-        case featurePrintSeconds
-        case faceAndFeatureSeconds
-        case qualityScoringSeconds
-        case sceneClassificationSeconds
-        case burstAndDuplicateSeconds
-        case clusteringAndSegmentationSeconds
-        case rankingAndSelectionSeconds
-        case sessionPersistenceSeconds
-        case totalWallClockSeconds
+    enum CodingKeys: String, CodingKey {
+        case discoverySeconds, previewGenerationSeconds, faceDetectionSeconds, featurePrintSeconds
+        case faceAndFeatureSeconds, qualityScoringSeconds, sceneClassificationSeconds
+        case burstAndDuplicateSeconds, clusteringAndSegmentationSeconds, rankingAndSelectionSeconds
+        case sessionPersistenceSeconds, totalWallClockSeconds
     }
 
     public init(from decoder: Decoder) throws {
@@ -129,7 +170,7 @@ public struct PhaseTimings: Codable, Sendable {
     }
 }
 
-public struct PerceivedSpeedMetrics: Codable, Sendable {
+public struct PipelineReadinessMetrics: Codable, Sendable {
     public var timeToFolderReady: Double
     public var timeToFirstThumbnail: Double
     public var timeToInteractiveGrid: Double
@@ -153,3 +194,5 @@ public struct PerceivedSpeedMetrics: Codable, Sendable {
         self.timeToFinalSelection = timeToFinalSelection
     }
 }
+
+public typealias PerceivedSpeedMetrics = PipelineReadinessMetrics

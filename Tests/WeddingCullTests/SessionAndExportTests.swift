@@ -68,4 +68,49 @@ final class SessionAndExportTests: XCTestCase {
         XCTAssertTrue(csvContent.contains("originalPath"))
         XCTAssertTrue(csvContent.contains("cakeAndToast"))
     }
+
+    func testSessionReopenPerformance() throws {
+        let tempFile = FileManager.default.temporaryDirectory.appendingPathComponent("session_bench_1500_\(UUID().uuidString).json")
+        defer { try? FileManager.default.removeItem(at: tempFile) }
+
+        var items: [PhotoItem] = []
+        items.reserveCapacity(1500)
+        let categories = WeddingCategory.allCases
+        for i in 0..<1500 {
+            var item = PhotoItem(fileName: "IMG_\(i).jpg", sourceURL: URL(fileURLWithPath: "/photos/IMG_\(i).jpg"))
+            item.category = categories[i % categories.count]
+            item.selectionState = (i % 2 == 0) ? .selected : .rejected
+            item.metrics.overallScore = 0.5 + Double(i % 50) * 0.01
+            items.append(item)
+        }
+
+        let readiness = PipelineReadinessMetrics(
+            timeToFolderReady: 0.05,
+            timeToFirstThumbnail: 0.12,
+            timeToInteractiveGrid: 0.45,
+            timeToFirstAnalyzedPhoto: 0.48,
+            timeToPreliminarySelection: 1.20,
+            timeToFinalSelection: 2.10
+        )
+
+        let session = SessionData(
+            sourceFolderPath: "/photos",
+            targetSelectionCount: 700,
+            photos: items,
+            completedPhases: ["Importazione", "Qualità", "Selezione"],
+            pipelineReadinessMetrics: readiness
+        )
+
+        let manager = SessionManager()
+        try manager.saveSession(session, to: tempFile)
+
+        let tStart = CFAbsoluteTimeGetCurrent()
+        let loaded = try manager.loadSession(from: tempFile)
+        let tElapsed = CFAbsoluteTimeGetCurrent() - tStart
+
+        XCTAssertEqual(loaded.photos.count, 1500)
+        XCTAssertEqual(loaded.pipelineReadinessMetrics?.timeToFirstThumbnail, 0.12)
+        XCTAssertEqual(loaded.perceivedSpeedMetrics?.timeToFirstThumbnail, 0.12)
+        XCTAssertLessThan(tElapsed, 2.0, "Session reopen for 1,500 photos must complete in < 2.0s (measured: \(tElapsed)s)")
+    }
 }

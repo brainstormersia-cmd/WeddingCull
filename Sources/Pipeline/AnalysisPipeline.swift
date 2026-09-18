@@ -218,6 +218,19 @@ public actor AnalysisPipeline {
         var timeToInteractiveGrid: Double = 0.0
         var timeToFirstAnalyzedPhoto: Double = 0.0
 
+        // Progressive first-page thumbnail delivery: render first 24 thumbs immediately so grid is ready
+        let firstBatchCount = min(24, totalPhotos)
+        for i in 0..<firstBatchCount {
+            _ = previewPipe.generateOrLoadPreview(for: items[i])
+            let elapsed = CFAbsoluteTimeGetCurrent() - wallStart
+            if i == 0 && timeToFirstThumbnail == 0.0 {
+                timeToFirstThumbnail = elapsed
+            }
+        }
+        if timeToInteractiveGrid == 0.0 {
+            timeToInteractiveGrid = CFAbsoluteTimeGetCurrent() - wallStart
+        }
+
         var totalPreviewSeconds = 0.0
         var totalQualitySeconds = 0.0
         var totalFaceSeconds = 0.0
@@ -501,7 +514,7 @@ public actor AnalysisPipeline {
             totalWallClockSeconds: Double(round(totalWallClock * 100) / 100)
         )
 
-        let perceivedMetrics = PerceivedSpeedMetrics(
+        let readinessMetrics = PipelineReadinessMetrics(
             timeToFolderReady: Double(round(timeToFolderReady * 100) / 100),
             timeToFirstThumbnail: Double(round(timeToFirstThumbnail * 100) / 100),
             timeToInteractiveGrid: Double(round(timeToInteractiveGrid * 100) / 100),
@@ -521,7 +534,7 @@ public actor AnalysisPipeline {
             personClusters: personClusters,
             completedPhases: AnalysisPhase.allCases.map { $0.rawValue },
             phaseTimings: timings,
-            perceivedSpeedMetrics: perceivedMetrics
+            pipelineReadinessMetrics: readinessMetrics
         )
     }
 

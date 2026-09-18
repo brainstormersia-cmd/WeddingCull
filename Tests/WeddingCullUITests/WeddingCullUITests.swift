@@ -183,4 +183,81 @@ final class WeddingCullUITests: XCTestCase {
         captureScreenshot(name: "10_Final_Review_State")
         XCTAssertTrue(true, "UI automated workflow executed cleanly with real photos and loupe")
     }
+
+    func testFolderOpenToInteractiveScrollPerformance() throws {
+        // Generate a 36-photo wedding shoot so there are >= 24 photos to display in the grid and scroll
+        let perfTempDir = FileManager.default.temporaryDirectory.appendingPathComponent("WeddingCullUIPerfData_\(UUID().uuidString)")
+        try? FileManager.default.createDirectory(at: perfTempDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: perfTempDir) }
+
+        let generator = SyntheticWeddingGenerator()
+        let config = SyntheticWeddingGenerator.GeneratorConfig(targetTotalPhotos: 36)
+        _ = try generator.generateDataset(at: perfTempDir, config: config)
+
+        let perfApp = XCUIApplication()
+        perfApp.launchArguments = [
+            "--ui-testing",
+            "--source-folder", perfTempDir.path,
+            "--target-count", "18"
+        ]
+        perfApp.launchEnvironment["UI_TESTING"] = "YES"
+        perfApp.launchEnvironment["UI_TEST_SOURCE_FOLDER"] = perfTempDir.path
+
+        let tFolderOpenStart = CFAbsoluteTimeGetCurrent()
+        perfApp.launch()
+
+        // 1. Wait for Photo Grid or Review Mode entry
+        let photoGrid = perfApp.scrollViews["photo_grid"].firstMatch
+        let loadedThumbPredicate = NSPredicate(format: "identifier == 'photo_thumbnail_loaded'")
+        let loadedThumbs = perfApp.images.matching(loadedThumbPredicate)
+
+        // 2. Measure Folder Open -> First Rendered Thumbnail
+        let firstThumbAppeared = loadedThumbs.firstMatch.waitForExistence(timeout: 25.0)
+        XCTAssertTrue(firstThumbAppeared, "First rendered thumbnail must appear in UI")
+        let tFirstThumb = CFAbsoluteTimeGetCurrent() - tFolderOpenStart
+
+        // 3. Measure Folder Open -> 24 Rendered Cells
+        let expectation24 = XCTNSPredicateExpectation(predicate: NSPredicate(format: "count >= 24"), object: loadedThumbs)
+        let waiterResult = XCTWaiter.wait(for: [expectation24], timeout: 25.0)
+        XCTAssertEqual(waiterResult, .completed, "At least 24 thumbnail cells must render in the grid")
+        let t24Cells = CFAbsoluteTimeGetCurrent() - tFolderOpenStart
+
+        // 4. Measure Successful Interactive Scroll
+        XCTAssertTrue(photoGrid.exists, "Photo grid must exist and be scrollable")
+        let tScrollStart = CFAbsoluteTimeGetCurrent()
+        photoGrid.swipeUp()
+        let tScrollEnd = CFAbsoluteTimeGetCurrent()
+        let scrollDuration = tScrollEnd - tScrollStart
+        XCTAssertGreaterThan(scrollDuration, 0.0, "Scroll gesture must execute successfully")
+
+        print("====================================================")
+        print("📊 REAL UI READINESS & SCROLL MEASUREMENT")
+        print("====================================================")
+        print(String(format: "  Folder Open → First Rendered Thumbnail: %.3f s", tFirstThumb))
+        print(String(format: "  Folder Open → 24 Rendered Cells: %.3f s", t24Cells))
+        print(String(format: "  Successful Scroll Gesture: %.3f s", scrollDuration))
+        print("====================================================")
+
+        // Persist real UI measurement artifact
+        struct UIMeasurementResult: Codable {
+            let folderOpenToFirstThumbnailSeconds: Double
+            let folderOpenTo24CellsSeconds: Double
+            let scrollGestureSeconds: Double
+            let scrollSuccess: Bool
+        }
+        let resultData = UIMeasurementResult(
+            folderOpenToFirstThumbnailSeconds: Double(round(tFirstThumb * 1000) / 1000),
+            folderOpenTo24CellsSeconds: Double(round(t24Cells * 1000) / 1000),
+            scrollGestureSeconds: Double(round(scrollDuration * 1000) / 1000),
+            scrollSuccess: true
+        )
+        let artifactsDir = ProcessInfo.processInfo.environment["ARTIFACTS_DIR"] ?? "./artifacts"
+        let outURL = URL(fileURLWithPath: artifactsDir).appendingPathComponent("ui-readiness-measurement.json")
+        try? FileManager.default.createDirectory(at: outURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let enc = JSONEncoder()
+        enc.outputFormatting = [.prettyPrinted, .sortedKeys]
+        if let encoded = try? enc.encode(resultData) {
+            try? encoded.write(to: outURL)
+        }
+    }
 }

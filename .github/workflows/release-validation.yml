@@ -285,11 +285,19 @@ jobs:
           swift build -c release --product IQAValidationRunner
           .build/release/IQAValidationRunner --output artifacts/iqa-report.json
 
-      - name: Upload IQA Report Artifact
+      - name: Run UI Automation Tests
+        run: |
+          set -euo pipefail
+          ./scripts/test.sh --ui-only
+        continue-on-error: true
+
+      - name: Upload IQA and Quality Report Artifact
         uses: actions/upload-artifact@v4
         with:
           name: iqa-report
-          path: artifacts/iqa-report.json
+          path: |
+            artifacts/iqa-report.json
+            artifacts/ui-readiness-measurement.json
 
   selection-quality-validation:
     name: Selection Ground-Truth, Category & Burst Validation

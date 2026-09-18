@@ -114,6 +114,7 @@ jobs:
           path: |
             artifacts/screenshots/
             artifacts/*.xcresult*
+            artifacts/*.json
 
   universal-build-and-verify:
     name: Universal Build & Verification (macOS)
