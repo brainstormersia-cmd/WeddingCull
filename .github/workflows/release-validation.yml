@@ -125,23 +125,50 @@ jobs:
             --output-sweep-json artifacts/concurrency-sweep-intel.json \
             --sweep-only
 
-      - name: Execute Intel Vision Configurations & Resolution Sweep
+      - name: Execute Intel Decoupled Concurrency Matrix Sweep (Pipeline 2,3,4 x Classify 1,2)
         run: |
           set -euo pipefail
           mkdir -p artifacts
           .build/release/BenchmarkRunner \
-            --sweep-vision-configs 150 \
-            --output-vision-configs-json artifacts/vision-configs-sweep-intel.json \
+            --sweep-classify-matrix 150 \
+            --output-classify-matrix-json artifacts/classify-matrix-sweep-intel.json \
             --sweep-only
 
-      - name: Execute 1,500→700 Pipeline Benchmark on Native Intel Hardware
+      - name: Execute 1,500→700 Benchmark with Exactly 2 Global Workers
         run: |
           set -euo pipefail
           mkdir -p artifacts
-          swift build -c release --product BenchmarkRunner
           .build/release/BenchmarkRunner \
             --count "${{ github.event.inputs.dataset_size || '1500' }}" \
             --target "${{ github.event.inputs.target_count || '700' }}" \
+            --workers 2 \
+            --dataset-mode LOW_RES_SCALE \
+            --build-config release \
+            --git-sha "$GITHUB_SHA" \
+            --strict \
+            --phase-timings-json artifacts/baseline-phase-timings-intel-2workers.json \
+            --output-json artifacts/benchmark-intel-2workers.json \
+            --output-md artifacts/BENCHMARKS-intel-2workers.md
+
+      - name: Execute 1,500→700 Benchmark with Winning Decoupled Configuration
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          python3 -c "
+          import json
+          with open('artifacts/classify-matrix-sweep-intel.json') as f:
+              data = json.load(f)
+          best = max(data, key=lambda x: x['throughputPPS'])
+          with open('best_config.env', 'w') as out:
+              out.write(f'BEST_WORKERS={best[\"pipelineWorkers\"]}\nBEST_SLOTS={best[\"classifySlots\"]}\n')
+          print(f'Winning Config: Pipeline {best[\"pipelineWorkers\"]}, Classify Slots {best[\"classifySlots\"]} ({best[\"throughputPPS\"]} PPS)')
+          "
+          source best_config.env
+          .build/release/BenchmarkRunner \
+            --count "${{ github.event.inputs.dataset_size || '1500' }}" \
+            --target "${{ github.event.inputs.target_count || '700' }}" \
+            --workers "$BEST_WORKERS" \
+            --classify-slots "$BEST_SLOTS" \
             --dataset-mode LOW_RES_SCALE \
             --build-config release \
             --git-sha "$GITHUB_SHA" \
@@ -159,9 +186,11 @@ jobs:
             artifacts/benchmark-intel.json
             artifacts/baseline-intel-release.json
             artifacts/baseline-phase-timings-intel.json
+            artifacts/benchmark-intel-2workers.json
+            artifacts/baseline-phase-timings-intel-2workers.json
             artifacts/concurrency-sweep-intel.json
-            artifacts/vision-configs-sweep-intel.json
-            artifacts/BENCHMARKS-intel.md
+            artifacts/classify-matrix-sweep-intel.json
+            artifacts/BENCHMARKS-intel*.md
 
   albumbench-validation:
     name: AlbumBench / CUFED Real Wedding Dataset Validation

@@ -51,6 +51,9 @@ struct BenchmarkRunner {
         var scenePixelSize = 1000
         var sweepVisionConfigs = false
         var outputVisionConfigsJSONPath: String? = nil
+        var classifySlots: Int? = nil
+        var sweepClassifyMatrix = false
+        var outputClassifyMatrixJSONPath: String? = nil
 
         var i = 1
         while i < args.count {
@@ -157,6 +160,22 @@ struct BenchmarkRunner {
             case "--output-vision-configs-json":
                 if i + 1 < args.count {
                     outputVisionConfigsJSONPath = args[i + 1]
+                    i += 1
+                }
+            case "--classify-slots":
+                if i + 1 < args.count, let slots = Int(args[i + 1]) {
+                    classifySlots = slots
+                    i += 1
+                }
+            case "--sweep-classify-matrix":
+                sweepClassifyMatrix = true
+                if i + 1 < args.count, let c = Int(args[i + 1]) {
+                    datasetPhotoCount = c
+                    i += 1
+                }
+            case "--output-classify-matrix-json":
+                if i + 1 < args.count {
+                    outputClassifyMatrixJSONPath = args[i + 1]
                     i += 1
                 }
             default:
@@ -493,6 +512,146 @@ struct BenchmarkRunner {
             }
         }
 
+        if sweepClassifyMatrix {
+            let sweepFolder = datasetFolder
+            let sweepTargetCount = targetSelectionCount
+            print("\n🔬 ==================================================================================")
+            print("🔬 EXECUTING DECOUPLED CONCURRENCY MATRIX SWEEP (Pipeline Workers x Classify Slots)")
+            print("🔬 ==================================================================================")
+
+            struct ClassifyMatrixConfig {
+                let pipelineWorkers: Int
+                let classifySlots: Int
+            }
+
+            let matrixConfigs: [ClassifyMatrixConfig] = [
+                ClassifyMatrixConfig(pipelineWorkers: 2, classifySlots: 1),
+                ClassifyMatrixConfig(pipelineWorkers: 2, classifySlots: 2),
+                ClassifyMatrixConfig(pipelineWorkers: 3, classifySlots: 1),
+                ClassifyMatrixConfig(pipelineWorkers: 3, classifySlots: 2),
+                ClassifyMatrixConfig(pipelineWorkers: 4, classifySlots: 1),
+                ClassifyMatrixConfig(pipelineWorkers: 4, classifySlots: 2)
+            ]
+
+            struct ClassifyMatrixResult: Codable {
+                let pipelineWorkers: Int
+                let classifySlots: Int
+                let wallClockSeconds: Double
+                let throughputPPS: Double
+                let faceMsPerPhoto: Double
+                let sceneMsPerPhoto: Double
+                let fpMsPerPhoto: Double
+                let previewMsPerPhoto: Double
+                let qualityMsPerPhoto: Double
+                let categoryAgreementPct: Double
+                let faceCountAgreementPct: Double
+                let selectedIDsMatch: Bool
+            }
+
+            var results: [ClassifyMatrixResult] = []
+            var baselineCategories: [String: WeddingCategory] = [:]
+            var baselineFaceCounts: [String: Int] = [:]
+            var baselineSelectedIDs: Set<String> = []
+
+            for cfg in matrixConfigs {
+                print("\n--- Testing: Pipeline \(cfg.pipelineWorkers) workers / Classify \(cfg.classifySlots) slot(s) ---")
+                let hw = HardwareCapabilities(concurrencyOverride: cfg.pipelineWorkers)
+                let pipe = AnalysisPipeline(
+                    hardware: hw,
+                    lazyFeaturePrint: true,
+                    visionExecutionMode: .separate,
+                    faceInputMaxPixelSize: 1000,
+                    sceneInputMaxPixelSize: 1000,
+                    sceneClassificationConcurrency: cfg.classifySlots
+                )
+                let tStart = Date()
+                let sess: SessionData
+                do {
+                    sess = try await pipe.runAnalysis(
+                        sourceFolder: sweepFolder,
+                        targetCount: min(sweepTargetCount / 2, 700)
+                    ) { _ in }
+                } catch {
+                    print("❌ Matrix sweep test failed for (w: \(cfg.pipelineWorkers), s: \(cfg.classifySlots)): \(error)")
+                    continue
+                }
+                let tWall = max(0.001, Date().timeIntervalSince(tStart))
+                let pps = Double(sess.photos.count) / tWall
+                let count = Double(max(1, sess.photos.count))
+                let pt = sess.phaseTimings ?? PhaseTimings()
+
+                let currentCategories = Dictionary(uniqueKeysWithValues: sess.photos.map { ($0.id, $0.category) })
+                let currentFaceCounts = Dictionary(uniqueKeysWithValues: sess.photos.map { ($0.id, $0.metrics.faceCount) })
+                let currentSelectedIDs = Set(sess.photos.filter { $0.selectionState == .selected }.map(\.id))
+
+                if baselineCategories.isEmpty {
+                    baselineCategories = currentCategories
+                    baselineFaceCounts = currentFaceCounts
+                    baselineSelectedIDs = currentSelectedIDs
+                }
+
+                var catMatch = 0
+                var faceMatch = 0
+                for (id, cat) in currentCategories {
+                    if baselineCategories[id] == cat { catMatch += 1 }
+                    if baselineFaceCounts[id] == currentFaceCounts[id] { faceMatch += 1 }
+                }
+                let catAgrPct = Double(round((Double(catMatch) / count) * 1000) / 10)
+                let faceAgrPct = Double(round((Double(faceMatch) / count) * 1000) / 10)
+                let idsMatch = (currentSelectedIDs == baselineSelectedIDs)
+
+                let res = ClassifyMatrixResult(
+                    pipelineWorkers: cfg.pipelineWorkers,
+                    classifySlots: cfg.classifySlots,
+                    wallClockSeconds: Double(round(tWall * 100) / 100),
+                    throughputPPS: Double(round(pps * 100) / 100),
+                    faceMsPerPhoto: Double(round((pt.faceDetectionSeconds / count) * 10000) / 10),
+                    sceneMsPerPhoto: Double(round((pt.sceneClassificationSeconds / count) * 10000) / 10),
+                    fpMsPerPhoto: Double(round((pt.featurePrintSeconds / count) * 10000) / 10),
+                    previewMsPerPhoto: Double(round((pt.previewGenerationSeconds / count) * 10000) / 10),
+                    qualityMsPerPhoto: Double(round((pt.qualityScoringSeconds / count) * 10000) / 10),
+                    categoryAgreementPct: catAgrPct,
+                    faceCountAgreementPct: faceAgrPct,
+                    selectedIDsMatch: idsMatch
+                )
+                results.append(res)
+                print(String(format: "  %.2fs wall, %.2f PPS | Scene: %.1f ms/p (%.1f%% agr), Face: %.1f ms/p, IDs match: %@",
+                             tWall, pps, res.sceneMsPerPhoto, res.categoryAgreementPct, res.faceMsPerPhoto, idsMatch ? "YES" : "NO"))
+            }
+
+            print("\n==================================================================================")
+            print("📊 DECOUPLED CONCURRENCY MATRIX SWEEP SUMMARY")
+            print("==================================================================================")
+            print("| Pipeline Workers | Classify Slots | Wall (s) | Throughput (PPS) | Scene (ms/p) | Face (ms/p) | Cat Agr % | IDs Match |")
+            print("| :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |")
+            for r in results {
+                print(String(format: "| %d | %d | %.2f | %.2f | %.1f | %.1f | %.1f%% | %@ |",
+                             r.pipelineWorkers, r.classifySlots, r.wallClockSeconds, r.throughputPPS, r.sceneMsPerPhoto, r.faceMsPerPhoto, r.categoryAgreementPct, r.selectedIDsMatch ? "YES" : "NO"))
+            }
+            if let best = results.max(by: { $0.throughputPPS < $1.throughputPPS }) {
+                print("----------------------------------------------------------------------------------")
+                print(String(format: "🏆 Optimal Decoupled Configuration: Pipeline %d / Classify Slots %d (%.2f PPS, %.2fs wall)",
+                             best.pipelineWorkers, best.classifySlots, best.throughputPPS, best.wallClockSeconds))
+            }
+            print("==================================================================================\n")
+
+            if let outPath = outputClassifyMatrixJSONPath {
+                let url = URL(fileURLWithPath: outPath)
+                try? fileManager.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+                let enc = JSONEncoder()
+                enc.outputFormatting = [.prettyPrinted, .sortedKeys]
+                if let data = try? enc.encode(results) {
+                    try? data.write(to: url)
+                    print("✅ Saved classify matrix JSON to \(outPath)")
+                }
+            }
+
+            if sweepOnly {
+                print("✅ Sweep-only mode completed successfully.")
+                return
+            }
+        }
+
         var peakMemoryBytes: UInt64 = getCurrentResidentMemoryBytes()
         let memorySamplingTask = Task {
             while !Task.isCancelled {
@@ -513,7 +672,8 @@ struct BenchmarkRunner {
             lazyFeaturePrint: lazyFeaturePrint,
             visionExecutionMode: visionExecutionMode,
             faceInputMaxPixelSize: facePixelSize,
-            sceneInputMaxPixelSize: scenePixelSize
+            sceneInputMaxPixelSize: scenePixelSize,
+            sceneClassificationConcurrency: classifySlots
         )
         let startTime = Date()
 
@@ -702,6 +862,7 @@ struct BenchmarkRunner {
                 let neuralEngineAvailable: Bool
                 let metalAvailable: Bool
                 let recommendedConcurrency: Int
+                let sceneClassificationSlots: Int?
             }
 
             struct BenchmarkReportData: Codable {
@@ -772,7 +933,8 @@ struct BenchmarkRunner {
                     physicalMemoryGB: Double(round(physicalMemGB * 10) / 10),
                     neuralEngineAvailable: hardware.neuralEngineAvailable,
                     metalAvailable: hardware.metalAvailable,
-                    recommendedConcurrency: hardware.recommendedConcurrency
+                    recommendedConcurrency: hardware.recommendedConcurrency,
+                    sceneClassificationSlots: classifySlots
                 ),
                 classificationBackend: backendUsed,
                 datasetSize: processedPhotos,

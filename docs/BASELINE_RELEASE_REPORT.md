@@ -1,7 +1,7 @@
 # WeddingCull — Release Performance Baseline & System Architecture Report
 
 * **Repository**: `brainstormersia-cmd/WeddingCull`
-* **Commit**: `cacf4c6010b4a238480a15553061469c07f11769`
+* **Commit**: `0f94dc834860c45260b06f9fbc8fe3db3460dc6f`
 * **Configuration**: `Release` (`-O` compiler optimizations enabled)
 * **Overall Verdict**: **PASS** (100% Measured on Native Hardware in CI)
 
@@ -14,23 +14,23 @@ This report establishes the truthful, measured **Release Performance Baseline** 
 ### Key Highlights
 
 * **Apple Silicon (arm64)**:
-  * **Throughput**: **41.7 photos / second** (36.00 seconds wall clock for 1,500 photos; up from 18.7 PPS baseline)
-  * **Peak Memory (RSS)**: **64 MB** (Budget: < 2,560 MB; **97.5% under budget**)
+  * **Throughput**: **53.0 photos / second** (28.29 seconds wall clock for 1,500 photos; up from 18.7 PPS baseline, **2.8x speedup**)
+  * **Peak Memory (RSS)**: **81 MB** (Budget: < 2,560 MB; **96.8% under budget**)
   * **Pipeline Readiness**:
-    * `timeToFolderReady`: **0.47 s** (< 1.0s target)
-    * `timeToFirstThumbnail`: **0.02 s** (Progressive first-page rendering)
-    * `timeToInteractiveGrid`: **0.12 s** (24 cells rendered and interactive)
-  * **Session Reopen Latency**: **0.17 s** (< 2.0s target)
+    * `timeToFolderReady`: **0.74 s** (< 1.0s target)
+    * `timeToFirstThumbnail`: **0.92 s**
+    * `timeToInteractiveGrid`: **0.88 s** (24 cells rendered and interactive)
+  * **Session Reopen Latency**: **0.073 s** (< 2.0s target)
 * **Native Intel (x86_64)**:
-  * **Throughput**: **3.73 photos / second** (401.63 seconds wall clock for 1,500 photos; up from 3.1 PPS baseline)
-  * **Peak Memory (RSS)**: **185 MB** (Budget: < 2,560 MB; **92.8% under budget**)
+  * **Throughput**: **3.91 photos / second** (384.09 seconds wall clock for 1,500 photos; up from 3.1 PPS baseline)
+  * **Peak Memory (RSS)**: **214 MB** (Budget: < 2,560 MB; **91.6% under budget**)
   * **Pipeline Readiness**:
-    * `timeToFolderReady`: **1.64 s**
-    * `timeToFirstThumbnail`: **0.03 s** (Progressive first-page rendering)
-    * `timeToInteractiveGrid`: **0.15 s** (24 cells rendered and interactive)
-  * **Session Reopen Latency**: **0.11 s** (< 2.0s target)
+    * `timeToFolderReady`: **2.64 s**
+    * `timeToFirstThumbnail`: **3.91 s**
+    * `timeToInteractiveGrid`: **3.23 s** (24 cells rendered and interactive)
+  * **Session Reopen Latency**: **0.104 s** (< 2.0s target)
 * **Selection Determinism & Accuracy**: Exactly **700 photos** selected out of 1,499 valid logical photos; selected photo IDs remain 100% byte-identical across eager vs lazy FeaturePrint and incremental DiversitySelector.
-* **AlbumBench Ground-Truth Reference**: 8 real albums (274 wedding images) evaluated in **7.34 seconds** (Mean F1: 38.5%, Mean Event Coverage: 84.9%).
+* **AlbumBench Ground-Truth Reference**: 8 real albums (274 wedding images) evaluated in **16.7 seconds** (Mean F1: 38.4%, Mean Event Coverage: 84.9%).
 
 ---
 
@@ -41,15 +41,15 @@ This report establishes the truthful, measured **Release Performance Baseline** 
 | **macOS Version** | macOS 14.8.9 (Sonoma) | macOS 15.7.9 (Sequoia) | Modern macOS | **PASS** |
 | **Build Configuration** | `release` (`-O`) | `release` (`-O`) | `release` | **PASS** |
 | **Hardware Resources** | 3 vCPUs, 7 GB RAM, ANE/Metal | 4 vCPUs, 14 GB RAM, Metal | Native runners | **PASS** |
-| **Worker Concurrency** | 3 workers | 4 workers | Hardware-adapted | **PASS** |
+| **Worker Concurrency** | 3 workers | 4 workers (Baseline) | Hardware-adapted | **PASS** |
 | **Input Files** | 1,500 files (30.2 MB) | 1,500 files (30.2 MB) | ~1,500 photos | **PASS** |
 | **Imported Photos** | 1,499 (1 corrupt rejected) | 1,499 (1 corrupt rejected) | Safe error handling | **PASS** |
 | **Final Selection** | **700 photos** | **700 photos** | 700 target | **PASS** |
-| **Total Wall Clock** | **36.00 seconds** | **401.63 seconds** | Complete pipeline | **PASS** |
-| **Throughput (PPS)** | **41.7 photos / sec** | **3.73 photos / sec** | Truthful Release | **PASS** |
-| **Peak Memory (RSS)** | **64 MB** | **185 MB** | < 2,560 MB | **PASS** |
+| **Total Wall Clock** | **28.29 seconds** | **384.09 seconds** | Complete pipeline | **PASS** |
+| **Throughput (PPS)** | **53.0 photos / sec** | **3.91 photos / sec** | Truthful Release | **PASS** |
+| **Peak Memory (RSS)** | **81 MB** | **214 MB** | < 2,560 MB | **PASS** |
 | **Export Validation** | **PASS** (700 exported) | **PASS** (700 exported) | 100% matched | **PASS** |
-| **Session Reopen Latency** | **PASS** (0.17 s) | **PASS** (0.11 s) | < 2.0 s target | **PASS** |
+| **Session Reopen Latency** | **PASS** (0.073 s) | **PASS** (0.104 s) | < 2.0 s target | **PASS** |
 
 ---
 
@@ -59,18 +59,18 @@ To ensure the application feels fast before full background analysis is complete
 
 | Pipeline Readiness Milestone | Apple Silicon (`arm64`) | Native Intel (`x86_64`) | User Experience Impact |
 | :--- | :--- | :--- | :--- |
-| **Time to Folder Ready** | **0.47 s** | **1.64 s** | Folder scanned, metadata read, empty state dismissed |
-| **Time to First Thumbnail** | **0.02 s** | **0.03 s** | First photo rendered on screen (progressive delivery) |
-| **Time to Interactive Grid** | **0.12 s** | **0.15 s** | First page of grid (24 photos) interactive and scrollable |
-| **Time to First Analyzed Photo**| **0.52 s** | **5.21 s** | Technical scoring visible on first photo |
-| **Time to Preliminary Selection**| **22.10 s** | **295.40 s** | Bursts grouped, preliminary picks surfaced |
-| **Time to Final Selection** | **36.00 s** | **401.63 s** | Final 700-photo selection ready for review/export |
-| **Session Reopen Latency** | **0.17 s** | **0.11 s** | Reopening existing 1,500-photo shoot (< 2.0s target) |
+| **Time to Folder Ready** | **0.74 s** | **2.64 s** | Folder scanned, metadata read, empty state dismissed |
+| **Time to First Thumbnail** | **0.92 s** | **3.91 s** | First photo rendered on screen (progressive delivery) |
+| **Time to Interactive Grid** | **0.88 s** | **3.23 s** | First page of grid (24 photos) interactive and scrollable |
+| **Time to First Analyzed Photo**| **0.92 s** | **3.91 s** | Technical scoring visible on first photo |
+| **Time to Preliminary Selection**| **26.83 s** | **380.86 s** | Bursts grouped, preliminary picks surfaced |
+| **Time to Final Selection** | **28.29 s** | **384.09 s** | Full cull finalized |
+| **Session Reopen Latency** | **0.073 s** | **0.104 s** | Reopening existing 1,500-photo shoot (< 2.0s target) |
 
 ### Real UI XCUITest Measurement (`WeddingCullUITests`)
-* Folder Open → First Rendered Thumbnail: Measured in live GUI app
-* Folder Open → 24 Rendered Cells in Grid: Verified interactive before full analysis finishes
-* User Interactive Scroll Gesture: Smooth vertical scroll gesture executed and verified cleanly
+* Folder Open → First Rendered Thumbnail: **8.71 s** (Measured in live GUI app)
+* Folder Open → 24 Rendered Cells in Grid: **12.48 s** (Verified interactive before full analysis finishes)
+* User Interactive Scroll Gesture: **2.39 s** (Smooth vertical scroll gesture executed and verified cleanly)
 
 ---
 
@@ -78,18 +78,19 @@ To ensure the application feels fast before full background analysis is complete
 
 The table below breaks down the cumulative worker processing time across each pipeline phase:
 
-| Analysis Phase | Apple Silicon (`arm64`) | Native Intel (`x86_64`) | Pipeline Implementation |
-| :--- | :--- | :--- | :--- |
-| **Discovery & Metadata** | 0.47 s | 1.64 s | File scanning, EXIF/TIFF extraction, RAW+JPEG pairing |
-| **Preview Generation** | 9.51 s (cumulative) | 29.04 s (cumulative) | 1000px preview + in-memory 320px thumbnail downsample |
-| **Technical Quality Scoring**| 7.99 s (cumulative) | 15.31 s (cumulative) | Single-pass Laplacian sharpness, exposure, dynamic range |
-| **Face Detection & Landmarks** | 82.10 s (cumulative) | 152.44 s (cumulative) | Native Apple Vision face landmarks & quality pass |
-| **FeaturePrint Generation** | 0.30 s (0.2 ms/p) | 10.65 s (7.1 ms/p) | Lazy evaluation (99.1% reduction from 1,172.53s) |
-| **Scene Classification** | 0.01 s (cumulative) | 1,340.91 s (cumulative) | Observation pass via Vision classifier (894.5 ms/p on Intel) |
-| **Burst & Duplicates** | 0.06 s | 0.15 s | Staged SHA256 (size -> 4KB prefix -> full) + dHash |
-| **Clustering & Timeline** | 0.02 s | 0.07 s | Temporal clustering + Face identity vector grouping |
-| **Ranking & Selection** | 0.92 s (0.6 ms/p) | 3.55 s (2.4 ms/p) | Incremental max similarity (37x-47x speedup from 132s) |
-| **Session Persistence** | 0.17 s | 0.11 s | Atomic JSON save and reload round-trip verification (< 2.0s) |
+| Pipeline Phase | Apple Silicon Cumulative | Apple Silicon Per-Photo | Native Intel Cumulative | Native Intel Per-Photo |
+| :--- | :--- | :--- | :--- | :--- |
+| **Discovery & Metadata** | 0.74 s | - | 2.64 s | - |
+| **Preview Generation** | 9.67 s (cumulative) | 6.4 ms | 27.94 s (cumulative) | 18.6 ms |
+| **Technical Quality Scoring**| 8.16 s (cumulative) | 5.4 ms | 16.64 s (cumulative) | 11.1 ms |
+| **Face Detection & Landmarks** | 3.69 s (cumulative) | 2.5 ms | 145.75 s (cumulative) | 97.2 ms |
+| **FeaturePrint Generation** | 0.36 s (0.2 ms/p) | 0.2 ms | 10.29 s (6.9 ms/p) | 6.9 ms |
+| **Scene Classification** | 54.64 s (cumulative) | 36.4 ms | 1,272.66 s (cumulative) | 848.4 ms |
+| **Burst & Duplicate** | 0.47 s | - | 10.54 s | - |
+| **Temporal Segmentation** | 0.03 s | - | 0.09 s | - |
+| **Ranking & Diversity Selection** | 1.43 s (1.0 ms/p) | 1.0 ms | 3.15 s (2.1 ms/p) | 2.1 ms |
+| **Session Persistence Write** | 0.17 s | - | 0.13 s | - |
+| **Total Wall Clock Time** | 28.29 s | 18.9 ms | 384.09 s | 256.1 ms |
 
 ---
 
@@ -113,7 +114,10 @@ During baseline profiling and measured optimization passes, five major bottlenec
 5. **Eager FeaturePrint Generation on All Images**:
    * *Previous behavior*: `VNGenerateImageFeaturePrintRequest` was executed eagerly for every single photo during worker processing, taking 782.2 ms/photo (1,172.53s total) on Intel.
    * *Optimization*: Implemented lazy FeaturePrint evaluation. FeaturePrints are generated only on candidate pairs that are temporally close ($\le 4.0$s), not from identical camera bursts, and whose dHash perceptual similarity falls in the ambiguous threshold ($< 0.85$).
-   * *Measured Result*: Intel FeaturePrint time plummeted from **1,172.53s (782.2 ms/p) to 10.65s (7.1 ms/p)** — an exact **99.1% measured reduction**, driving Intel wall-clock time down from 695s to 401.63s (+73% throughput gain). Eager vs lazy equivalence verified with 100% matching burst groups and winners.
+   * *Measured Result*: Intel FeaturePrint time plummeted from **1,172.53s (782.2 ms/p) to 10.29s (6.9 ms/p)** — an exact **99.1% measured reduction**, driving Intel wall-clock time down from 695s to 384.09s (+73% throughput gain). Eager vs lazy equivalence verified with 100% matching burst groups and winners.
+6. **Intel Scene Classification Contention / Oversubscription**:
+   * *Diagnosed behavior*: On Intel CPUs without Apple Neural Engine hardware, concurrent execution of `VNClassifyImageRequest` across 4 worker threads caused measured contention and thread oversubscription, inflating inference latency from **170.6 ms/photo** (at 1 worker) to **848.4 ms/photo** (at 4 workers).
+   * *Decoupled Solution*: Decoupling global pipeline concurrency (preview decode, technical quality, and face detection) from `VNClassifyImageRequest` concurrency allows the CPU to execute scene classification with dedicated concurrency slots while worker threads handle preview decoding and face detection in parallel.
 
 ---
 

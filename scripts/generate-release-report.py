@@ -248,6 +248,30 @@ def main():
     sweep_arm64 = read_json_safe(os.path.join(output_dir, "concurrency-sweep-arm64.json"))
     vision_intel = read_json_safe(os.path.join(output_dir, "vision-configs-sweep-intel.json"))
     vision_arm64 = read_json_safe(os.path.join(output_dir, "vision-configs-sweep-arm64.json"))
+    classify_matrix_intel = read_json_safe(os.path.join(output_dir, "classify-matrix-sweep-intel.json"))
+    bench_intel_2w = read_json_safe(os.path.join(output_dir, "benchmark-intel-2workers.json"))
+
+    if classify_matrix_intel:
+        md_content += "\n## Native Intel Decoupled Concurrency Matrix Sweep (Pipeline Workers x Classify Slots)\n\n"
+        md_content += "> Evaluates decoupling global pipeline concurrency (preview/quality/face) from `VNClassifyImageRequest` concurrency to reduce measured contention/oversubscription on Intel CPUs.\n\n"
+        md_content += "| Pipeline Workers | Classify Slots | Wall Clock (s) | Throughput (PPS) | Scene Classify (ms/p) | Face Detect (ms/p) | Cat Agr % | IDs Match |\n"
+        md_content += "| :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |\n"
+        for r in classify_matrix_intel:
+            ids_str = "YES" if r.get('selectedIDsMatch') else "NO"
+            md_content += f"| {r.get('pipelineWorkers')} | {r.get('classifySlots')} | {r.get('wallClockSeconds'):.2f}s | **{r.get('throughputPPS'):.2f} PPS** | {r.get('sceneMsPerPhoto'):.1f} ms | {r.get('faceMsPerPhoto'):.1f} ms | {r.get('categoryAgreementPct'):.1f}% | {ids_str} |\n"
+
+    if bench_intel_2w:
+        md_content += "\n## Native Intel 1,500-Photo Scaling Comparison\n\n"
+        md_content += "| Configuration | Photos | Wall Clock (s) | Throughput (PPS) | Scene Classify Total | Peak RSS (MB) |\n"
+        md_content += "| :--- | :---: | :---: | :---: | :---: | :---: |\n"
+        md_content += "| 4 Global Workers (Baseline) | 1,500 | 384.09s | 3.91 PPS | 1,272.66s | 214 MB |\n"
+        pt_2w = bench_intel_2w.get("phaseTimings") or {}
+        md_content += f"| 2 Global Workers (Full Run) | {bench_intel_2w.get('logicalPhotoCount', 1500)} | {bench_intel_2w.get('wallClockSeconds', 0):.2f}s | **{bench_intel_2w.get('photosPerSecond', 0):.2f} PPS** | {pt_2w.get('sceneClassificationSeconds', 0):.2f}s | {bench_intel_2w.get('peakMemoryMB', 0)} MB |\n"
+        if bench_intel and bench_intel.get("wallClockSeconds") != bench_intel_2w.get("wallClockSeconds"):
+            pt_opt = bench_intel.get("phaseTimings") or {}
+            workers = bench_intel.get("hardware", {}).get("recommendedConcurrency", "N/A")
+            slots = bench_intel.get("hardware", {}).get("sceneClassificationSlots", "N/A")
+            md_content += f"| Winning Configuration (P:{workers}, C:{slots}) | {bench_intel.get('logicalPhotoCount', 1500)} | {bench_intel.get('wallClockSeconds', 0):.2f}s | **{bench_intel.get('photosPerSecond', 0):.2f} PPS** | {pt_opt.get('sceneClassificationSeconds', 0):.2f}s | {bench_intel.get('peakMemoryMB', 0)} MB |\n"
 
     if sweep_intel:
         md_content += "\n## Native Intel Concurrency Sweep (x86_64)\n\n"

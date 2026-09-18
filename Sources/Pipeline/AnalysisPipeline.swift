@@ -117,6 +117,7 @@ public actor AnalysisPipeline {
     private let visionExecutionMode: VisionExecutionMode
     private let faceInputMaxPixelSize: Int
     private let sceneInputMaxPixelSize: Int
+    private let sceneClassificationConcurrency: Int?
 
     public init(
         hardware: HardwareCapabilities = HardwareCapabilities(),
@@ -125,7 +126,8 @@ public actor AnalysisPipeline {
         lazyFeaturePrint: Bool = true,
         visionExecutionMode: VisionExecutionMode = .separate,
         faceInputMaxPixelSize: Int = 1000,
-        sceneInputMaxPixelSize: Int = 1000
+        sceneInputMaxPixelSize: Int = 1000,
+        sceneClassificationConcurrency: Int? = nil
     ) {
         self.hardware = hardware
         self.previewPipeline = previewPipeline ?? PreviewPipeline(customCacheDirectory: customCacheDir)
@@ -134,6 +136,7 @@ public actor AnalysisPipeline {
         self.visionExecutionMode = visionExecutionMode
         self.faceInputMaxPixelSize = faceInputMaxPixelSize
         self.sceneInputMaxPixelSize = sceneInputMaxPixelSize
+        self.sceneClassificationConcurrency = sceneClassificationConcurrency
     }
 
     public func pause() async {
@@ -218,6 +221,13 @@ public actor AnalysisPipeline {
         var timeToInteractiveGrid: Double = 0.0
         var timeToFirstAnalyzedPhoto: Double = 0.0
 
+        let classifierGate: DispatchSemaphore?
+        if let slots = self.sceneClassificationConcurrency {
+            classifierGate = DispatchSemaphore(value: max(1, slots))
+        } else {
+            classifierGate = nil
+        }
+
         // Progressive first-page thumbnail delivery: render first 24 thumbs immediately so grid is ready
         let firstBatchCount = min(24, totalPhotos)
         for i in 0..<firstBatchCount {
@@ -255,7 +265,8 @@ public actor AnalysisPipeline {
                         lazyFeaturePrint: isLazyFP,
                         visionExecutionMode: visMode,
                         faceInputMaxPixelSize: facePixelSize,
-                        sceneInputMaxPixelSize: scenePixelSize
+                        sceneInputMaxPixelSize: scenePixelSize,
+                        classifierGate: classifierGate
                     )
                 }
             }
@@ -273,7 +284,9 @@ public actor AnalysisPipeline {
 
                 let elapsedSoFar = CFAbsoluteTimeGetCurrent() - wallStart
                 if completedCount == 1 {
-                    timeToFirstThumbnail = elapsedSoFar
+                    if timeToFirstThumbnail == 0.0 {
+                        timeToFirstThumbnail = elapsedSoFar
+                    }
                     timeToFirstAnalyzedPhoto = elapsedSoFar
                 }
                 if completedCount == min(24, totalPhotos) && timeToInteractiveGrid == 0.0 {
@@ -305,7 +318,8 @@ public actor AnalysisPipeline {
                             lazyFeaturePrint: isLazyFP,
                             visionExecutionMode: visMode,
                             faceInputMaxPixelSize: facePixelSize,
-                            sceneInputMaxPixelSize: scenePixelSize
+                            sceneInputMaxPixelSize: scenePixelSize,
+                            classifierGate: classifierGate
                         )
                     }
                 }
@@ -549,7 +563,8 @@ public actor AnalysisPipeline {
         lazyFeaturePrint: Bool,
         visionExecutionMode: VisionExecutionMode,
         faceInputMaxPixelSize: Int,
-        sceneInputMaxPixelSize: Int
+        sceneInputMaxPixelSize: Int,
+        classifierGate: DispatchSemaphore? = nil
     ) async throws -> PhotoAnalysisResult {
         // Handle pause and cancellation
         try await coordinator.waitIfPaused()
@@ -627,7 +642,13 @@ public actor AnalysisPipeline {
                         let faceRequest = VNDetectFaceLandmarksRequest()
                         let sceneRequest = VNClassifyImageRequest()
                         let tVisionStart = CFAbsoluteTimeGetCurrent()
-                        try? handler.perform([faceRequest, sceneRequest])
+                        if let gate = classifierGate {
+                            gate.wait()
+                            try? handler.perform([faceRequest, sceneRequest])
+                            gate.signal()
+                        } else {
+                            try? handler.perform([faceRequest, sceneRequest])
+                        }
                         let tVisionEnd = CFAbsoluteTimeGetCurrent()
                         let totalVisionDur = max(0.0, tVisionEnd - tVisionStart)
 
@@ -675,7 +696,13 @@ public actor AnalysisPipeline {
                         } else {
                             let sceneHandler = (sceneCG === faceCG) ? faceHandler : VNImageRequestHandler(cgImage: sceneCG, options: [:])
                             let sceneRequest = VNClassifyImageRequest()
-                            try? sceneHandler.perform([sceneRequest])
+                            if let gate = classifierGate {
+                                gate.wait()
+                                try? sceneHandler.perform([sceneRequest])
+                                gate.signal()
+                            } else {
+                                try? sceneHandler.perform([sceneRequest])
+                            }
                             let res = classifier.classifyWithObservations(sceneRequest.results, metadata: item.metadata, faceCount: faces.count)
                             category = res.0
                             conf = res.1
