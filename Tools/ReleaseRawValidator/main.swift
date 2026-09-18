@@ -98,26 +98,23 @@ struct ReleaseRawValidator {
         #endif
     }
 
-    static func downloadFile(from urlString: String, to destinationURL: URL) -> Bool {
+    static func downloadFile(from urlString: String, to destinationURL: URL) async -> Bool {
         guard let url = URL(string: urlString) else { return false }
         var request = URLRequest(url: url)
         request.setValue("Mozilla/5.0", forHTTPHeaderField: "User-Agent")
         request.timeoutInterval = 30
 
-        let sem = DispatchSemaphore(value: 0)
-        var success = false
-
-        let task = URLSession.shared.dataTask(with: request) { data, response, error in
-            defer { sem.signal() }
-            if let http = response as? HTTPURLResponse, http.statusCode == 200, let d = data {
-                try? FileManager.default.createDirectory(at: destinationURL.deletingLastPathComponent(), withIntermediateDirectories: true)
-                try? d.write(to: destinationURL)
-                success = true
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            if let http = response as? HTTPURLResponse, http.statusCode == 200 {
+                try FileManager.default.createDirectory(at: destinationURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+                try data.write(to: destinationURL)
+                return true
             }
+        } catch {
+            return false
         }
-        task.resume()
-        sem.wait()
-        return success
+        return false
     }
 
     static func main() async {
@@ -165,7 +162,7 @@ struct ReleaseRawValidator {
             // Check if present or download
             if !fm.fileExists(atPath: targetURL.path) {
                 print("⬇️ Downloading \(fix.name) from \(fix.url)...")
-                let ok = downloadFile(from: fix.url, to: targetURL)
+                let ok = await downloadFile(from: fix.url, to: targetURL)
                 if !ok {
                     print("⚠️ Could not download fixture.")
                     let res = RawFixtureResult(
