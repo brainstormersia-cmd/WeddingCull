@@ -1,4 +1,4 @@
-﻿import Foundation
+import Foundation
 #if canImport(Vision)
 import Vision
 #endif
@@ -84,14 +84,29 @@ public final class AnalysisCache: Sendable {
         self.decoder = dec
     }
 
-    public func recordURL(for cacheKey: String) -> URL {
+    public func recordURL(for cacheKey: String, backend: String? = nil) -> URL {
+        if let b = backend {
+            let sanitized = b.replacingOccurrences(of: " ", with: "_").replacingOccurrences(of: "/", with: "_")
+            return cacheDirectory.appendingPathComponent("\(cacheKey)_\(sanitized)_analysis.json")
+        }
         return cacheDirectory.appendingPathComponent("\(cacheKey)_analysis.json")
     }
 
-    public func loadRecord(for item: PhotoItem) -> CachedAnalysisRecord? {
-        let fileURL = recordURL(for: item.previewCacheKey)
-        guard FileManager.default.fileExists(atPath: fileURL.path),
-              let data = try? Data(contentsOf: fileURL),
+    public func loadRecord(for item: PhotoItem, expectedBackend: String? = nil) -> CachedAnalysisRecord? {
+        let fileURL = recordURL(for: item.previewCacheKey, backend: expectedBackend)
+        let resolvedURL: URL
+        if FileManager.default.fileExists(atPath: fileURL.path) {
+            resolvedURL = fileURL
+        } else {
+            let fallbackURL = recordURL(for: item.previewCacheKey, backend: nil)
+            if FileManager.default.fileExists(atPath: fallbackURL.path) {
+                resolvedURL = fallbackURL
+            } else {
+                return nil
+            }
+        }
+
+        guard let data = try? Data(contentsOf: resolvedURL),
               let record = try? decoder.decode(CachedAnalysisRecord.self, from: data) else {
             return nil
         }
@@ -103,11 +118,15 @@ public final class AnalysisCache: Sendable {
             return nil
         }
 
+        if let expected = expectedBackend, record.classificationBackend != expected {
+            return nil
+        }
+
         return record
     }
 
     public func saveRecord(_ record: CachedAnalysisRecord) {
-        let fileURL = recordURL(for: record.previewCacheKey)
+        let fileURL = recordURL(for: record.previewCacheKey, backend: record.classificationBackend)
         guard let data = try? encoder.encode(record) else { return }
         try? data.write(to: fileURL, options: .atomic)
     }

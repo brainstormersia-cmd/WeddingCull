@@ -48,8 +48,8 @@ public final class PreviewPipeline: Sendable {
         try? FileManager.default.createDirectory(at: thumbnailsDirectory, withIntermediateDirectories: true)
     }
 
-    public func loadAnalysisRecord(for item: PhotoItem) -> CachedAnalysisRecord? {
-        return analysisCache.loadRecord(for: item)
+    public func loadAnalysisRecord(for item: PhotoItem, expectedBackend: String? = nil) -> CachedAnalysisRecord? {
+        return analysisCache.loadRecord(for: item, expectedBackend: expectedBackend)
     }
 
     public func saveAnalysisRecord(_ record: CachedAnalysisRecord) {

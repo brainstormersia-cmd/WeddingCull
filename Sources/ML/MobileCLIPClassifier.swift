@@ -17,6 +17,10 @@ public final class MobileCLIPClassifier: ImageClassifierProtocol, @unchecked Sen
     public private(set) var isCoreMLModelLoaded: Bool = false
     public private(set) var lastUsedBackend: ClassificationBackend = .visionFallback
 
+    public var targetBackend: ClassificationBackend {
+        return isCoreMLModelLoaded ? .mobileCLIP : .visionFallback
+    }
+
     public init(hardwareCapabilities: HardwareCapabilities = HardwareCapabilities(), customModelURL: URL? = nil, forceVisionFallback: Bool = false) {
         self.isAppleSilicon = hardwareCapabilities.isAppleSilicon
         if !forceVisionFallback {
@@ -93,9 +97,11 @@ public final class MobileCLIPClassifier: ImageClassifierProtocol, @unchecked Sen
             config.computeUnits = isAppleSilicon ? .all : .cpuAndGPU
             self.coreMLModel = try MLModel(contentsOf: compiledURL, configuration: config)
             self.isCoreMLModelLoaded = true
+            self.lastUsedBackend = .mobileCLIP
         } catch {
             self.coreMLModel = nil
             self.isCoreMLModelLoaded = false
+            self.lastUsedBackend = .visionFallback
         }
     }
 

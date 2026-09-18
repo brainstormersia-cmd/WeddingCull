@@ -555,6 +555,7 @@ public actor AnalysisPipeline {
                                         lazyFeaturePrint: isLazyFP,
                                         faceInputMaxPixelSize: facePixelSize,
                                         sceneInputMaxPixelSize: scenePixelSize,
+                                        expectedBackend: mlClassifier.targetBackend.rawValue,
                                         onThumbnailReady: { id in
                                             Task { await collector.recordThumbnailGenerated(for: id) }
                                         }
@@ -885,12 +886,13 @@ public actor AnalysisPipeline {
         lazyFeaturePrint: Bool,
         faceInputMaxPixelSize: Int,
         sceneInputMaxPixelSize: Int,
+        expectedBackend: String? = nil,
         onThumbnailReady: (@Sendable (String) -> Void)? = nil
     ) async throws -> StageAOutput {
         try await coordinator.waitIfPaused()
         try Task.checkCancellation()
 
-        let cached = previewPipeline.loadAnalysisRecord(for: item)
+        let cached = previewPipeline.loadAnalysisRecord(for: item, expectedBackend: expectedBackend)
 
         let tPrevStart = CFAbsoluteTimeGetCurrent()
         let previewResult = try? await previewPipeline.generatePreviewAndThumbnailWithImage(for: item)
@@ -1177,6 +1179,7 @@ public actor AnalysisPipeline {
             lazyFeaturePrint: lazyFeaturePrint,
             faceInputMaxPixelSize: faceInputMaxPixelSize,
             sceneInputMaxPixelSize: sceneInputMaxPixelSize,
+            expectedBackend: classifier.targetBackend.rawValue,
             onThumbnailReady: onThumbnailReady
         )
 

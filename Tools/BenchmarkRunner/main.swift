@@ -65,6 +65,8 @@ struct BenchmarkRunner {
         var classificationBackendArg = "auto"
         var strictModel = false
         var compareBaselineJSONPath: String? = nil
+        var customCachePath: String? = nil
+        var cleanCache = false
 
         var i = 1
         while i < args.count {
@@ -240,6 +242,13 @@ struct BenchmarkRunner {
                     compareBaselineJSONPath = args[i + 1]
                     i += 1
                 }
+            case "--custom-cache-dir":
+                if i + 1 < args.count {
+                    customCachePath = args[i + 1]
+                    i += 1
+                }
+            case "--clean-cache":
+                cleanCache = true
             default:
                 break
             }
@@ -1173,8 +1182,26 @@ struct BenchmarkRunner {
 
         let forceVisionFallback = (classificationBackendArg == "vision")
 
+        let cacheDirURL: URL?
+        if let custom = customCachePath {
+            let u = URL(fileURLWithPath: custom)
+            if cleanCache {
+                try? fileManager.removeItem(at: u)
+            }
+            try? fileManager.createDirectory(at: u, withIntermediateDirectories: true)
+            cacheDirURL = u
+        } else if cleanCache {
+            let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+            let defaultDir = appSupport.appendingPathComponent("WeddingCull/Previews", isDirectory: true)
+            try? fileManager.removeItem(at: defaultDir)
+            cacheDirURL = nil
+        } else {
+            cacheDirURL = nil
+        }
+
         let pipeline = AnalysisPipeline(
             hardware: hardware,
+            customCacheDir: cacheDirURL,
             lazyFeaturePrint: lazyFeaturePrint,
             visionExecutionMode: visionExecutionMode,
             faceInputMaxPixelSize: facePixelSize,

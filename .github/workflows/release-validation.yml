@@ -179,6 +179,9 @@ jobs:
             --count "${{ github.event.inputs.dataset_size || '1500' }}" \
             --target "${{ github.event.inputs.target_count || '700' }}" \
             --workers 2 \
+            --classification-backend mobileclip \
+            --custom-cache-dir artifacts/cache_intel_2workers \
+            --clean-cache \
             --dataset-mode LOW_RES_SCALE \
             --build-config release \
             --git-sha "$GITHUB_SHA" \
@@ -198,6 +201,8 @@ jobs:
             --workers "$BEST_WORKERS" \
             --classify-slots "$BEST_SLOTS" \
             --classification-backend vision \
+            --custom-cache-dir artifacts/cache_intel_vision \
+            --clean-cache \
             --dataset-mode LOW_RES_SCALE \
             --build-config release \
             --git-sha "$GITHUB_SHA" \
@@ -218,6 +223,8 @@ jobs:
             --classify-slots "$BEST_SLOTS" \
             --classification-backend mobileclip \
             --strict-model \
+            --custom-cache-dir artifacts/cache_intel_mobileclip \
+            --clean-cache \
             --compare-baseline-json artifacts/benchmark-intel-vision.json \
             --dataset-mode LOW_RES_SCALE \
             --build-config release \
