@@ -1,0 +1,10 @@
+{
+  "description": "Local machine environment mapping template for WeddingCull offline dataset experimentation. Copy to .weddingcull.local.json or set environment variables directly.",
+  "WEDDINGCULL_DATASETS_ROOT": "X:\\WeddingCullDatasets",
+  "WEDDINGCULL_PHOTOTRIAGE_ROOT": "X:\\WeddingCullDatasets\\raw\\PhotoTriage",
+  "WEDDINGCULL_PARA_ROOT": "X:\\WeddingCullDatasets\\raw\\PARA\\PARA",
+  "WEDDINGCULL_HRIQ_ROOT": "X:\\WeddingCullDatasets\\raw\\HRIQ",
+  "WEDDINGCULL_CUHK_BLUR_ROOT": "X:\\WeddingCullDatasets\\raw\\CUHK_Blur",
+  "WEDDINGCULL_CEW_ROOT": "X:\\WeddingCullDatasets\\raw\\CEW",
+  "WEDDINGCULL_MRLEYE_ROOT": "X:\\WeddingCullDatasets\\raw\\MRLEye\\mrlEyes_2018_01"
+}

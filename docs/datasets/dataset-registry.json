@@ -1,0 +1,179 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "registry_version": "1.0.0",
+  "description": "WeddingCull photographic dataset registry. Contains no copyrighted image data and no machine-specific absolute paths.",
+  "license_gate_policy": {
+    "commercial_training_allowed_default": false,
+    "classification_levels": [
+      "BENCHMARK_ALLOWED",
+      "RESEARCH_TRAINING_ONLY",
+      "COMMERCIAL_TRAINING_ALLOWED",
+      "COMMERCIAL_DISTRIBUTION_ALLOWED",
+      "UNKNOWN"
+    ],
+    "commercial_weight_promotion_rule": "No model weights trained on datasets with commercial_training_allowed=false may be incorporated into shipping commercial release builds."
+  },
+  "datasets": [
+    {
+      "name": "Photo Triage",
+      "canonical_identifier": "photo_triage",
+      "local_path_env": "WEDDINGCULL_PHOTOTRIAGE_ROOT",
+      "purpose": [
+        "burst-ranking",
+        "pairwise-preference",
+        "same-moment-culling"
+      ],
+      "split_counts": {
+        "train_series": 4560,
+        "val_series": 195,
+        "test_series": 967,
+        "train_pairs": 12075,
+        "val_pairs": 483,
+        "test_pairs": 2585,
+        "total_images": 15543
+      },
+      "image_count": 15543,
+      "series_count": 5722,
+      "annotation_type": "pairwise_human_votes_reasons_and_ranking",
+      "source_url": "http://phototriage.cs.princeton.edu/",
+      "citation": "Huiwen Chang, Fisher Yu, Jue Wang, Douglas Ashley, Adam Finkelstein. Automatic Triage for a Photo Series. ACM Transactions on Graphics (Proc. SIGGRAPH) 35(4), 2016.",
+      "license_status": "RESEARCH_ONLY",
+      "commercial_training_allowed": false,
+      "benchmark_allowed": true,
+      "redistribution_allowed": false,
+      "notes": "Princeton Adobe Photo Triage benchmark. Primary dataset for same-moment photo ranking, burst selection, and human pairwise preferences."
+    },
+    {
+      "name": "PARA",
+      "canonical_identifier": "para_aesthetics",
+      "local_path_env": "WEDDINGCULL_PARA_ROOT",
+      "purpose": [
+        "aesthetics-assessment",
+        "subjective-preference",
+        "personalization-research",
+        "composition-evaluation"
+      ],
+      "image_count": 31220,
+      "series_count": 445,
+      "annotation_type": "personalized_aesthetic_scores_and_user_profiles",
+      "source_url": "https://cv-datasets.institutecv.com/#/data-sets",
+      "citation": "Yuzhe Yang, Liwu Xu, Leida Li, Nan Qie, Yaqian Li, Peng Zhang, Yandong Guo. Personalized Image Aesthetics Assessment with Rich Attributes. CVPR 2022.",
+      "license_status": "RESEARCH_ONLY",
+      "commercial_training_allowed": false,
+      "benchmark_allowed": true,
+      "redistribution_allowed": false,
+      "notes": "Personalized Image Aesthetics Assessment dataset by OPPO Research Institute. Governed by OPPO Public Data Service Agreement (strictly non-commercial research and learning)."
+    },
+    {
+      "name": "HRIQ",
+      "canonical_identifier": "hriq_quality",
+      "local_path_env": "WEDDINGCULL_HRIQ_ROOT",
+      "purpose": [
+        "natural-image-quality",
+        "focus-blur-assessment",
+        "motion-blur-assessment",
+        "sensor-noise-assessment",
+        "resolution-robustness"
+      ],
+      "image_count": 1120,
+      "series_count": null,
+      "resolutions_available": [
+        "2880x2160",
+        "1024x768",
+        "512x384"
+      ],
+      "annotation_type": "mean_opinion_scores_mos",
+      "source_url": "https://github.com/jarikorhonen/hriq",
+      "citation": "Huang Huang, Qiang Wan, Jari Korhonen. High Resolution Image Quality Database. IEEE ICASSP 2024.",
+      "license_status": "RESEARCH_ONLY",
+      "commercial_training_allowed": false,
+      "benchmark_allowed": true,
+      "redistribution_allowed": false,
+      "notes": "High Resolution Image Quality database. The 2880x2160 version is the canonical subjective MOS resolution. Lower resolutions (1024x768, 512x384) are used for downsampling and preview robustness studies."
+    },
+    {
+      "name": "CUHK Blur",
+      "canonical_identifier": "cuhk_blur",
+      "local_path_env": "WEDDINGCULL_CUHK_BLUR_ROOT",
+      "purpose": [
+        "defocus-blur-detection",
+        "motion-blur-detection",
+        "foreground-vs-background-blur",
+        "subject-bokeh-separation"
+      ],
+      "image_count": 1000,
+      "series_count": null,
+      "annotation_type": "pixel_level_binary_blur_masks",
+      "source_url": "http://www.cse.cuhk.edu.hk/leojia/projects/blurdetect/",
+      "citation": "Jianping Shi, Li Xu, Jiaya Jia. Discriminative Blur Detection Features. CVPR 2014.",
+      "license_status": "RESEARCH_ONLY",
+      "commercial_training_allowed": false,
+      "benchmark_allowed": true,
+      "redistribution_allowed": false,
+      "notes": "CUHK Blur detection dataset. Used to validate subject-in-focus vs. intentional bokeh background differentiation. High blurred percentage does not imply rejection for portraits with shallow depth-of-field."
+    },
+    {
+      "name": "CEW",
+      "canonical_identifier": "cew_closed_eyes",
+      "local_path_env": "WEDDINGCULL_CEW_ROOT",
+      "purpose": [
+        "eye-state-open-closed",
+        "blink-detection",
+        "false-closed-safety-validation",
+        "robustness-to-lighting-and-glasses"
+      ],
+      "image_count": 10180,
+      "series_count": null,
+      "annotation_type": "binary_eye_state_open_closed",
+      "source_url": "http://parnec.nuaa.edu.cn/xtan/data/ClosedEyeDatabases.html",
+      "citation": "Fengyi Song, Xiaoyang Tan, Xuezhi Liu, Songcan Chen. Eyes Closeness Detection from Still Images with Multi-scale Histograms of Principal Oriented Gradients. ICPR 2014.",
+      "license_status": "RESEARCH_ONLY",
+      "commercial_training_allowed": false,
+      "benchmark_allowed": true,
+      "redistribution_allowed": false,
+      "notes": "Closed Eyes in the Wild (CEW) dataset. Primary safety metric is false CLOSED rate to prevent false rejection of open-eyed portraits."
+    },
+    {
+      "name": "MRL Eye",
+      "canonical_identifier": "mrl_eye",
+      "local_path_env": "WEDDINGCULL_MRLEYE_ROOT",
+      "purpose": [
+        "eye-state-open-closed",
+        "reflection-robustness",
+        "low-light-robustness",
+        "eyewear-robustness"
+      ],
+      "image_count": 84937,
+      "series_count": 37,
+      "annotation_type": "filename_encoded_attributes_state_glasses_reflection_lighting",
+      "source_url": "http://mrl.cs.vsb.cz/eyedataset",
+      "citation": "Media Research Lab, VSB - Technical University of Ostrava, 2018.",
+      "license_status": "RESEARCH_ONLY",
+      "commercial_training_allowed": false,
+      "benchmark_allowed": true,
+      "redistribution_allowed": false,
+      "notes": "Large-scale eye-state dataset with 84,937 crops across 37 subjects. Used for evaluating eye-state classification under reflections, bad lighting, and glasses."
+    },
+    {
+      "name": "AlbumBench / CUFED",
+      "canonical_identifier": "albumbench_cufed",
+      "local_path_env": "WEDDINGCULL_ALBUMBENCH_ROOT",
+      "purpose": [
+        "album-level-selection",
+        "narrative-event-coverage",
+        "diversity-and-redundancy",
+        "wedding-story-culling"
+      ],
+      "image_count": 1883,
+      "series_count": 16,
+      "annotation_type": "curator_album_inclusions_and_importance",
+      "source_url": "https://github.com/whalert/CUFED",
+      "citation": "Yufei Wang, Zhe Lin, Jimei Yang, Jianming Zhang, Xiaoou Tang. A Curated Dataset of Album Selection. CVPR 2018.",
+      "license_status": "RESEARCH_ONLY",
+      "commercial_training_allowed": false,
+      "benchmark_allowed": true,
+      "redistribution_allowed": false,
+      "notes": "Curated Album Selection benchmark. Evaluates album-level narrative diversity and coverage rather than per-burst frame ranking."
+    }
+  ]
+}
