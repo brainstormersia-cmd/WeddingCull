@@ -28,12 +28,22 @@ else
         PYTHON_CMD="python"
     fi
 
+    VENV_DIR="/tmp/hf_model_fetch_venv"
     if ! $PYTHON_CMD -c "import huggingface_hub" &>/dev/null; then
-        echo "📦 Installing huggingface_hub..."
-        if command -v pip3 &>/dev/null; then
-            pip3 install --quiet --break-system-packages "huggingface_hub" || pip3 install --quiet "huggingface_hub" || true
-        elif command -v pip &>/dev/null; then
-            pip install --quiet --break-system-packages "huggingface_hub" || pip install --quiet "huggingface_hub" || true
+        echo "📦 Setting up isolated environment for huggingface_hub..."
+        rm -rf "$VENV_DIR"
+        $PYTHON_CMD -m venv "$VENV_DIR" 2>/dev/null || true
+        if [ -f "$VENV_DIR/bin/pip" ]; then
+            "$VENV_DIR/bin/pip" install --quiet "huggingface_hub" || true
+            if [ -f "$VENV_DIR/bin/python" ]; then
+                PYTHON_CMD="$VENV_DIR/bin/python"
+            fi
+        else
+            if command -v pip3 &>/dev/null; then
+                pip3 install --quiet --break-system-packages --ignore-installed "huggingface_hub" || pip3 install --quiet "huggingface_hub" || true
+            elif command -v pip &>/dev/null; then
+                pip install --quiet --break-system-packages --ignore-installed "huggingface_hub" || pip install --quiet "huggingface_hub" || true
+            fi
         fi
     fi
 
