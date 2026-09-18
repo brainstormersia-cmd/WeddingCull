@@ -221,7 +221,7 @@ public actor AnalysisPipeline {
         // Progressive first-page thumbnail delivery: render first 24 thumbs immediately so grid is ready
         let firstBatchCount = min(24, totalPhotos)
         for i in 0..<firstBatchCount {
-            _ = previewPipe.generateOrLoadPreview(for: items[i])
+            _ = try? previewPipe.generatePreviewAndThumbnail(for: items[i])
             let elapsed = CFAbsoluteTimeGetCurrent() - wallStart
             if i == 0 && timeToFirstThumbnail == 0.0 {
                 timeToFirstThumbnail = elapsed
