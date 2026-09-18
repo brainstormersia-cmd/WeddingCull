@@ -43,6 +43,7 @@ def main():
     det_arm64 = read_json_safe(os.path.join(output_dir, "determinism-diagnostics-arm64.json"))
     two_stage_intel = read_json_safe(os.path.join(output_dir, "two-stage-sweep-intel.json"))
     mobileclip_intel = read_json_safe(os.path.join(output_dir, "benchmark-intel-mobileclip.json"))
+    quality_v2 = read_json_safe(os.path.join(output_dir, "quality-benchmark-v2.json"))
 
     # Determine status of each subsystem
     # 1. 1500->700 ARM64
@@ -309,6 +310,31 @@ def main():
         md_content += f"* **Wall-clock Time**: {mobileclip_intel.get('wallClockSeconds', 'N/A')}s\n"
         md_content += f"* **Throughput**: **{mobileclip_intel.get('photosPerSecond', 'N/A')} PPS**\n"
         md_content += f"* **Peak Memory**: {mobileclip_intel.get('peakMemoryMB', 'N/A')} MB\n"
+
+    if quality_v2:
+        abl = quality_v2.get("ablation", {})
+        base = abl.get("baseline", {})
+        exp = abl.get("experimental", {})
+        md_content += "\n## Photographic Intelligence V2 (Apple Face Capture Quality Ablation)\n\n"
+        md_content += f"* **Dataset**: `{quality_v2.get('datasetPath')}` ({quality_v2.get('totalSeries')} series, {quality_v2.get('totalFrames')} frames)\n"
+        md_content += f"* **Winner Flips**: {abl.get('winnerFlipsCount')} / {base.get('totalSeriesEvaluated')} ({abl.get('winnerFlipRate', 0)*100:.1f}%)\n"
+        md_content += f"* **Improvements (Baseline Wrong -> Experimental Correct)**: {len(abl.get('improvements', []))}\n"
+        md_content += f"* **Regressions (Baseline Correct -> Experimental Wrong)**: {len(abl.get('regressions', []))}\n\n"
+        md_content += "| Metric | Baseline (Confidence Only) | Experimental (+FaceCaptureQuality) | Delta |\n"
+        md_content += "| :--- | :---: | :---: | :---: |\n"
+        md_content += f"| **Top-1 Winner Accuracy** | **{base.get('top1Accuracy', 0)*100:.1f}%** | **{exp.get('top1Accuracy', 0)*100:.1f}%** | **{abl.get('top1AccuracyDelta', 0)*100:+.1f}%** |\n"
+        md_content += f"| **Top-2 Winner Recall** | {base.get('top2Recall', 0)*100:.1f}% | {exp.get('top2Recall', 0)*100:.1f}% | {(exp.get('top2Recall', 0) - base.get('top2Recall', 0))*100:+.1f}% |\n"
+        md_content += f"| **Top-3 Winner Recall** | {base.get('top3Recall', 0)*100:.1f}% | {exp.get('top3Recall', 0)*100:.1f}% | {(exp.get('top3Recall', 0) - base.get('top3Recall', 0))*100:+.1f}% |\n"
+        md_content += f"| **Pairwise Concordance** | {base.get('pairwiseAccuracy', 0)*100:.1f}% | {exp.get('pairwiseAccuracy', 0)*100:.1f}% | {abl.get('pairwiseAccuracyDelta', 0)*100:+.1f}% |\n"
+        md_content += f"| **Unacceptable Reject Rate** | {base.get('rejectInclusionRate', 0)*100:.1f}% | {exp.get('rejectInclusionRate', 0)*100:.1f}% | {(exp.get('rejectInclusionRate', 0) - base.get('rejectInclusionRate', 0))*100:+.1f}% |\n"
+        
+        eye = quality_v2.get("eyeStateBenchmark")
+        if eye:
+            md_content += "\n### Eye-State Benchmark Baseline\n\n"
+            md_content += f"* **Accuracy**: {eye.get('accuracy', 0)*100:.1f}%\n"
+            md_content += f"* **OPEN F1**: {eye.get('openF1', 0):.3f} | **CLOSED F1**: {eye.get('closedF1', 0):.3f}\n"
+            md_content += f"* **False CLOSED Rate (Rejection Risk)**: {eye.get('falseClosedRate', 0)*100:.2f}%\n"
+            md_content += f"* **False OPEN Rate**: {eye.get('falseOpenRate', 0)*100:.2f}%\n"
 
     if bench_intel_2w:
         md_content += "\n## Native Intel 1,500-Photo Scaling Comparison\n\n"

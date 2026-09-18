@@ -376,6 +376,16 @@ jobs:
           swift build -c release --product IQAValidationRunner
           .build/release/IQAValidationRunner --output artifacts/iqa-report.json
 
+      - name: Run Quality Benchmark V2 (Photographic Intelligence & Ablation)
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          swift build -c release --product QualityBenchmarkV2
+          .build/release/QualityBenchmarkV2 \
+            --ground-truth docs/datasets/wedding-photo-series-ground-truth.json \
+            --output-json artifacts/quality-benchmark-v2.json \
+            --output-md artifacts/QUALITY_BENCHMARK_V2.md
+
       - name: Run UI Automation Tests
         run: |
           set -euo pipefail
@@ -388,6 +398,8 @@ jobs:
           name: iqa-report
           path: |
             artifacts/iqa-report.json
+            artifacts/quality-benchmark-v2.json
+            artifacts/QUALITY_BENCHMARK_V2.md
             artifacts/ui-readiness-measurement.json
 
   selection-quality-validation:
