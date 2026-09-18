@@ -1,7 +1,8 @@
 {
   "version": "1.0",
-  "dataset_name": "WeddingCull Photo-Series Ground Truth Benchmark",
-  "description": "Empirical photographer culling ground truth across burst and moment sequences with micro-variations in face capture quality, eye state, focus, expression, and exposure.",
+  "fixture_type": "SYNTHETIC_UNIT_TEST_FIXTURE",
+  "dataset_name": "Synthetic Burst Ranking Logic Fixture",
+  "description": "Synthetic unit-test fixture for deterministic verification of burst ranking logic, pairwise ordering invariants, and ablation control flow using synthetic feature vectors. NOT a real image dataset. QualityBenchmarkV2 evaluates actual image files separately.",
   "total_series": 8,
   "total_frames": 32,
   "series": [

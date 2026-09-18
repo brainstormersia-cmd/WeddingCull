@@ -1003,21 +1003,40 @@ public actor AnalysisPipeline {
                         faceRequest.results ?? [],
                         captureQualityObservations: captureQualityRequest?.results as? [VNFaceObservation]
                     )
-                    metrics.faceCount = faces.count
-                    if !faces.isEmpty {
-                        let totalQuality = faces.reduce(0.0) { $0 + $1.faceQuality }
-                        metrics.faceQualityScore = totalQuality / Double(faces.count)
-                        let totalEyes = faces.reduce(0.0) { $0 + $1.eyeOpenness }
-                        metrics.averageEyeOpenness = totalEyes / Double(faces.count)
+                    var facesWithSharpness: [FaceInstance] = []
+                    var faceSharpnessValues: [Double] = []
+                    for face in faces {
+                        let cropSharp = qualityAnalyzer.computeRegionSharpness(cgImage: faceCG, normalizedRect: face.boundingBox)
+                        faceSharpnessValues.append(cropSharp)
+                        facesWithSharpness.append(FaceInstance(
+                            boundingBox: face.boundingBox,
+                            eyeOpenness: face.eyeOpenness,
+                            detectionConfidence: face.detectionConfidence,
+                            faceQuality: face.faceQuality,
+                            faceCaptureQuality: face.faceCaptureQuality,
+                            faceSharpness: cropSharp,
+                            identityEmbedding: face.identityEmbedding,
+                            descriptorType: face.descriptorType
+                        ))
+                    }
+                    metrics.faceCount = facesWithSharpness.count
+                    if !facesWithSharpness.isEmpty {
+                        let totalConfidence = facesWithSharpness.reduce(0.0) { $0 + $1.detectionConfidence }
+                        metrics.faceQualityScore = totalConfidence / Double(facesWithSharpness.count)
+                        let totalEyes = facesWithSharpness.reduce(0.0) { $0 + $1.eyeOpenness }
+                        metrics.averageEyeOpenness = totalEyes / Double(facesWithSharpness.count)
                         if enableFaceCaptureQuality {
-                            let validCQs = faces.compactMap { $0.faceCaptureQuality }
+                            let validCQs = facesWithSharpness.compactMap { $0.faceCaptureQuality }
                             if !validCQs.isEmpty {
                                 let avgCQ = validCQs.reduce(0.0, +) / Double(validCQs.count)
                                 metrics.rawFaceCaptureQuality = avgCQ
                                 metrics.faceCaptureQualityScore = avgCQ
                             }
                         }
-                        metrics.rawFaceSharpness = tech.rawSharpness * 1.2
+                        let avgFaceSharp = faceSharpnessValues.reduce(0.0, +) / Double(faceSharpnessValues.count)
+                        metrics.rawFaceSharpness = avgFaceSharp
+                    } else {
+                        metrics.rawFaceSharpness = nil
                     }
                     let tFaceEnd = CFAbsoluteTimeGetCurrent()
                     let faceDuration = max(0.0, tFaceEnd - tFaceStart)
@@ -1047,7 +1066,7 @@ public actor AnalysisPipeline {
                         metrics: metrics,
                         perceptualHash: pHash,
                         featurePrint: fPrint,
-                        faces: faces,
+                        faces: facesWithSharpness,
                         cachedRecord: nil
                     )
                 }
@@ -1263,24 +1282,43 @@ public actor AnalysisPipeline {
                 faceRequest.results ?? [],
                 captureQualityObservations: captureQualityRequest?.results as? [VNFaceObservation]
             )
-            metrics.faceCount = faces.count
-            if !faces.isEmpty {
-                let totalQuality = faces.reduce(0.0) { $0 + $1.faceQuality }
-                metrics.faceQualityScore = totalQuality / Double(faces.count)
-                let totalEyes = faces.reduce(0.0) { $0 + $1.eyeOpenness }
-                metrics.averageEyeOpenness = totalEyes / Double(faces.count)
+            var facesWithSharpness: [FaceInstance] = []
+            var faceSharpnessValues: [Double] = []
+            for face in faces {
+                let cropSharp = qualityAnalyzer.computeRegionSharpness(cgImage: faceCG, normalizedRect: face.boundingBox)
+                faceSharpnessValues.append(cropSharp)
+                facesWithSharpness.append(FaceInstance(
+                    boundingBox: face.boundingBox,
+                    eyeOpenness: face.eyeOpenness,
+                    detectionConfidence: face.detectionConfidence,
+                    faceQuality: face.faceQuality,
+                    faceCaptureQuality: face.faceCaptureQuality,
+                    faceSharpness: cropSharp,
+                    identityEmbedding: face.identityEmbedding,
+                    descriptorType: face.descriptorType
+                ))
+            }
+            metrics.faceCount = facesWithSharpness.count
+            if !facesWithSharpness.isEmpty {
+                let totalConfidence = facesWithSharpness.reduce(0.0) { $0 + $1.detectionConfidence }
+                metrics.faceQualityScore = totalConfidence / Double(facesWithSharpness.count)
+                let totalEyes = facesWithSharpness.reduce(0.0) { $0 + $1.eyeOpenness }
+                metrics.averageEyeOpenness = totalEyes / Double(facesWithSharpness.count)
                 if enableFaceCaptureQuality {
-                    let validCQs = faces.compactMap { $0.faceCaptureQuality }
+                    let validCQs = facesWithSharpness.compactMap { $0.faceCaptureQuality }
                     if !validCQs.isEmpty {
                         let avgCQ = validCQs.reduce(0.0, +) / Double(validCQs.count)
                         metrics.rawFaceCaptureQuality = avgCQ
                         metrics.faceCaptureQualityScore = avgCQ
                     }
                 }
-                metrics.rawFaceSharpness = metrics.rawSharpness * 1.2
+                let avgFaceSharp = faceSharpnessValues.reduce(0.0, +) / Double(faceSharpnessValues.count)
+                metrics.rawFaceSharpness = avgFaceSharp
+            } else {
+                metrics.rawFaceSharpness = nil
             }
 
-            let res = classifier.classifyWithObservations(sceneRequest.results, metadata: item.metadata, faceCount: faces.count)
+            let res = classifier.classifyWithObservations(sceneRequest.results, metadata: item.metadata, faceCount: facesWithSharpness.count)
             var scores: [WeddingCategory: Double] = [:]
             scores[res.0] = res.1
 
@@ -1298,7 +1336,7 @@ public actor AnalysisPipeline {
                 category: res.0,
                 categoryConfidence: res.1,
                 visionScores: scores,
-                faces: faces,
+                faces: facesWithSharpness,
                 featurePrintData: fpData,
                 classificationBackend: classifier.lastUsedBackend.rawValue
             )
@@ -1310,7 +1348,7 @@ public actor AnalysisPipeline {
                 metrics: metrics,
                 perceptualHash: stageA.perceptualHash,
                 featurePrint: stageA.featurePrint,
-                faces: faces,
+                faces: facesWithSharpness,
                 category: res.0,
                 categoryConfidence: res.1,
                 previewDurationSeconds: stageA.previewDurationSeconds,

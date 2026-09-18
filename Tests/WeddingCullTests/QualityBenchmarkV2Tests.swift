@@ -1,4 +1,5 @@
 import XCTest
+import CoreGraphics
 #if canImport(WeddingCull)
 @testable import WeddingCull
 #elseif canImport(WeddingCullCore)
@@ -27,17 +28,23 @@ final class QualityBenchmarkV2Tests: XCTestCase {
         XCTAssertEqual(decoded.faceCaptureQualityScore, 0.875)
     }
 
-    func testFaceCaptureQualityInFaceInstance() throws {
+    func testFaceInstanceIndependentFields() throws {
         let face = FaceInstance(
             boundingBox: CGRect(x: 0.2, y: 0.2, width: 0.3, height: 0.3),
             eyeOpenness: 0.95,
-            faceQuality: 0.88,
-            faceCaptureQuality: 0.85,
+            detectionConfidence: 0.99,
+            faceQuality: 0.99,
+            faceCaptureQuality: 0.72,
+            faceSharpness: 450.0,
             identityEmbedding: [Float](repeating: 0.1, count: 64)
         )
 
-        XCTAssertEqual(face.faceCaptureQuality, 0.85)
-        XCTAssertEqual(face.faceQuality, 0.88)
+        // Verification of clean feature separation:
+        // detectionConfidence must NOT be overwritten by faceCaptureQuality
+        XCTAssertEqual(face.detectionConfidence, 0.99)
+        XCTAssertEqual(face.faceQuality, 0.99)
+        XCTAssertEqual(face.faceCaptureQuality, 0.72)
+        XCTAssertEqual(face.faceSharpness, 450.0)
 
         // Verify JSON round-trip
         let encoder = JSONEncoder()
@@ -45,7 +52,10 @@ final class QualityBenchmarkV2Tests: XCTestCase {
         let decoder = JSONDecoder()
         let decoded = try decoder.decode(FaceInstance.self, from: data)
 
-        XCTAssertEqual(decoded.faceCaptureQuality, 0.85)
+        XCTAssertEqual(decoded.detectionConfidence, 0.99)
+        XCTAssertEqual(decoded.faceQuality, 0.99)
+        XCTAssertEqual(decoded.faceCaptureQuality, 0.72)
+        XCTAssertEqual(decoded.faceSharpness, 450.0)
     }
 
     func testBurstRankingWithAndWithoutFaceCaptureQuality() {
@@ -54,7 +64,7 @@ final class QualityBenchmarkV2Tests: XCTestCase {
         // Frame A: High detector confidence (0.98) but blurry face / poor capture quality (0.35)
         var metricsA = QualityMetrics()
         metricsA.faceCount = 1
-        metricsA.faceQualityScore = 0.98 // Confidence
+        metricsA.faceQualityScore = 0.98 // Detection confidence
         metricsA.rawFaceCaptureQuality = 0.35
         metricsA.faceCaptureQualityScore = 0.35
         metricsA.faceSharpnessScore = 0.70
@@ -73,7 +83,7 @@ final class QualityBenchmarkV2Tests: XCTestCase {
         // Frame B: Slightly lower detector confidence (0.93) but excellent authentic face capture quality (0.92)
         var metricsB = QualityMetrics()
         metricsB.faceCount = 1
-        metricsB.faceQualityScore = 0.93 // Confidence
+        metricsB.faceQualityScore = 0.93 // Detection confidence
         metricsB.rawFaceCaptureQuality = 0.92
         metricsB.faceCaptureQualityScore = 0.92
         metricsB.faceSharpnessScore = 0.72
@@ -110,23 +120,99 @@ final class QualityBenchmarkV2Tests: XCTestCase {
         XCTAssertEqual(burstExp.winnerID, "frame_B_sharp_high_cq")
     }
 
-    func testGroundTruthDatasetIntegrity() throws {
-        // Find dataset file
-        let datasetPath = "docs/datasets/wedding-photo-series-ground-truth.json"
-        let datasetURL = URL(fileURLWithPath: datasetPath)
-        guard FileManager.default.fileExists(atPath: datasetURL.path) else {
-            XCTFail("Ground truth dataset missing at \(datasetPath)")
+    func testDivergentFaceAndGlobalSharpness() {
+        let analyzer = TechnicalQualityAnalyzer()
+        let width = 300
+        let height = 300
+        let faceRect = CGRect(x: 0.3, y: 0.3, width: 0.4, height: 0.4) // Center 40%
+
+        // Helper to create test bitmap context
+        func createContext() -> CGContext {
+            let colorSpace = CGColorSpaceCreateDeviceGray()
+            return CGContext(
+                data: nil,
+                width: width,
+                height: height,
+                bitsPerComponent: 8,
+                bytesPerRow: width,
+                space: colorSpace,
+                bitmapInfo: CGImageAlphaInfo.none.rawValue
+            )!
+        }
+
+        // Test Scenario 1: Shallow Depth-of-Field (Bokeh Portrait)
+        // Background is smooth and uniform (gray 128), while face region has sharp high-frequency edges
+        let ctxBokeh = createContext()
+        ctxBokeh.setFillColor(gray: 0.5, alpha: 1.0)
+        ctxBokeh.fill(CGRect(x: 0, y: 0, width: width, height: height))
+
+        // Draw sharp high-frequency checkerboard in face region
+        let facePixelX = Int(faceRect.origin.x * Double(width))
+        let facePixelY = Int((1.0 - faceRect.origin.y - faceRect.size.height) * Double(height))
+        let facePixelW = Int(faceRect.size.width * Double(width))
+        let facePixelH = Int(faceRect.size.height * Double(height))
+
+        for y in stride(from: facePixelY, to: facePixelY + facePixelH, by: 4) {
+            for x in stride(from: facePixelX, to: facePixelX + facePixelW, by: 4) {
+                if ((x / 4) + (y / 4)) % 2 == 0 {
+                    ctxBokeh.setFillColor(gray: 0.0, alpha: 1.0)
+                } else {
+                    ctxBokeh.setFillColor(gray: 1.0, alpha: 1.0)
+                }
+                ctxBokeh.fill(CGRect(x: x, y: y, width: 4, height: 4))
+            }
+        }
+        let bokehImage = ctxBokeh.makeImage()!
+
+        let globalSharpBokeh = analyzer.analyze(cgImage: bokehImage).rawSharpness
+        let faceSharpBokeh = analyzer.computeRegionSharpness(cgImage: bokehImage, normalizedRect: faceRect)
+
+        // In a bokeh portrait, the face region sharpness MUST be significantly higher than the global sharpness
+        XCTAssertGreaterThan(faceSharpBokeh, globalSharpBokeh * 2.0, "Face sharpness must exceed global sharpness in shallow DoF scenes")
+        XCTAssertNotEqual(faceSharpBokeh, globalSharpBokeh * 1.2, accuracy: 1.0, "Face sharpness must not be locked to globalSharpness * 1.2")
+
+        // Test Scenario 2: Missed Focus (Sharp Cluttered Background, Blurry/Smooth Face)
+        let ctxMissed = createContext()
+        // Fill entire background with high-frequency checkerboard
+        for y in stride(from: 0, to: height, by: 4) {
+            for x in stride(from: 0, to: width, by: 4) {
+                if ((x / 4) + (y / 4)) % 2 == 0 {
+                    ctxMissed.setFillColor(gray: 0.0, alpha: 1.0)
+                } else {
+                    ctxMissed.setFillColor(gray: 1.0, alpha: 1.0)
+                }
+                ctxMissed.fill(CGRect(x: x, y: y, width: 4, height: 4))
+            }
+        }
+        // Smooth blurred face region
+        ctxMissed.setFillColor(gray: 0.5, alpha: 1.0)
+        ctxMissed.fill(CGRect(x: facePixelX, y: facePixelY, width: facePixelW, height: facePixelH))
+        let missedFocusImage = ctxMissed.makeImage()!
+
+        let globalSharpMissed = analyzer.analyze(cgImage: missedFocusImage).rawSharpness
+        let faceSharpMissed = analyzer.computeRegionSharpness(cgImage: missedFocusImage, normalizedRect: faceRect)
+
+        // In missed focus, face sharpness MUST be significantly lower than the cluttered background sharpness
+        XCTAssertLessThan(faceSharpMissed, globalSharpMissed * 0.5, "Face sharpness must be far lower than global background sharpness when focus is missed")
+        XCTAssertNotEqual(faceSharpMissed, globalSharpMissed * 1.2, accuracy: 1.0, "Face sharpness must not be locked to globalSharpness * 1.2")
+    }
+
+    func testSyntheticFixtureIntegrity() throws {
+        let fixturePath = "docs/datasets/synthetic-ranking-fixture.json"
+        let fixtureURL = URL(fileURLWithPath: fixturePath)
+        guard FileManager.default.fileExists(atPath: fixtureURL.path) else {
+            XCTFail("Synthetic fixture missing at \(fixturePath)")
             return
         }
 
-        let data = try Data(contentsOf: datasetURL)
+        let data = try Data(contentsOf: fixtureURL)
         let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
         XCTAssertNotNil(json)
-        XCTAssertEqual(json?["version"] as? String, "1.0")
+        XCTAssertEqual(json?["fixture_type"] as? String, "SYNTHETIC_UNIT_TEST_FIXTURE")
 
         let seriesList = json?["series"] as? [[String: Any]]
         XCTAssertNotNil(seriesList)
-        XCTAssertGreaterThanOrEqual(seriesList?.count ?? 0, 8, "Expected at least 8 real photo series")
+        XCTAssertEqual(seriesList?.count, 8)
 
         for series in seriesList ?? [] {
             let seriesId = series["series_id"] as? String ?? ""
@@ -142,7 +228,6 @@ final class QualityBenchmarkV2Tests: XCTestCase {
             XCTAssertFalse(preferredOrder.isEmpty, "Series \(seriesId) missing preferred order")
             XCTAssertFalse(acceptableKeepers.isEmpty, "Series \(seriesId) missing acceptable keepers")
 
-            // #1 preferred keeper must never be in unacceptable rejects
             if let first = preferredOrder.first {
                 XCTAssertFalse(unacceptableRejects.contains(first), "Winner \(first) cannot be an unacceptable reject in \(seriesId)")
             }

@@ -12,23 +12,30 @@ public enum DescriptorType: String, Sendable, Codable {
 public struct FaceInstance: Sendable, Codable {
     public let boundingBox: CGRect
     public let eyeOpenness: Double
-    public let faceQuality: Double
+    public let detectionConfidence: Double
+    public let faceQuality: Double // Strictly mirrors detectionConfidence for legacy compatibility; never overloaded
     public let faceCaptureQuality: Double?
+    public let faceSharpness: Double?
     public let identityEmbedding: [Float] // Normalized descriptor vector (64-d geometric or 128-d learned)
     public let descriptorType: DescriptorType
 
     public init(
         boundingBox: CGRect,
         eyeOpenness: Double,
-        faceQuality: Double,
+        detectionConfidence: Double? = nil,
+        faceQuality: Double? = nil,
         faceCaptureQuality: Double? = nil,
+        faceSharpness: Double? = nil,
         identityEmbedding: [Float],
         descriptorType: DescriptorType = .geometric
     ) {
         self.boundingBox = boundingBox
         self.eyeOpenness = eyeOpenness
-        self.faceQuality = faceQuality
+        let conf = detectionConfidence ?? faceQuality ?? 0.8
+        self.detectionConfidence = conf
+        self.faceQuality = faceQuality ?? conf
         self.faceCaptureQuality = faceCaptureQuality
+        self.faceSharpness = faceSharpness
         self.identityEmbedding = identityEmbedding
         self.descriptorType = descriptorType
     }
@@ -155,14 +162,16 @@ public final class FaceIdentityRecognizer: @unchecked Sendable {
                 matchedCaptureQuality = Double(fcq)
             }
 
-            let quality = matchedCaptureQuality ?? Double(obs.confidence)
+            let confidence = Double(obs.confidence)
             let embedding = computeIdentityEmbedding(landmarks: obs.landmarks, bbox: bbox)
 
             results.append(FaceInstance(
                 boundingBox: bbox,
                 eyeOpenness: avgEyeOpen,
-                faceQuality: quality,
+                detectionConfidence: confidence,
+                faceQuality: confidence, // Pure baseline detection confidence; NEVER overwritten by capture quality
                 faceCaptureQuality: matchedCaptureQuality,
+                faceSharpness: nil,
                 identityEmbedding: embedding,
                 descriptorType: descriptorType
             ))

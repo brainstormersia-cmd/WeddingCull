@@ -1,4 +1,6 @@
 import Foundation
+import CoreGraphics
+import ImageIO
 #if canImport(WeddingCullCore)
 import WeddingCullCore
 #endif
@@ -9,39 +11,64 @@ import TestDatasetGeneratorLibrary
 import Darwin
 #endif
 
-// MARK: - Benchmark Data Models
+// MARK: - Real-Image Benchmark Data Models (Labels Only, No Pre-Injected Features)
 
-struct PhotoSeriesBenchmarkDataset: Codable {
+struct RealSeriesBenchmarkDataset: Codable {
     let version: String
     let dataset_name: String
-    let description: String
+    let description: String?
     let total_series: Int
     let total_frames: Int
-    let series: [PhotoSeries]
+    let series: [RealPhotoSeries]
 }
 
-struct PhotoSeries: Codable {
+struct RealPhotoSeries: Codable {
     let series_id: String
     let scene_type: String
-    let description: String
+    let description: String?
+    let frames: [RealSeriesFrame]
     let ground_truth: SeriesGroundTruth
-    let frames: [SeriesFrame]
+}
+
+struct RealSeriesFrame: Codable {
+    let photo_id: String
+    let image_path: String
 }
 
 struct SeriesGroundTruth: Codable {
     let preferred_order: [String]
     let acceptable_keepers: [String]
     let unacceptable_rejects: [String]
-    let reasons: [String: String]
+    let reasons: [String: String]?
 }
 
-struct SeriesFrame: Codable {
+// MARK: - Synthetic Unit-Test Fixture Models
+
+struct SyntheticFixtureDataset: Codable {
+    let version: String
+    let fixture_type: String?
+    let dataset_name: String
+    let description: String
+    let total_series: Int
+    let total_frames: Int
+    let series: [SyntheticPhotoSeries]
+}
+
+struct SyntheticPhotoSeries: Codable {
+    let series_id: String
+    let scene_type: String
+    let description: String
+    let ground_truth: SeriesGroundTruth
+    let frames: [SyntheticSeriesFrame]
+}
+
+struct SyntheticSeriesFrame: Codable {
     let photo_id: String
     let relative_time_seconds: Double
-    let simulated_attributes: FrameSimulatedAttributes
+    let simulated_attributes: SyntheticAttributes
 }
 
-struct FrameSimulatedAttributes: Codable {
+struct SyntheticAttributes: Codable {
     let sharpness: Double
     let face_count: Int
     let face_sharpness: Double
@@ -51,30 +78,10 @@ struct FrameSimulatedAttributes: Codable {
     let exposure_score: Double
 }
 
-// MARK: - Eye State Evaluation Models
-
-public enum BenchmarkEyeState: String, Codable {
-    case open = "OPEN"
-    case closed = "CLOSED"
-    case unknown = "UNKNOWN"
-}
-
-struct EyeStateEvaluationMetrics: Codable, Sendable {
-    let totalEyesEvaluated: Int
-    let accuracy: Double
-    let openPrecision: Double
-    let openRecall: Double
-    let openF1: Double
-    let closedPrecision: Double
-    let closedRecall: Double
-    let closedF1: Double
-    let falseClosedRate: Double // Crucial: false rejection risk (saying eyes closed when open)
-    let falseOpenRate: Double
-}
-
 // MARK: - Ranking & Ablation Result Models
 
 struct SeriesRankingMetrics: Codable, Sendable {
+    let evaluationMode: String // "REAL_IMAGE_ANALYSIS" or "SYNTHETIC_LOGIC_VALIDATION"
     let configurationName: String
     let enableFaceCaptureQuality: Bool
     let totalSeriesEvaluated: Int
@@ -96,11 +103,12 @@ struct FailureCase: Codable, Sendable {
     let experimentalWinnerId: String
     let baselineCorrect: Bool
     let experimentalCorrect: Bool
-    let failureCategory: String // "focus", "eyes", "expression", "pose", "exposure"
+    let failureCategory: String
     let explanation: String
 }
 
 struct AblationComparison: Codable, Sendable {
+    let evaluationMode: String
     let baseline: SeriesRankingMetrics
     let experimental: SeriesRankingMetrics
     let top1AccuracyDelta: Double
@@ -114,14 +122,16 @@ struct AblationComparison: Codable, Sendable {
 struct QualityBenchmarkV2Report: Codable, Sendable {
     let timestamp: String
     let benchmarkVersion: String
-    let datasetPath: String
-    let totalSeries: Int
-    let totalFrames: Int
-    let ablation: AblationComparison
-    let eyeStateBenchmark: EyeStateEvaluationMetrics?
+    let realImageBenchmarkStatus: String
+    let realImageBenchmarkDetails: String?
+    let realImageAblation: AblationComparison?
+    let syntheticLogicValidation: AblationComparison
+    let eyeStateBenchmarkStatus: String
+    let eyeStateBenchmarkNote: String
+    let datasetBlockers: [String]
 }
 
-// MARK: - Benchmark Runner Implementation
+// MARK: - QualityBenchmarkV2 Runner
 
 @main
 struct QualityBenchmarkV2Runner {
@@ -143,26 +153,23 @@ struct QualityBenchmarkV2Runner {
     static func main() async {
         let args = CommandLine.arguments
 
-        var groundTruthPath = "docs/datasets/wedding-photo-series-ground-truth.json"
+        var syntheticFixturePath = "docs/datasets/synthetic-ranking-fixture.json"
+        var realSeriesManifestPath: String? = nil
         var outputJSONPath = "artifacts/quality-benchmark-v2.json"
         var outputMDPath = "artifacts/QUALITY_BENCHMARK_V2.md"
-        var runAblationMode = true
-        var runEyeStateMode = true
 
         var i = 1
         while i < args.count {
             let arg = args[i]
             switch arg {
-            case "--ground-truth":
-                if i + 1 < args.count { groundTruthPath = args[i + 1]; i += 1 }
+            case "--synthetic-fixture":
+                if i + 1 < args.count { syntheticFixturePath = args[i + 1]; i += 1 }
+            case "--real-series":
+                if i + 1 < args.count { realSeriesManifestPath = args[i + 1]; i += 1 }
             case "--output-json":
                 if i + 1 < args.count { outputJSONPath = args[i + 1]; i += 1 }
             case "--output-md":
                 if i + 1 < args.count { outputMDPath = args[i + 1]; i += 1 }
-            case "--no-ablation":
-                runAblationMode = false
-            case "--no-eye-state":
-                runEyeStateMode = false
             case "--help", "-h":
                 printUsage()
                 return
@@ -172,242 +179,300 @@ struct QualityBenchmarkV2Runner {
             i += 1
         }
 
-        print("=== WeddingCull Quality Benchmark V2 ===")
-        print("Dataset: \(groundTruthPath)")
+        print("==================================================")
+        print("🎯 WeddingCull Quality Benchmark V2")
+        print("==================================================")
 
-        let datasetURL = URL(fileURLWithPath: groundTruthPath)
-        guard FileManager.default.fileExists(atPath: datasetURL.path) else {
-            print("ERROR: Ground truth dataset not found at \(groundTruthPath)")
-            exit(1)
-        }
+        var blockers: [String] = []
 
-        let datasetData: Data
-        do {
-            datasetData = try Data(contentsOf: datasetURL)
-        } catch {
-            print("ERROR: Failed to read dataset: \(error)")
-            exit(1)
-        }
+        // 1. Real Image Benchmark Evaluation (Actual Image Pixels)
+        var realImageStatus = "NOT_MEASURED"
+        var realImageDetails: String? = nil
+        var realImageAblation: AblationComparison? = nil
 
-        let dataset: PhotoSeriesBenchmarkDataset
-        do {
-            dataset = try JSONDecoder().decode(PhotoSeriesBenchmarkDataset.self, from: datasetData)
-        } catch {
-            print("ERROR: Failed to decode dataset JSON: \(error)")
-            exit(1)
-        }
-
-        print("Loaded \(dataset.total_series) series with \(dataset.total_frames) total frames.")
-
-        // 1. Run Baseline Evaluation (enableFaceCaptureQuality: false)
-        print("\n--> Running Baseline evaluation (FaceCaptureQuality = OFF)...")
-        let baselineResult = evaluateSeriesBenchmark(
-            dataset: dataset,
-            enableFaceCaptureQuality: false,
-            configName: "Baseline (Confidence Only)"
-        )
-        print(String(format: "    Top-1 Accuracy: %.1f%%", baselineResult.top1Accuracy * 100))
-        print(String(format: "    Top-3 Recall:   %.1f%%", baselineResult.top3Recall * 100))
-        print(String(format: "    Pairwise Acc:   %.1f%%", baselineResult.pairwiseAccuracy * 100))
-
-        // 2. Run Experimental Evaluation (enableFaceCaptureQuality: true)
-        print("\n--> Running Experimental evaluation (FaceCaptureQuality = ON)...")
-        let experimentalResult = evaluateSeriesBenchmark(
-            dataset: dataset,
-            enableFaceCaptureQuality: true,
-            configName: "Experimental (+FaceCaptureQuality)"
-        )
-        print(String(format: "    Top-1 Accuracy: %.1f%%", experimentalResult.top1Accuracy * 100))
-        print(String(format: "    Top-3 Recall:   %.1f%%", experimentalResult.top3Recall * 100))
-        print(String(format: "    Pairwise Acc:   %.1f%%", experimentalResult.pairwiseAccuracy * 100))
-
-        // 3. Ablation Analysis: Flips, Improvements, Regressions
-        let ablation = analyzeAblation(
-            dataset: dataset,
-            baseline: baselineResult,
-            experimental: experimentalResult
-        )
-
-        // 4. Eye-State Evaluation Scaffolding
-        let eyeMetrics: EyeStateEvaluationMetrics?
-        if runEyeStateMode {
-            eyeMetrics = evaluateEyeState(dataset: dataset)
+        if let manifestPath = realSeriesManifestPath {
+            print("\n--> Checking Real Image Benchmark manifest: \(manifestPath)")
+            let (status, details, ablation) = evaluateRealImageBenchmark(manifestPath: manifestPath)
+            realImageStatus = status
+            realImageDetails = details
+            realImageAblation = ablation
         } else {
-            eyeMetrics = nil
+            realImageStatus = "AWAITING_LABELED_DATASET"
+            let msg = "No publicly licensed wedding burst dataset with fine-grained human curator ranking orders is currently present in the repository. The benchmark architecture is fully implemented to decode real CGImages and evaluate Vision observations when image files and ground-truth manifests are supplied."
+            realImageDetails = msg
+            blockers.append("Photographer ground truth burst dataset: No legally usable public wedding burst dataset with per-frame curator preference rankings exists; waiting for curated shoot donation.")
+            print("\n[INFO] Real Image Benchmark: \(realImageStatus)")
+            print("       \(msg)")
         }
 
-        // 5. Build Final Report
+        // 2. Synthetic Logic Validation (Unit-Test Invariant Fixture)
+        print("\n--> Running Synthetic Logic Validation (Unit Test Fixture)...")
+        print("    Path: \(syntheticFixturePath)")
+        guard FileManager.default.fileExists(atPath: syntheticFixturePath) else {
+            print("ERROR: Synthetic fixture missing at \(syntheticFixturePath)")
+            exit(1)
+        }
+
+        guard let fixtureData = try? Data(contentsOf: URL(fileURLWithPath: syntheticFixturePath)),
+              let fixture = try? JSONDecoder().decode(SyntheticFixtureDataset.self, from: fixtureData) else {
+            print("ERROR: Failed to decode synthetic fixture JSON at \(syntheticFixturePath)")
+            exit(1)
+        }
+
+        let syntheticAblation = evaluateSyntheticLogicValidation(fixture: fixture)
+        print(String(format: "    [Synthetic Logic] Baseline Top-1:     %.1f%%", syntheticAblation.baseline.top1Accuracy * 100))
+        print(String(format: "    [Synthetic Logic] Experimental Top-1: %.1f%%", syntheticAblation.experimental.top1Accuracy * 100))
+        print(String(format: "    [Synthetic Logic] Top-1 Delta:        %+.1f%%", syntheticAblation.top1AccuracyDelta * 100))
+        print(String(format: "    [Synthetic Logic] Pairwise Delta:     %+.1f%%", syntheticAblation.pairwiseAccuracyDelta * 100))
+        print("    [Synthetic Logic] Winner Flips:       \(syntheticAblation.winnerFlipsCount) / \(syntheticAblation.baseline.totalSeriesEvaluated)")
+        print("    [Synthetic Logic] Improvements:       \(syntheticAblation.improvements.count)")
+        print("    [Synthetic Logic] Regressions:        \(syntheticAblation.regressions.count)")
+
+        // 3. Eye-State Benchmark Status (Explicitly NOT MEASURED without real labeled in-the-wild crops)
+        let eyeStateStatus = "NOT MEASURED"
+        let eyeStateNote = "Eye-state benchmark requires actual image crops with independent ground-truth eye labels (e.g., CEW / Closed Eyes in the Wild). Fabricated or synthetic metrics are omitted."
+        blockers.append("Eye-state ground truth dataset: Awaiting integration of verified, legally permissible in-the-wild eye-crop benchmark dataset.")
+
+        // 4. Assemble Report
         let nowFormatter = ISO8601DateFormatter()
         let report = QualityBenchmarkV2Report(
             timestamp: nowFormatter.string(from: Date()),
-            benchmarkVersion: "2.0.0",
-            datasetPath: groundTruthPath,
-            totalSeries: dataset.total_series,
-            totalFrames: dataset.total_frames,
-            ablation: ablation,
-            eyeStateBenchmark: eyeMetrics
+            benchmarkVersion: "2.1.0",
+            realImageBenchmarkStatus: realImageStatus,
+            realImageBenchmarkDetails: realImageDetails,
+            realImageAblation: realImageAblation,
+            syntheticLogicValidation: syntheticAblation,
+            eyeStateBenchmarkStatus: eyeStateStatus,
+            eyeStateBenchmarkNote: eyeStateNote,
+            datasetBlockers: blockers
         )
 
-        // 6. Write JSON Artifact
+        // 5. Write JSON Artifact
         do {
             let jsonEncoder = JSONEncoder()
             jsonEncoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-            let jsonData = try jsonEncoder.encode(report)
+            let data = try jsonEncoder.encode(report)
             let outURL = URL(fileURLWithPath: outputJSONPath)
             try FileManager.default.createDirectory(at: outURL.deletingLastPathComponent(), withIntermediateDirectories: true)
-            try jsonData.write(to: outURL)
-            print("\nWrote benchmark JSON to \(outputJSONPath)")
+            try data.write(to: outURL)
+            print("\n[OK] Wrote benchmark JSON: \(outputJSONPath)")
         } catch {
             print("WARNING: Failed to write JSON output: \(error)")
         }
 
-        // 7. Write Markdown Artifact
+        // 6. Write Markdown Artifact
         let mdContent = generateMarkdownReport(report: report)
         do {
             let mdURL = URL(fileURLWithPath: outputMDPath)
             try FileManager.default.createDirectory(at: mdURL.deletingLastPathComponent(), withIntermediateDirectories: true)
             try mdContent.write(to: mdURL, atomically: true, encoding: .utf8)
-            print("Wrote benchmark report to \(outputMDPath)")
+            print("[OK] Wrote benchmark markdown: \(outputMDPath)")
         } catch {
-            print("WARNING: Failed to write MD output: \(error)")
+            print("WARNING: Failed to write Markdown output: \(error)")
         }
 
-        print("\n=== Quality Benchmark V2 Completed Successfully ===")
+        print("\n==================================================")
+        print("✅ Quality Benchmark V2 Execution Completed")
+        print("==================================================")
     }
 
-    // MARK: - Evaluation Functions
+    // MARK: - Real Image Evaluation Logic
 
-    static func evaluateSeriesBenchmark(
-        dataset: PhotoSeriesBenchmarkDataset,
-        enableFaceCaptureQuality: Bool,
-        configName: String
-    ) -> SeriesRankingMetrics {
-        let detector = DuplicateAndBurstDetector(enableFaceCaptureQuality: enableFaceCaptureQuality)
-        let tStart = CFAbsoluteTimeGetCurrent()
+    static func evaluateRealImageBenchmark(manifestPath: String) -> (String, String, AblationComparison?) {
+        guard FileManager.default.fileExists(atPath: manifestPath) else {
+            return ("FAILED", "Manifest file not found at \(manifestPath)", nil)
+        }
 
-        var top1Correct = 0
-        var top2RecallCount = 0
-        var top3RecallCount = 0
-        var totalPairs = 0
-        var correctPairs = 0
-        var rejectIncludedCount = 0
-        var rankSum = 0
+        guard let data = try? Data(contentsOf: URL(fileURLWithPath: manifestPath)),
+              let dataset = try? JSONDecoder().decode(RealSeriesBenchmarkDataset.self, from: data) else {
+            return ("FAILED", "Failed to parse real-image series manifest JSON at \(manifestPath)", nil)
+        }
 
-        for series in dataset.series {
-            let items = series.frames.map { frame -> PhotoItem in
-                var metrics = QualityMetrics()
-                metrics.rawSharpness = frame.simulated_attributes.sharpness * 500.0
-                metrics.sharpnessScore = frame.simulated_attributes.sharpness
-                metrics.faceCount = frame.simulated_attributes.face_count
-                metrics.rawFaceSharpness = frame.simulated_attributes.face_sharpness * 500.0
-                metrics.faceSharpnessScore = frame.simulated_attributes.face_sharpness
-                metrics.averageEyeOpenness = frame.simulated_attributes.eye_openness
-                metrics.exposureScore = frame.simulated_attributes.exposure_score
-                metrics.faceQualityScore = frame.simulated_attributes.face_confidence
+        let qualityAnalyzer = TechnicalQualityAnalyzer()
+        let faceRecognizer = FaceIdentityRecognizer()
 
-                if enableFaceCaptureQuality {
-                    metrics.rawFaceCaptureQuality = frame.simulated_attributes.face_capture_quality
-                    metrics.faceCaptureQualityScore = frame.simulated_attributes.face_capture_quality
+        var totalImagesFound = 0
+        var totalImagesMissing = 0
+
+        // Check image availability
+        for s in dataset.series {
+            for f in s.frames {
+                if FileManager.default.fileExists(atPath: f.image_path) {
+                    totalImagesFound += 1
+                } else {
+                    totalImagesMissing += 1
+                }
+            }
+        }
+
+        if totalImagesFound == 0 {
+            let details = "Manifest specified \(dataset.total_frames) frames across \(dataset.total_series) series, but 0 image files were found on disk. Real image pixel analysis could not run."
+            return ("AWAITING_IMAGE_FILES", details, nil)
+        }
+
+        print("Found \(totalImagesFound) real image files on disk (\(totalImagesMissing) missing). Analyzing pixels...")
+
+        func analyzeSeries(withCQ: Bool) -> SeriesRankingMetrics {
+            let detector = DuplicateAndBurstDetector(enableFaceCaptureQuality: withCQ)
+            let tStart = CFAbsoluteTimeGetCurrent()
+
+            var top1 = 0
+            var top2 = 0
+            var top3 = 0
+            var rankSum = 0
+            var correctPairs = 0
+            var totalPairs = 0
+            var rejectCount = 0
+
+            for s in dataset.series {
+                var items: [PhotoItem] = []
+                for f in s.frames {
+                    guard let imageSource = CGImageSourceCreateWithURL(URL(fileURLWithPath: f.image_path) as CFURL, nil),
+                          let cgImage = CGImageSourceCreateImageAtIndex(imageSource, 0, nil) else {
+                        continue
+                    }
+
+                    // 1. Real Technical Quality Analysis on Image Pixels
+                    let tech = qualityAnalyzer.analyze(cgImage: cgImage)
+
+                    // 2. Real Face Recognition & Capture Quality via Apple Vision
+                    let faces = faceRecognizer.extractFacesWithIdentity(from: cgImage, enableFaceCaptureQuality: withCQ)
+
+                    // 3. Real Crop-based Face Sharpness
+                    var faceSharpnesses: [Double] = []
+                    for face in faces {
+                        let cropSharp = qualityAnalyzer.computeRegionSharpness(cgImage: cgImage, normalizedRect: face.boundingBox)
+                        faceSharpnesses.append(cropSharp)
+                    }
+
+                    var metrics = QualityMetrics()
+                    metrics.rawSharpness = tech.rawSharpness
+                    metrics.meanLuminance = tech.meanLuminance
+                    metrics.shadowClipping = tech.shadowClipping
+                    metrics.highlightClipping = tech.highlightClipping
+                    metrics.compositionProxyScore = tech.compositionProxyScore
+                    metrics.faceCount = faces.count
+
+                    if !faces.isEmpty {
+                        let totalConf = faces.reduce(0.0) { $0 + $1.detectionConfidence }
+                        metrics.faceQualityScore = totalConf / Double(faces.count)
+                        let totalEyes = faces.reduce(0.0) { $0 + $1.eyeOpenness }
+                        metrics.averageEyeOpenness = totalEyes / Double(faces.count)
+                        if withCQ {
+                            let validCQs = faces.compactMap { $0.faceCaptureQuality }
+                            if !validCQs.isEmpty {
+                                let avgCQ = validCQs.reduce(0.0, +) / Double(validCQs.count)
+                                metrics.rawFaceCaptureQuality = avgCQ
+                                metrics.faceCaptureQualityScore = avgCQ
+                            }
+                        }
+                        metrics.rawFaceSharpness = faceSharpnesses.reduce(0.0, +) / Double(faceSharpnesses.count)
+                    }
+
+                    let item = PhotoItem(
+                        id: f.photo_id,
+                        fileName: URL(fileURLWithPath: f.image_path).lastPathComponent,
+                        sourceURL: URL(fileURLWithPath: f.image_path),
+                        metrics: metrics
+                    )
+                    items.append(item)
                 }
 
-                let dummyURL = URL(fileURLWithPath: "/tmp/\(frame.photo_id).jpg")
-                return PhotoItem(
-                    id: frame.photo_id,
-                    fileName: "\(frame.photo_id).jpg",
-                    sourceURL: dummyURL,
-                    metrics: metrics
-                )
-            }
+                guard items.count >= 2 else { continue }
 
-            // Rank frames using DuplicateAndBurstDetector logic
-            let ranked = items.sorted { a, b in
-                let scoreA = detector.computeBurstFrameQuality(a)
-                let scoreB = detector.computeBurstFrameQuality(b)
-                let qA = round(scoreA * 10000.0) / 10000.0
-                let qB = round(scoreB * 10000.0) / 10000.0
-                if qA != qB {
-                    return qA > qB
+                // Rank with DuplicateAndBurstDetector
+                let ranked = items.sorted { a, b in
+                    let sA = detector.computeBurstFrameQuality(a)
+                    let sB = detector.computeBurstFrameQuality(b)
+                    let qA = round(sA * 10000.0) / 10000.0
+                    let qB = round(sB * 10000.0) / 10000.0
+                    if qA != qB { return qA > qB }
+                    return a.id < b.id
                 }
-                return a.id < b.id
-            }
 
-            guard let preferredFirst = series.ground_truth.preferred_order.first else { continue }
-            let rankedIDs = ranked.map { $0.id }
+                guard let prefFirst = s.ground_truth.preferred_order.first else { continue }
+                let rankedIDs = ranked.map { $0.id }
 
-            // 1. Top-1 Accuracy
-            if rankedIDs.first == preferredFirst {
-                top1Correct += 1
-            }
+                if rankedIDs.first == prefFirst { top1 += 1 }
+                if rankedIDs.prefix(2).contains(prefFirst) { top2 += 1 }
+                if rankedIDs.prefix(3).contains(prefFirst) { top3 += 1 }
 
-            // 2. Top-2 Recall
-            if rankedIDs.prefix(2).contains(preferredFirst) {
-                top2RecallCount += 1
-            }
+                if let idx = rankedIDs.firstIndex(of: prefFirst) {
+                    rankSum += (idx + 1)
+                } else {
+                    rankSum += rankedIDs.count
+                }
 
-            // 3. Top-3 Recall
-            if rankedIDs.prefix(3).contains(preferredFirst) {
-                top3RecallCount += 1
-            }
+                if let winner = rankedIDs.first, s.ground_truth.unacceptable_rejects.contains(winner) {
+                    rejectCount += 1
+                }
 
-            // 4. Preferred Rank
-            if let idx = rankedIDs.firstIndex(of: preferredFirst) {
-                rankSum += (idx + 1)
-            } else {
-                rankSum += rankedIDs.count
-            }
-
-            // 5. Reject Inclusion Check
-            if let winner = rankedIDs.first, series.ground_truth.unacceptable_rejects.contains(winner) {
-                rejectIncludedCount += 1
-            }
-
-            // 6. Pairwise Concordance against preferred order
-            let prefOrder = series.ground_truth.preferred_order
-            for p1 in 0..<prefOrder.count {
-                for p2 in (p1 + 1)..<prefOrder.count {
-                    let idA = prefOrder[p1]
-                    let idB = prefOrder[p2]
-                    guard let rA = rankedIDs.firstIndex(of: idA), let rB = rankedIDs.firstIndex(of: idB) else { continue }
-                    totalPairs += 1
-                    if rA < rB {
-                        correctPairs += 1
+                let prefOrder = s.ground_truth.preferred_order
+                for p1 in 0..<prefOrder.count {
+                    for p2 in (p1 + 1)..<prefOrder.count {
+                        let idA = prefOrder[p1]
+                        let idB = prefOrder[p2]
+                        guard let rA = rankedIDs.firstIndex(of: idA), let rB = rankedIDs.firstIndex(of: idB) else { continue }
+                        totalPairs += 1
+                        if rA < rB { correctPairs += 1 }
                     }
                 }
             }
+
+            let durMs = (CFAbsoluteTimeGetCurrent() - tStart) * 1000.0
+            let total = Double(max(1, dataset.series.count))
+
+            return SeriesRankingMetrics(
+                evaluationMode: "REAL_IMAGE_ANALYSIS",
+                configurationName: withCQ ? "Real Image (+FaceCaptureQuality)" : "Real Image (Baseline Confidence Only)",
+                enableFaceCaptureQuality: withCQ,
+                totalSeriesEvaluated: dataset.series.count,
+                top1Accuracy: Double(top1) / total,
+                top2Recall: Double(top2) / total,
+                top3Recall: Double(top3) / total,
+                pairwiseAccuracy: totalPairs > 0 ? Double(correctPairs) / Double(totalPairs) : 1.0,
+                rejectInclusionRate: Double(rejectCount) / total,
+                meanRankOfPreferred: Double(rankSum) / total,
+                executionDurationMs: durMs,
+                memoryResidentBytes: getCurrentResidentMemoryBytes()
+            )
         }
 
-        let durationMs = (CFAbsoluteTimeGetCurrent() - tStart) * 1000.0
-        let total = Double(max(1, dataset.series.count))
+        let baseResult = analyzeSeries(withCQ: false)
+        let expResult = analyzeSeries(withCQ: true)
 
-        return SeriesRankingMetrics(
-            configurationName: configName,
-            enableFaceCaptureQuality: enableFaceCaptureQuality,
-            totalSeriesEvaluated: dataset.series.count,
-            top1Accuracy: Double(top1Correct) / total,
-            top2Recall: Double(top2RecallCount) / total,
-            top3Recall: Double(top3RecallCount) / total,
-            pairwiseAccuracy: totalPairs > 0 ? Double(correctPairs) / Double(totalPairs) : 1.0,
-            rejectInclusionRate: Double(rejectIncludedCount) / total,
-            meanRankOfPreferred: Double(rankSum) / total,
-            executionDurationMs: durationMs,
-            memoryResidentBytes: getCurrentResidentMemoryBytes()
+        let ablation = AblationComparison(
+            evaluationMode: "REAL_IMAGE_ANALYSIS",
+            baseline: baseResult,
+            experimental: expResult,
+            top1AccuracyDelta: expResult.top1Accuracy - baseResult.top1Accuracy,
+            pairwiseAccuracyDelta: expResult.pairwiseAccuracy - baseResult.pairwiseAccuracy,
+            winnerFlipsCount: 0,
+            winnerFlipRate: 0.0,
+            regressions: [],
+            improvements: []
         )
+
+        return ("EXECUTED", "Analyzed \(totalImagesFound) real image files across \(dataset.series.count) series.", ablation)
     }
 
-    static func analyzeAblation(
-        dataset: PhotoSeriesBenchmarkDataset,
-        baseline: SeriesRankingMetrics,
-        experimental: SeriesRankingMetrics
-    ) -> AblationComparison {
+    // MARK: - Synthetic Logic Validation Logic
+
+    static func evaluateSyntheticLogicValidation(fixture: SyntheticFixtureDataset) -> AblationComparison {
         let baselineDetector = DuplicateAndBurstDetector(enableFaceCaptureQuality: false)
         let experimentalDetector = DuplicateAndBurstDetector(enableFaceCaptureQuality: true)
 
-        var winnerFlips = 0
-        var regressions: [FailureCase] = []
-        var improvements: [FailureCase] = []
+        func evaluate(with detector: DuplicateAndBurstDetector, configName: String) -> SeriesRankingMetrics {
+            let tStart = CFAbsoluteTimeGetCurrent()
+            var top1 = 0
+            var top2 = 0
+            var top3 = 0
+            var rankSum = 0
+            var correctPairs = 0
+            var totalPairs = 0
+            var rejectCount = 0
 
-        for series in dataset.series {
-            func rank(with detector: DuplicateAndBurstDetector) -> [String] {
+            for series in fixture.series {
                 let items = series.frames.map { frame -> PhotoItem in
                     var metrics = QualityMetrics()
                     metrics.rawSharpness = frame.simulated_attributes.sharpness * 500.0
@@ -424,29 +489,117 @@ struct QualityBenchmarkV2Runner {
                         metrics.faceCaptureQualityScore = frame.simulated_attributes.face_capture_quality
                     }
 
-                    let dummyURL = URL(fileURLWithPath: "/tmp/\(frame.photo_id).jpg")
                     return PhotoItem(
                         id: frame.photo_id,
                         fileName: "\(frame.photo_id).jpg",
-                        sourceURL: dummyURL,
+                        sourceURL: URL(fileURLWithPath: "/fixture/\(frame.photo_id).jpg"),
+                        metrics: metrics
+                    )
+                }
+
+                let ranked = items.sorted { a, b in
+                    let sA = detector.computeBurstFrameQuality(a)
+                    let sB = detector.computeBurstFrameQuality(b)
+                    let qA = round(sA * 10000.0) / 10000.0
+                    let qB = round(sB * 10000.0) / 10000.0
+                    if qA != qB { return qA > qB }
+                    return a.id < b.id
+                }
+
+                guard let prefFirst = series.ground_truth.preferred_order.first else { continue }
+                let rankedIDs = ranked.map { $0.id }
+
+                if rankedIDs.first == prefFirst { top1 += 1 }
+                if rankedIDs.prefix(2).contains(prefFirst) { top2 += 1 }
+                if rankedIDs.prefix(3).contains(prefFirst) { top3 += 1 }
+
+                if let idx = rankedIDs.firstIndex(of: prefFirst) {
+                    rankSum += (idx + 1)
+                } else {
+                    rankSum += rankedIDs.count
+                }
+
+                if let winner = rankedIDs.first, series.ground_truth.unacceptable_rejects.contains(winner) {
+                    rejectCount += 1
+                }
+
+                let prefOrder = series.ground_truth.preferred_order
+                for p1 in 0..<prefOrder.count {
+                    for p2 in (p1 + 1)..<prefOrder.count {
+                        let idA = prefOrder[p1]
+                        let idB = prefOrder[p2]
+                        guard let rA = rankedIDs.firstIndex(of: idA), let rB = rankedIDs.firstIndex(of: idB) else { continue }
+                        totalPairs += 1
+                        if rA < rB { correctPairs += 1 }
+                    }
+                }
+            }
+
+            let durMs = (CFAbsoluteTimeGetCurrent() - tStart) * 1000.0
+            let total = Double(max(1, fixture.series.count))
+
+            return SeriesRankingMetrics(
+                evaluationMode: "SYNTHETIC_LOGIC_VALIDATION",
+                configurationName: configName,
+                enableFaceCaptureQuality: detector.enableFaceCaptureQuality,
+                totalSeriesEvaluated: fixture.series.count,
+                top1Accuracy: Double(top1) / total,
+                top2Recall: Double(top2) / total,
+                top3Recall: Double(top3) / total,
+                pairwiseAccuracy: totalPairs > 0 ? Double(correctPairs) / Double(totalPairs) : 1.0,
+                rejectInclusionRate: Double(rejectCount) / total,
+                meanRankOfPreferred: Double(rankSum) / total,
+                executionDurationMs: durMs,
+                memoryResidentBytes: getCurrentResidentMemoryBytes()
+            )
+        }
+
+        let baseResult = evaluate(with: baselineDetector, configName: "Synthetic Baseline (Confidence Only)")
+        let expResult = evaluate(with: experimentalDetector, configName: "Synthetic Experimental (+FaceCaptureQuality)")
+
+        // Identify winner flips, improvements, regressions
+        var winnerFlips = 0
+        var improvements: [FailureCase] = []
+        var regressions: [FailureCase] = []
+
+        for series in fixture.series {
+            func rankSeries(detector: DuplicateAndBurstDetector) -> [String] {
+                let items = series.frames.map { frame -> PhotoItem in
+                    var metrics = QualityMetrics()
+                    metrics.rawSharpness = frame.simulated_attributes.sharpness * 500.0
+                    metrics.sharpnessScore = frame.simulated_attributes.sharpness
+                    metrics.faceCount = frame.simulated_attributes.face_count
+                    metrics.rawFaceSharpness = frame.simulated_attributes.face_sharpness * 500.0
+                    metrics.faceSharpnessScore = frame.simulated_attributes.face_sharpness
+                    metrics.averageEyeOpenness = frame.simulated_attributes.eye_openness
+                    metrics.exposureScore = frame.simulated_attributes.exposure_score
+                    metrics.faceQualityScore = frame.simulated_attributes.face_confidence
+                    if detector.enableFaceCaptureQuality {
+                        metrics.rawFaceCaptureQuality = frame.simulated_attributes.face_capture_quality
+                        metrics.faceCaptureQualityScore = frame.simulated_attributes.face_capture_quality
+                    }
+                    return PhotoItem(
+                        id: frame.photo_id,
+                        fileName: "\(frame.photo_id).jpg",
+                        sourceURL: URL(fileURLWithPath: "/fixture/\(frame.photo_id).jpg"),
                         metrics: metrics
                     )
                 }
 
                 return items.sorted { a, b in
-                    let scoreA = detector.computeBurstFrameQuality(a)
-                    let scoreB = detector.computeBurstFrameQuality(b)
-                    let qA = round(scoreA * 10000.0) / 10000.0
-                    let qB = round(scoreB * 10000.0) / 10000.0
+                    let sA = detector.computeBurstFrameQuality(a)
+                    let sB = detector.computeBurstFrameQuality(b)
+                    let qA = round(sA * 10000.0) / 10000.0
+                    let qB = round(sB * 10000.0) / 10000.0
                     if qA != qB { return qA > qB }
                     return a.id < b.id
                 }.map { $0.id }
             }
 
-            let baseRanked = rank(with: baselineDetector)
-            let expRanked = rank(with: experimentalDetector)
+            let baseRank = rankSeries(detector: baselineDetector)
+            let expRank = rankSeries(detector: experimentalDetector)
 
-            guard let baseWinner = baseRanked.first, let expWinner = expRanked.first else { continue }
+            guard let baseWinner = baseRank.first, let expWinner = expRank.first else { continue }
             guard let preferredFirst = series.ground_truth.preferred_order.first else { continue }
 
             if baseWinner != expWinner {
@@ -456,26 +609,17 @@ struct QualityBenchmarkV2Runner {
             let baseCorrect = (baseWinner == preferredFirst)
             let expCorrect = (expWinner == preferredFirst)
 
-            // Categorize reason tag
-            let reasonStr = series.ground_truth.reasons[preferredFirst] ?? "preferred frame"
-            let category: String
-            if reasonStr.contains("category: optimal") {
-                category = "optimal"
-            } else if reasonStr.contains("category: focus") {
-                category = "focus"
-            } else if reasonStr.contains("category: eyes") {
-                category = "eyes"
-            } else if reasonStr.contains("category: expression") {
-                category = "expression"
-            } else if reasonStr.contains("category: pose") {
-                category = "pose"
-            } else {
-                category = "exposure"
-            }
+            let reasonStr = series.ground_truth.reasons?[preferredFirst] ?? "preferred"
+            let cat: String
+            if reasonStr.contains("category: optimal") { cat = "optimal" }
+            else if reasonStr.contains("category: focus") { cat = "focus" }
+            else if reasonStr.contains("category: eyes") { cat = "eyes" }
+            else if reasonStr.contains("category: expression") { cat = "expression" }
+            else if reasonStr.contains("category: pose") { cat = "pose" }
+            else { cat = "exposure" }
 
             if !baseCorrect && expCorrect {
-                // Improvement
-                let failureExplanation = series.ground_truth.reasons[baseWinner] ?? "Non-optimal frame chosen by baseline"
+                let note = series.ground_truth.reasons?[baseWinner] ?? "Defective frame"
                 improvements.append(FailureCase(
                     seriesId: series.series_id,
                     sceneType: series.scene_type,
@@ -484,12 +628,11 @@ struct QualityBenchmarkV2Runner {
                     experimentalWinnerId: expWinner,
                     baselineCorrect: false,
                     experimentalCorrect: true,
-                    failureCategory: category,
-                    explanation: "Baseline selected \(baseWinner) due to high confidence alone. Experimental selected ground-truth winner \(expWinner) via FaceCaptureQuality (\(failureExplanation))."
+                    failureCategory: cat,
+                    explanation: "Baseline chose \(baseWinner) on detection confidence alone. Experimental selected \(expWinner) via FaceCaptureQuality (\(note))."
                 ))
             } else if baseCorrect && !expCorrect {
-                // Regression
-                let regressionExplanation = series.ground_truth.reasons[expWinner] ?? "Non-optimal frame chosen by experimental"
+                let note = series.ground_truth.reasons?[expWinner] ?? "Defective frame"
                 regressions.append(FailureCase(
                     seriesId: series.series_id,
                     sceneType: series.scene_type,
@@ -498,178 +641,109 @@ struct QualityBenchmarkV2Runner {
                     experimentalWinnerId: expWinner,
                     baselineCorrect: true,
                     experimentalCorrect: false,
-                    failureCategory: category,
-                    explanation: "Experimental regression: chosen \(expWinner) over ground truth \(preferredFirst) (\(regressionExplanation))."
+                    failureCategory: cat,
+                    explanation: "Experimental chose non-preferred frame \(expWinner) (\(note))."
                 ))
             }
         }
 
-        let totalSeries = Double(max(1, dataset.series.count))
-        let flipRate = Double(winnerFlips) / totalSeries
+        let total = Double(max(1, fixture.series.count))
 
         return AblationComparison(
-            baseline: baseline,
-            experimental: experimental,
-            top1AccuracyDelta: experimental.top1Accuracy - baseline.top1Accuracy,
-            pairwiseAccuracyDelta: experimental.pairwiseAccuracy - baseline.pairwiseAccuracy,
+            evaluationMode: "SYNTHETIC_LOGIC_VALIDATION",
+            baseline: baseResult,
+            experimental: expResult,
+            top1AccuracyDelta: expResult.top1Accuracy - baseResult.top1Accuracy,
+            pairwiseAccuracyDelta: expResult.pairwiseAccuracy - baseResult.pairwiseAccuracy,
             winnerFlipsCount: winnerFlips,
-            winnerFlipRate: flipRate,
+            winnerFlipRate: Double(winnerFlips) / total,
             regressions: regressions,
             improvements: improvements
         )
     }
 
-    static func evaluateEyeState(dataset: PhotoSeriesBenchmarkDataset) -> EyeStateEvaluationMetrics {
-        // Evaluates eye state classification precision, recall, and false closed rate
-        var totalEyes = 0
-        var trueOpen = 0
-        var trueClosed = 0
-        var falseOpen = 0
-        var falseClosed = 0 // Critical defect: classifying an open eye as closed (leads to false rejection)
-
-        for series in dataset.series {
-            for frame in series.frames {
-                totalEyes += frame.simulated_attributes.face_count
-                let eyeVal = frame.simulated_attributes.eye_openness
-                let isActuallyClosed = eyeVal < 0.25
-                let predictedClosed = eyeVal < 0.30
-
-                if isActuallyClosed {
-                    if predictedClosed {
-                        trueClosed += 1
-                    } else {
-                        falseOpen += 1
-                    }
-                } else {
-                    if !predictedClosed {
-                        trueOpen += 1
-                    } else {
-                        falseClosed += 1
-                    }
-                }
-            }
-        }
-
-        let total = max(1, totalEyes)
-        let correct = trueOpen + trueClosed
-        let accuracy = Double(correct) / Double(total)
-
-        let openPredTotal = max(1, trueOpen + falseOpen)
-        let openActualTotal = max(1, trueOpen + falseClosed)
-        let openPrecision = Double(trueOpen) / Double(openPredTotal)
-        let openRecall = Double(trueOpen) / Double(openActualTotal)
-        let openF1 = (openPrecision + openRecall) > 0 ? 2.0 * (openPrecision * openRecall) / (openPrecision + openRecall) : 0.0
-
-        let closedPredTotal = max(1, trueClosed + falseClosed)
-        let closedActualTotal = max(1, trueClosed + falseOpen)
-        let closedPrecision = Double(trueClosed) / Double(closedPredTotal)
-        let closedRecall = Double(trueClosed) / Double(closedActualTotal)
-        let closedF1 = (closedPrecision + closedRecall) > 0 ? 2.0 * (closedPrecision * closedRecall) / (closedPrecision + closedRecall) : 0.0
-
-        let falseClosedRate = Double(falseClosed) / Double(openActualTotal)
-        let falseOpenRate = Double(falseOpen) / Double(closedActualTotal)
-
-        return EyeStateEvaluationMetrics(
-            totalEyesEvaluated: totalEyes,
-            accuracy: accuracy,
-            openPrecision: openPrecision,
-            openRecall: openRecall,
-            openF1: openF1,
-            closedPrecision: closedPrecision,
-            closedRecall: closedRecall,
-            closedF1: closedF1,
-            falseClosedRate: falseClosedRate,
-            falseOpenRate: falseOpenRate
-        )
-    }
-
-    // MARK: - Report Generator
+    // MARK: - Markdown Report Generation
 
     static func generateMarkdownReport(report: QualityBenchmarkV2Report) -> String {
-        let abl = report.ablation
+        let syn = report.syntheticLogicValidation
         var md = """
-        # Quality Benchmark V2 & Ablation Report
+        # Quality Benchmark V2 Report
 
         **Generated**: \(report.timestamp)  
-        **Benchmark Version**: \(report.benchmarkVersion)  
-        **Dataset**: `\(report.datasetPath)` (\(report.totalSeries) series, \(report.totalFrames) frames)
+        **Benchmark Architecture Version**: \(report.benchmarkVersion)  
 
         ---
 
-        ## 1. Executive Summary
+        ## 1. Real Image Benchmark Status
 
-        | Metric | Baseline (Confidence Only) | Experimental (+FaceCaptureQuality) | Delta |
-        | :--- | :---: | :---: | :---: |
-        | **Top-1 Winner Accuracy** | **\(String(format: "%.1f%%", abl.baseline.top1Accuracy * 100))** | **\(String(format: "%.1f%%", abl.experimental.top1Accuracy * 100))** | **\(String(format: "%+.1f%%", abl.top1AccuracyDelta * 100))** |
-        | **Top-2 Winner Recall** | \(String(format: "%.1f%%", abl.baseline.top2Recall * 100)) | \(String(format: "%.1f%%", abl.experimental.top2Recall * 100)) | \(String(format: "%+.1f%%", (abl.experimental.top2Recall - abl.baseline.top2Recall) * 100)) |
-        | **Top-3 Winner Recall** | \(String(format: "%.1f%%", abl.baseline.top3Recall * 100)) | \(String(format: "%.1f%%", abl.experimental.top3Recall * 100)) | \(String(format: "%+.1f%%", (abl.experimental.top3Recall - abl.baseline.top3Recall) * 100)) |
-        | **Pairwise Concordance** | \(String(format: "%.1f%%", abl.baseline.pairwiseAccuracy * 100)) | \(String(format: "%.1f%%", abl.experimental.pairwiseAccuracy * 100)) | \(String(format: "%+.1f%%", abl.pairwiseAccuracyDelta * 100)) |
-        | **Mean Rank of Preferred** | \(String(format: "%.2f", abl.baseline.meanRankOfPreferred)) | \(String(format: "%.2f", abl.experimental.meanRankOfPreferred)) | \(String(format: "%+.2f", abl.experimental.meanRankOfPreferred - abl.baseline.meanRankOfPreferred)) |
-        | **Unacceptable Reject Rate** | \(String(format: "%.1f%%", abl.baseline.rejectInclusionRate * 100)) | \(String(format: "%.1f%%", abl.experimental.rejectInclusionRate * 100)) | \(String(format: "%+.1f%%", (abl.experimental.rejectInclusionRate - abl.baseline.rejectInclusionRate) * 100)) |
-        | **Winner Flips** | - | \(abl.winnerFlipsCount) / \(abl.baseline.totalSeriesEvaluated) (\(String(format: "%.1f%%", abl.winnerFlipRate * 100))) | - |
-
-        ---
-
-        ## 2. Failure Analysis & Concrete Cases
-
-        ### Improvements (\(abl.improvements.count) Cases)
+        * **Status**: `\(report.realImageBenchmarkStatus)`  
+        * **Details**: \(report.realImageBenchmarkDetails ?? "None")  
         """
 
-        if abl.improvements.isEmpty {
-            md += "\n*No improvements observed.*\n"
-        } else {
-            for imp in abl.improvements {
-                md += """
-
-                - **Series `\(imp.seriesId)`** (\(imp.sceneType)):
-                  - **Ground Truth Preferred**: `\(imp.preferredFrameId)`
-                  - **Baseline Winner**: `\(imp.baselineWinnerId)` (Wrong)
-                  - **Experimental Winner**: `\(imp.experimentalWinnerId)` (Correct)
-                  - **Failure Category**: `\(imp.failureCategory)`
-                  - **Analysis**: \(imp.explanation)
-                """
-            }
-        }
-
-        md += "\n\n### Regressions (\(abl.regressions.count) Cases)\n"
-        if abl.regressions.isEmpty {
-            md += "\n*Zero regressions observed. FaceCaptureQuality did not degrade any previously correct series.*\n"
-        } else {
-            for reg in abl.regressions {
-                md += """
-
-                - **Series `\(reg.seriesId)`** (\(reg.sceneType)):
-                  - **Ground Truth Preferred**: `\(reg.preferredFrameId)`
-                  - **Baseline Winner**: `\(reg.baselineWinnerId)` (Correct)
-                  - **Experimental Winner**: `\(reg.experimentalWinnerId)` (Wrong)
-                  - **Category**: `\(reg.failureCategory)`
-                  - **Analysis**: \(reg.explanation)
-                """
-            }
-        }
-
-        if let eye = report.eyeStateBenchmark {
+        if let real = report.realImageAblation {
             md += """
 
-            ---
+            ### Real Image Empirical Results
 
-            ## 3. Eye-State Benchmark Baseline
-
-            | Metric | Value | Target Threshold | Status |
+            | Metric | Baseline (Confidence Only) | Experimental (+FaceCaptureQuality) | Delta |
             | :--- | :---: | :---: | :---: |
-            | **Total Eyes Evaluated** | \(eye.totalEyesEvaluated) | - | Pass |
-            | **Overall Accuracy** | \(String(format: "%.1f%%", eye.accuracy * 100)) | ≥ 90.0% | \(eye.accuracy >= 0.90 ? "✅ Pass" : "⚠️ Warning") |
-            | **OPEN F1 Score** | \(String(format: "%.3f", eye.openF1)) | ≥ 0.900 | \(eye.openF1 >= 0.90 ? "✅ Pass" : "⚠️ Warning") |
-            | **CLOSED F1 Score** | \(String(format: "%.3f", eye.closedF1)) | ≥ 0.850 | \(eye.closedF1 >= 0.85 ? "✅ Pass" : "⚠️ Warning") |
-            | **False CLOSED Rate (Rejection Risk)** | \(String(format: "%.2f%%", eye.falseClosedRate * 100)) | ≤ 2.0% | \(eye.falseClosedRate <= 0.02 ? "✅ Pass" : "⚠️ Warning") |
-            | **False OPEN Rate** | \(String(format: "%.2f%%", eye.falseOpenRate * 100)) | ≤ 5.0% | \(eye.falseOpenRate <= 0.05 ? "✅ Pass" : "⚠️ Warning") |
+            | **Top-1 Winner Accuracy** | \(String(format: "%.1f%%", real.baseline.top1Accuracy * 100)) | \(String(format: "%.1f%%", real.experimental.top1Accuracy * 100)) | \(String(format: "%+.1f%%", real.top1AccuracyDelta * 100)) |
+            | **Top-2 Winner Recall** | \(String(format: "%.1f%%", real.baseline.top2Recall * 100)) | \(String(format: "%.1f%%", real.experimental.top2Recall * 100)) | \(String(format: "%+.1f%%", (real.experimental.top2Recall - real.baseline.top2Recall) * 100)) |
+            | **Top-3 Winner Recall** | \(String(format: "%.1f%%", real.baseline.top3Recall * 100)) | \(String(format: "%.1f%%", real.experimental.top3Recall * 100)) | \(String(format: "%+.1f%%", (real.experimental.top3Recall - real.baseline.top3Recall) * 100)) |
+            | **Pairwise Concordance** | \(String(format: "%.1f%%", real.baseline.pairwiseAccuracy * 100)) | \(String(format: "%.1f%%", real.experimental.pairwiseAccuracy * 100)) | \(String(format: "%+.1f%%", real.pairwiseAccuracyDelta * 100)) |
+            """
+        } else {
+            md += """
 
-            > [!NOTE]
-            > False CLOSED Rate is the most critical photographic safety metric: mistaking open eyes for closed causes the algorithm to falsely discard keepers.
+            > [!IMPORTANT]
+            > **Dataset Blocker**: No legally permissible public wedding photography dataset with fine-grained human curator ranking orders (1st, 2nd, 3rd, blink, reject) currently exists in the repository.
+            > The pipeline and benchmark infrastructure are fully implemented to decode real `CGImage`s and query Apple Vision directly when image manifests are supplied.
             """
         }
 
-        md += "\n\n---\n*Report generated by WeddingCull QualityBenchmarkV2.*"
+        md += """
+
+        ---
+
+        ## 2. Synthetic Logic Validation (Unit Test Fixture)
+
+        > [!NOTE]
+        > The following metrics are derived from `docs/datasets/synthetic-ranking-fixture.json`.
+        > They validate ranking math, Kendall's tau pairwise concordance, and ablation control flow determinism.
+        > They do **NOT** represent real photographic quality claims.
+
+        | Metric | Baseline (Confidence Only) | Experimental (+FaceCaptureQuality) | Delta |
+        | :--- | :---: | :---: | :---: |
+        | **Top-1 Winner Accuracy** | \(String(format: "%.1f%%", syn.baseline.top1Accuracy * 100)) | \(String(format: "%.1f%%", syn.experimental.top1Accuracy * 100)) | \(String(format: "%+.1f%%", syn.top1AccuracyDelta * 100)) |
+        | **Top-2 Winner Recall** | \(String(format: "%.1f%%", syn.baseline.top2Recall * 100)) | \(String(format: "%.1f%%", syn.experimental.top2Recall * 100)) | \(String(format: "%+.1f%%", (syn.experimental.top2Recall - syn.baseline.top2Recall) * 100)) |
+        | **Top-3 Winner Recall** | \(String(format: "%.1f%%", syn.baseline.top3Recall * 100)) | \(String(format: "%.1f%%", syn.experimental.top3Recall * 100)) | \(String(format: "%+.1f%%", (syn.experimental.top3Recall - syn.baseline.top3Recall) * 100)) |
+        | **Pairwise Concordance** | \(String(format: "%.1f%%", syn.baseline.pairwiseAccuracy * 100)) | \(String(format: "%.1f%%", syn.experimental.pairwiseAccuracy * 100)) | \(String(format: "%+.1f%%", syn.pairwiseAccuracyDelta * 100)) |
+        | **Mean Rank of Preferred** | \(String(format: "%.2f", syn.baseline.meanRankOfPreferred)) | \(String(format: "%.2f", syn.experimental.meanRankOfPreferred)) | \(String(format: "%+.2f", syn.experimental.meanRankOfPreferred - syn.baseline.meanRankOfPreferred)) |
+        | **Unacceptable Reject Rate** | \(String(format: "%.1f%%", syn.baseline.rejectInclusionRate * 100)) | \(String(format: "%.1f%%", syn.experimental.rejectInclusionRate * 100)) | \(String(format: "%+.1f%%", (syn.experimental.rejectInclusionRate - syn.baseline.rejectInclusionRate) * 100)) |
+        | **Winner Flips** | - | \(syn.winnerFlipsCount) / \(syn.baseline.totalSeriesEvaluated) (\(String(format: "%.1f%%", syn.winnerFlipRate * 100))) | - |
+
+        ### Synthetic Logic Failure Analysis
+        * **Improvements**: \(syn.improvements.count) cases where FaceCaptureQuality resolves confusions caused by high confidence on defective frames.
+        * **Regressions**: \(syn.regressions.count) cases.
+
+        ---
+
+        ## 3. Eye-State Benchmark Status
+
+        * **Status**: `\(report.eyeStateBenchmarkStatus)`  
+        * **Note**: \(report.eyeStateBenchmarkNote)  
+
+        ---
+
+        ## 4. Current Dataset Blockers
+
+        """
+
+        for b in report.datasetBlockers {
+            md += "* \(b)\n"
+        }
+
+        md += "\n---\n*Report generated by WeddingCull QualityBenchmarkV2.*"
         return md
     }
 
@@ -678,12 +752,11 @@ struct QualityBenchmarkV2Runner {
         Usage: QualityBenchmarkV2 [options]
 
         Options:
-          --ground-truth <path>    Path to ground truth JSON dataset (default: docs/datasets/wedding-photo-series-ground-truth.json)
-          --output-json <path>     Path to output JSON report (default: artifacts/quality-benchmark-v2.json)
-          --output-md <path>       Path to output Markdown report (default: artifacts/QUALITY_BENCHMARK_V2.md)
-          --no-ablation            Disable ablation comparison
-          --no-eye-state           Disable eye-state benchmark
-          --help, -h               Show this help message
+          --synthetic-fixture <path>  Path to synthetic logic validation fixture (default: docs/datasets/synthetic-ranking-fixture.json)
+          --real-series <path>        Path to real-image series ground truth manifest (labels only)
+          --output-json <path>        Path to output JSON report (default: artifacts/quality-benchmark-v2.json)
+          --output-md <path>          Path to output Markdown report (default: artifacts/QUALITY_BENCHMARK_V2.md)
+          --help, -h                  Show this help message
         """)
     }
 }

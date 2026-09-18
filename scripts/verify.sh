@@ -102,7 +102,7 @@ fi
 echo "--- Step 5b: Quality Benchmark V2 Execution ---"
 swift build -c release --product QualityBenchmarkV2
 if .build/release/QualityBenchmarkV2 \
-    --ground-truth docs/datasets/wedding-photo-series-ground-truth.json \
+    --synthetic-fixture docs/datasets/synthetic-ranking-fixture.json \
     --output-json artifacts/quality-benchmark-v2.json \
     --output-md artifacts/QUALITY_BENCHMARK_V2.md; then
     echo "✅ Quality Benchmark V2 completed successfully."
