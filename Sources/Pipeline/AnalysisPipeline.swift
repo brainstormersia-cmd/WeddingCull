@@ -94,6 +94,11 @@ public actor AnalysisCoordinator {
     }
 }
 
+public enum VisionExecutionMode: String, Codable, Sendable {
+    case separate
+    case combined
+}
+
 public actor AnalysisPipeline {
     private let hardware: HardwareCapabilities
     private let importer = PhotoImporter()
@@ -108,11 +113,27 @@ public actor AnalysisPipeline {
     private let scorer = QualityScorer()
     private let selector = DiversitySelector()
     private let coordinator = AnalysisCoordinator()
+    private let lazyFeaturePrint: Bool
+    private let visionExecutionMode: VisionExecutionMode
+    private let faceInputMaxPixelSize: Int
+    private let sceneInputMaxPixelSize: Int
 
-    public init(hardware: HardwareCapabilities = HardwareCapabilities(), previewPipeline: PreviewPipeline? = nil, customCacheDir: URL? = nil) {
+    public init(
+        hardware: HardwareCapabilities = HardwareCapabilities(),
+        previewPipeline: PreviewPipeline? = nil,
+        customCacheDir: URL? = nil,
+        lazyFeaturePrint: Bool = true,
+        visionExecutionMode: VisionExecutionMode = .separate,
+        faceInputMaxPixelSize: Int = 1000,
+        sceneInputMaxPixelSize: Int = 1000
+    ) {
         self.hardware = hardware
         self.previewPipeline = previewPipeline ?? PreviewPipeline(customCacheDirectory: customCacheDir)
         self.classifier = MobileCLIPClassifier(hardwareCapabilities: hardware)
+        self.lazyFeaturePrint = lazyFeaturePrint
+        self.visionExecutionMode = visionExecutionMode
+        self.faceInputMaxPixelSize = faceInputMaxPixelSize
+        self.sceneInputMaxPixelSize = sceneInputMaxPixelSize
     }
 
     public func pause() async {
@@ -188,6 +209,10 @@ public actor AnalysisPipeline {
         let faceRec = self.faceIdentityRecognizer
         let fpProv = self.featurePrintProvider
         let mlClassifier = self.classifier
+        let isLazyFP = self.lazyFeaturePrint
+        let visMode = self.visionExecutionMode
+        let facePixelSize = self.faceInputMaxPixelSize
+        let scenePixelSize = self.sceneInputMaxPixelSize
 
         var timeToFirstThumbnail: Double = 0.0
         var timeToInteractiveGrid: Double = 0.0
@@ -213,7 +238,11 @@ public actor AnalysisPipeline {
                         qualityAnalyzer: qualityAn,
                         faceRecognizer: faceRec,
                         featurePrintProvider: fpProv,
-                        classifier: mlClassifier
+                        classifier: mlClassifier,
+                        lazyFeaturePrint: isLazyFP,
+                        visionExecutionMode: visMode,
+                        faceInputMaxPixelSize: facePixelSize,
+                        sceneInputMaxPixelSize: scenePixelSize
                     )
                 }
             }
@@ -259,7 +288,11 @@ public actor AnalysisPipeline {
                             qualityAnalyzer: qualityAn,
                             faceRecognizer: faceRec,
                             featurePrintProvider: fpProv,
-                            classifier: mlClassifier
+                            classifier: mlClassifier,
+                            lazyFeaturePrint: isLazyFP,
+                            visionExecutionMode: visMode,
+                            faceInputMaxPixelSize: facePixelSize,
+                            sceneInputMaxPixelSize: scenePixelSize
                         )
                     }
                 }
@@ -305,23 +338,89 @@ public actor AnalysisPipeline {
 
         // Compute FeaturePrint distance matrix between temporally proximate shots (within 4 seconds)
         var featurePrintDistances: [String: [String: Float]] = [:]
-        for i in 0..<items.count {
-            let itemA = items[i]
-            guard let fpA = featurePrintsMap[itemA.id] else { continue }
-            let dateA = itemA.metadata.captureDate ?? itemA.fileModificationDate
+        var lazyFeaturePrintSeconds = 0.0
 
-            for j in (i + 1)..<min(items.count, i + 20) {
-                let itemB = items[j]
-                let dateB = itemB.metadata.captureDate ?? itemB.fileModificationDate
-                if abs(dateB.timeIntervalSince(dateA)) > 4.0 { break }
+        if lazyFeaturePrint {
+            // Lazy FeaturePrint generation: compute only for temporally proximate eligible pairs
+            // where visual similarity could affect burst detection:
+            // - within 4.0 seconds (and up to 20 forward items)
+            // - burstUUID is nil or distinct
+            // - dHash is missing OR dHash similarity < 0.85
+            func getOrComputeFeaturePrint(for item: PhotoItem) -> VNFeaturePrintObservation? {
+                if let existing = featurePrintsMap[item.id] {
+                    return existing
+                }
+                guard let cg = previewPipeline.loadPreviewCGImage(for: item) else {
+                    return nil
+                }
+                let tStart = CFAbsoluteTimeGetCurrent()
+                let req = VNGenerateImageFeaturePrintRequest()
+                let h = VNImageRequestHandler(cgImage: cg, options: [:])
+                try? h.perform([req])
+                lazyFeaturePrintSeconds += max(0.0, CFAbsoluteTimeGetCurrent() - tStart)
+                if let obs = req.results?.first as? VNFeaturePrintObservation {
+                    featurePrintsMap[item.id] = obs
+                    return obs
+                }
+                return nil
+            }
 
-                guard let fpB = featurePrintsMap[itemB.id] else { continue }
-                if let dist = featurePrintProvider.computeDistance(between: fpA, and: fpB) {
-                    featurePrintDistances[itemA.id, default: [:]][itemB.id] = dist
-                    featurePrintDistances[itemB.id, default: [:]][itemA.id] = dist
+            for i in 0..<items.count {
+                let itemA = items[i]
+                let dateA = itemA.metadata.captureDate ?? itemA.fileModificationDate
+
+                for j in (i + 1)..<min(items.count, i + 20) {
+                    let itemB = items[j]
+                    let dateB = itemB.metadata.captureDate ?? itemB.fileModificationDate
+                    if abs(dateB.timeIntervalSince(dateA)) > 4.0 { break }
+
+                    // Check if FeaturePrint is needed:
+                    // If same EXIF burst UUID is present, burst is confirmed without visual similarity.
+                    let sameBurstUUID = itemA.metadata.burstUUID != nil && itemA.metadata.burstUUID == itemB.metadata.burstUUID
+                    if sameBurstUUID { continue }
+
+                    // If dHash similarity is >= 0.85, visual similarity is already confirmed.
+                    var needsFeaturePrint = true
+                    if let hashA = itemA.perceptualHash, let hashB = itemB.perceptualHash {
+                        let sim = PerceptualHash.similarity(hashA, hashB)
+                        if sim >= 0.85 {
+                            needsFeaturePrint = false
+                        }
+                    }
+
+                    guard needsFeaturePrint else { continue }
+
+                    guard let fpA = getOrComputeFeaturePrint(for: itemA),
+                          let fpB = getOrComputeFeaturePrint(for: itemB) else { continue }
+
+                    if let dist = featurePrintProvider.computeDistance(between: fpA, and: fpB) {
+                        featurePrintDistances[itemA.id, default: [:]][itemB.id] = dist
+                        featurePrintDistances[itemB.id, default: [:]][itemA.id] = dist
+                    }
+                }
+            }
+        } else {
+            // Eager mode: compute distance matrix using precomputed featurePrintsMap
+            for i in 0..<items.count {
+                let itemA = items[i]
+                guard let fpA = featurePrintsMap[itemA.id] else { continue }
+                let dateA = itemA.metadata.captureDate ?? itemA.fileModificationDate
+
+                for j in (i + 1)..<min(items.count, i + 20) {
+                    let itemB = items[j]
+                    let dateB = itemB.metadata.captureDate ?? itemB.fileModificationDate
+                    if abs(dateB.timeIntervalSince(dateA)) > 4.0 { break }
+
+                    guard let fpB = featurePrintsMap[itemB.id] else { continue }
+                    if let dist = featurePrintProvider.computeDistance(between: fpA, and: fpB) {
+                        featurePrintDistances[itemA.id, default: [:]][itemB.id] = dist
+                        featurePrintDistances[itemB.id, default: [:]][itemA.id] = dist
+                    }
                 }
             }
         }
+
+        totalFeaturePrintSeconds += lazyFeaturePrintSeconds
 
         let bursts = duplicateDetector.detectBursts(items: items, featurePrintDistances: featurePrintDistances)
         for burst in bursts {
@@ -433,7 +532,11 @@ public actor AnalysisPipeline {
         qualityAnalyzer: TechnicalQualityAnalyzer,
         faceRecognizer: FaceIdentityRecognizer,
         featurePrintProvider: FeaturePrintProvider,
-        classifier: MobileCLIPClassifier
+        classifier: MobileCLIPClassifier,
+        lazyFeaturePrint: Bool,
+        visionExecutionMode: VisionExecutionMode,
+        faceInputMaxPixelSize: Int,
+        sceneInputMaxPixelSize: Int
     ) async throws -> PhotoAnalysisResult {
         // Handle pause and cancellation
         try await coordinator.waitIfPaused()
@@ -485,48 +588,101 @@ public actor AnalysisPipeline {
                     let tQualEnd = CFAbsoluteTimeGetCurrent()
                     let qualDuration = max(0.0, tQualEnd - tQualStart)
 
-                    let handler = VNImageRequestHandler(cgImage: previewCG, options: [:])
-
-                    // 1. Face Detection & Identity Landmarks
-                    let tFaceStart = CFAbsoluteTimeGetCurrent()
-                    let faceRequest = VNDetectFaceLandmarksRequest()
-                    try? handler.perform([faceRequest])
-                    let faces = faceRecognizer.processObservations(faceRequest.results ?? [])
-                    metrics.faceCount = faces.count
-                    if !faces.isEmpty {
-                        let totalQuality = faces.reduce(0.0) { $0 + $1.faceQuality }
-                        metrics.faceQualityScore = totalQuality / Double(faces.count)
-                        let totalEyes = faces.reduce(0.0) { $0 + $1.eyeOpenness }
-                        metrics.averageEyeOpenness = totalEyes / Double(faces.count)
-                        metrics.rawFaceSharpness = tech.rawSharpness * 1.2
-                    }
-                    let tFaceEnd = CFAbsoluteTimeGetCurrent()
-                    let faceDuration = max(0.0, tFaceEnd - tFaceStart)
-
-                    // 2. FeaturePrint Generation
-                    let tFpStart = CFAbsoluteTimeGetCurrent()
-                    let fpRequest = VNGenerateImageFeaturePrintRequest()
-                    try? handler.perform([fpRequest])
-                    let fPrint = fpRequest.results?.first as? VNFeaturePrintObservation
-                    let tFpEnd = CFAbsoluteTimeGetCurrent()
-                    let fpDuration = max(0.0, tFpEnd - tFpStart)
-
-                    // 3. Scene & Concept Classification
-                    let tClassStart = CFAbsoluteTimeGetCurrent()
-                    let (category, conf): (WeddingCategory, Double)
-                    if classifier.isCoreMLModelLoaded {
-                        let res = classifier.classifyWithBackend(cgImage: previewCG, metadata: item.metadata, faceCount: faces.count)
-                        category = res.category
-                        conf = res.confidence
+                    // Dedicated downscaled Vision inputs (if configured smaller than 1000px)
+                    let faceCG: CGImage
+                    if faceInputMaxPixelSize < 1000, let down = previewPipeline.downsample(cgImage: previewCG, maxPixelSize: faceInputMaxPixelSize) {
+                        faceCG = down
                     } else {
+                        faceCG = previewCG
+                    }
+
+                    let sceneCG: CGImage
+                    if sceneInputMaxPixelSize < 1000, let down = previewPipeline.downsample(cgImage: previewCG, maxPixelSize: sceneInputMaxPixelSize) {
+                        sceneCG = down
+                    } else {
+                        sceneCG = previewCG
+                    }
+
+                    var faces: [FaceInstance] = []
+                    var faceDuration: Double = 0.0
+                    var (category, conf): (WeddingCategory, Double) = (item.category, 0.3)
+                    var classDuration: Double = 0.0
+
+                    if visionExecutionMode == .combined && !classifier.isCoreMLModelLoaded && faceCG === sceneCG {
+                        // Combined perform([faceRequest, sceneRequest]) restoration
+                        let handler = VNImageRequestHandler(cgImage: faceCG, options: [:])
+                        let faceRequest = VNDetectFaceLandmarksRequest()
                         let sceneRequest = VNClassifyImageRequest()
-                        try? handler.perform([sceneRequest])
+                        let tVisionStart = CFAbsoluteTimeGetCurrent()
+                        try? handler.perform([faceRequest, sceneRequest])
+                        let tVisionEnd = CFAbsoluteTimeGetCurrent()
+                        let totalVisionDur = max(0.0, tVisionEnd - tVisionStart)
+
+                        faces = faceRecognizer.processObservations(faceRequest.results ?? [])
+                        metrics.faceCount = faces.count
+                        if !faces.isEmpty {
+                            let totalQuality = faces.reduce(0.0) { $0 + $1.faceQuality }
+                            metrics.faceQualityScore = totalQuality / Double(faces.count)
+                            let totalEyes = faces.reduce(0.0) { $0 + $1.eyeOpenness }
+                            metrics.averageEyeOpenness = totalEyes / Double(faces.count)
+                            metrics.rawFaceSharpness = tech.rawSharpness * 1.2
+                        }
+
                         let res = classifier.classifyWithObservations(sceneRequest.results, metadata: item.metadata, faceCount: faces.count)
                         category = res.0
                         conf = res.1
+
+                        faceDuration = totalVisionDur * 0.5
+                        classDuration = totalVisionDur * 0.5
+                    } else {
+                        // Separate perform() calls
+                        // 1. Face Detection & Identity Landmarks
+                        let tFaceStart = CFAbsoluteTimeGetCurrent()
+                        let faceHandler = VNImageRequestHandler(cgImage: faceCG, options: [:])
+                        let faceRequest = VNDetectFaceLandmarksRequest()
+                        try? faceHandler.perform([faceRequest])
+                        faces = faceRecognizer.processObservations(faceRequest.results ?? [])
+                        metrics.faceCount = faces.count
+                        if !faces.isEmpty {
+                            let totalQuality = faces.reduce(0.0) { $0 + $1.faceQuality }
+                            metrics.faceQualityScore = totalQuality / Double(faces.count)
+                            let totalEyes = faces.reduce(0.0) { $0 + $1.eyeOpenness }
+                            metrics.averageEyeOpenness = totalEyes / Double(faces.count)
+                            metrics.rawFaceSharpness = tech.rawSharpness * 1.2
+                        }
+                        let tFaceEnd = CFAbsoluteTimeGetCurrent()
+                        faceDuration = max(0.0, tFaceEnd - tFaceStart)
+
+                        // 3. Scene & Concept Classification
+                        let tClassStart = CFAbsoluteTimeGetCurrent()
+                        if classifier.isCoreMLModelLoaded {
+                            let res = classifier.classifyWithBackend(cgImage: sceneCG, metadata: item.metadata, faceCount: faces.count)
+                            category = res.category
+                            conf = res.confidence
+                        } else {
+                            let sceneHandler = (sceneCG === faceCG) ? faceHandler : VNImageRequestHandler(cgImage: sceneCG, options: [:])
+                            let sceneRequest = VNClassifyImageRequest()
+                            try? sceneHandler.perform([sceneRequest])
+                            let res = classifier.classifyWithObservations(sceneRequest.results, metadata: item.metadata, faceCount: faces.count)
+                            category = res.0
+                            conf = res.1
+                        }
+                        let tClassEnd = CFAbsoluteTimeGetCurrent()
+                        classDuration = max(0.0, tClassEnd - tClassStart)
                     }
-                    let tClassEnd = CFAbsoluteTimeGetCurrent()
-                    let classDuration = max(0.0, tClassEnd - tClassStart)
+
+                    // 2. FeaturePrint Generation (eager mode only)
+                    var fPrint: VNFeaturePrintObservation? = nil
+                    var fpDuration: Double = 0.0
+                    if !lazyFeaturePrint {
+                        let tFpStart = CFAbsoluteTimeGetCurrent()
+                        let fpHandler = VNImageRequestHandler(cgImage: previewCG, options: [:])
+                        let fpRequest = VNGenerateImageFeaturePrintRequest()
+                        try? fpHandler.perform([fpRequest])
+                        fPrint = fpRequest.results?.first as? VNFeaturePrintObservation
+                        let tFpEnd = CFAbsoluteTimeGetCurrent()
+                        fpDuration = max(0.0, tFpEnd - tFpStart)
+                    }
 
                     return PhotoAnalysisResult(
                         id: item.id,

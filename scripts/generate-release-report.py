@@ -199,6 +199,11 @@ def main():
 | **Public IQA Benchmark Framework** | **{iqa_status}** | {iqa_report.get('message', 'Framework ready for local execution') if iqa_report else 'Framework ready for local execution'} |
 """
 
+    sweep_intel = read_json_safe(os.path.join(output_dir, "concurrency-sweep-intel.json"))
+    sweep_arm64 = read_json_safe(os.path.join(output_dir, "concurrency-sweep-arm64.json"))
+    vision_intel = read_json_safe(os.path.join(output_dir, "vision-configs-sweep-intel.json"))
+    vision_arm64 = read_json_safe(os.path.join(output_dir, "vision-configs-sweep-arm64.json"))
+
     if sweep_intel:
         md_content += "\n## Native Intel Concurrency Sweep (x86_64)\n\n"
         md_content += "| Workers | Wall Clock (s) | Throughput (PPS) | Peak RSS (MB) | Face Detection (ms/photo) | FeaturePrint (ms/photo) | Scene Classify (ms/photo) | Diversity Selection (s) |\n"
@@ -212,6 +217,20 @@ def main():
         md_content += "| :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |\n"
         for r in sweep_arm64:
             md_content += f"| {r.get('workers')} | {r.get('wallClockSeconds'):.2f}s | **{r.get('throughputPPS'):.2f} PPS** | {r.get('peakMemoryMB')} MB | {r.get('faceMsPerPhoto'):.1f} ms | {r.get('fpMsPerPhoto'):.1f} ms | {r.get('sceneMsPerPhoto'):.1f} ms | {r.get('rankingAndSelectionSeconds'):.2f}s |\n"
+
+    if vision_intel:
+        md_content += "\n## Native Intel Vision Configurations & Resolution Sweep (x86_64)\n\n"
+        md_content += "| Configuration | Mode | Face (px) | Scene (px) | Wall Clock (s) | Throughput (PPS) | Face (ms/photo) | Face Agr % | Scene (ms/photo) | Scene Agr % |\n"
+        md_content += "| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |\n"
+        for r in vision_intel:
+            md_content += f"| {r.get('configName')} | {r.get('mode')} | {r.get('facePixelSize')} | {r.get('scenePixelSize')} | {r.get('wallClockSeconds'):.2f}s | **{r.get('throughputPPS'):.2f} PPS** | {r.get('faceMsPerPhoto'):.1f} ms | {r.get('faceCountAgreementPct'):.1f}% | {r.get('sceneMsPerPhoto'):.1f} ms | {r.get('categoryAgreementPct'):.1f}% |\n"
+
+    if vision_arm64:
+        md_content += "\n## Apple Silicon Vision Configurations & Resolution Sweep (arm64)\n\n"
+        md_content += "| Configuration | Mode | Face (px) | Scene (px) | Wall Clock (s) | Throughput (PPS) | Face (ms/photo) | Face Agr % | Scene (ms/photo) | Scene Agr % |\n"
+        md_content += "| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |\n"
+        for r in vision_arm64:
+            md_content += f"| {r.get('configName')} | {r.get('mode')} | {r.get('facePixelSize')} | {r.get('scenePixelSize')} | {r.get('wallClockSeconds'):.2f}s | **{r.get('throughputPPS'):.2f} PPS** | {r.get('faceMsPerPhoto'):.1f} ms | {r.get('faceCountAgreementPct'):.1f}% | {r.get('sceneMsPerPhoto'):.1f} ms | {r.get('categoryAgreementPct'):.1f}% |\n"
 
     pt_arm = bench_arm64.get("phaseTimings") if bench_arm64 else None
     pt_int = bench_intel.get("phaseTimings") if bench_intel else None

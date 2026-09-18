@@ -13,6 +13,7 @@ DerivedData/
 
 # WeddingCull Caches & Artifacts
 artifacts/
+artifacts_*/
 *.weddingcull
 *.pyc
 __pycache__/

@@ -45,6 +45,12 @@ struct BenchmarkRunner {
         var outputSweepJSONPath: String? = nil
         var sweepPhotoCount: Int? = nil
         var sweepOnly = false
+        var lazyFeaturePrint = true
+        var visionExecutionMode: VisionExecutionMode = .separate
+        var facePixelSize = 1000
+        var scenePixelSize = 1000
+        var sweepVisionConfigs = false
+        var outputVisionConfigsJSONPath: String? = nil
 
         var i = 1
         while i < args.count {
@@ -119,6 +125,40 @@ struct BenchmarkRunner {
                 sweepOnly = true
             case "--strict":
                 strictMode = true
+            case "--lazy-feature-print":
+                if i + 1 < args.count {
+                    lazyFeaturePrint = (args[i + 1].lowercased() != "false" && args[i + 1] != "0")
+                    i += 1
+                }
+            case "--eager-feature-print":
+                lazyFeaturePrint = false
+            case "--vision-mode":
+                if i + 1 < args.count {
+                    let modeStr = args[i + 1].lowercased()
+                    visionExecutionMode = (modeStr == "combined") ? .combined : .separate
+                    i += 1
+                }
+            case "--face-pixel-size":
+                if i + 1 < args.count, let s = Int(args[i + 1]) {
+                    facePixelSize = s
+                    i += 1
+                }
+            case "--scene-pixel-size":
+                if i + 1 < args.count, let s = Int(args[i + 1]) {
+                    scenePixelSize = s
+                    i += 1
+                }
+            case "--sweep-vision-configs":
+                sweepVisionConfigs = true
+                if i + 1 < args.count, let c = Int(args[i + 1]) {
+                    datasetPhotoCount = c
+                    i += 1
+                }
+            case "--output-vision-configs-json":
+                if i + 1 < args.count {
+                    outputVisionConfigsJSONPath = args[i + 1]
+                    i += 1
+                }
             default:
                 break
             }
@@ -231,7 +271,13 @@ struct BenchmarkRunner {
                 }
 
                 let hw = HardwareCapabilities(concurrencyOverride: w)
-                let pipe = AnalysisPipeline(hardware: hw)
+                let pipe = AnalysisPipeline(
+                    hardware: hw,
+                    lazyFeaturePrint: lazyFeaturePrint,
+                    visionExecutionMode: visionExecutionMode,
+                    faceInputMaxPixelSize: facePixelSize,
+                    sceneInputMaxPixelSize: scenePixelSize
+                )
                 let tStart = Date()
                 let sess: SessionData
                 do {
@@ -313,6 +359,140 @@ struct BenchmarkRunner {
             }
         }
 
+        if sweepVisionConfigs {
+            let sweepFolder = datasetFolder
+            let sweepTargetCount = targetSelectionCount
+            print("\n🔬 ====================================================")
+            print("🔬 EXECUTING VISION CONFIGURATIONS SWEEP")
+            print("🔬 ====================================================")
+
+            struct VisionConfigDef {
+                let name: String
+                let mode: VisionExecutionMode
+                let faceSize: Int
+                let sceneSize: Int
+                let lazyFP: Bool
+            }
+
+            let configsToTest: [VisionConfigDef] = [
+                VisionConfigDef(name: "Separate (1000px, Eager FP)", mode: .separate, faceSize: 1000, sceneSize: 1000, lazyFP: false),
+                VisionConfigDef(name: "Separate (1000px, Lazy FP) [Baseline]", mode: .separate, faceSize: 1000, sceneSize: 1000, lazyFP: true),
+                VisionConfigDef(name: "Combined perform() (1000px, Lazy FP)", mode: .combined, faceSize: 1000, sceneSize: 1000, lazyFP: true),
+                VisionConfigDef(name: "Scene 800px (Face 1000px, Lazy FP)", mode: .separate, faceSize: 1000, sceneSize: 800, lazyFP: true),
+                VisionConfigDef(name: "Scene 640px (Face 1000px, Lazy FP)", mode: .separate, faceSize: 1000, sceneSize: 640, lazyFP: true),
+                VisionConfigDef(name: "Face 800px (Scene 1000px, Lazy FP)", mode: .separate, faceSize: 800, sceneSize: 1000, lazyFP: true),
+                VisionConfigDef(name: "Face 640px (Scene 1000px, Lazy FP)", mode: .separate, faceSize: 640, sceneSize: 1000, lazyFP: true),
+                VisionConfigDef(name: "Combined (800px, Lazy FP)", mode: .combined, faceSize: 800, sceneSize: 800, lazyFP: true),
+                VisionConfigDef(name: "Combined (640px, Lazy FP)", mode: .combined, faceSize: 640, sceneSize: 640, lazyFP: true)
+            ]
+
+            struct VisionConfigResult: Codable {
+                let configName: String
+                let mode: String
+                let facePixelSize: Int
+                let scenePixelSize: Int
+                let wallClockSeconds: Double
+                let throughputPPS: Double
+                let faceMsPerPhoto: Double
+                let sceneMsPerPhoto: Double
+                let fpMsPerPhoto: Double
+                let categoryAgreementPct: Double
+                let faceCountAgreementPct: Double
+            }
+
+            var results: [VisionConfigResult] = []
+            var baselineCategories: [String: WeddingCategory] = [:]
+            var baselineFaceCounts: [String: Int] = [:]
+
+            for cfg in configsToTest {
+                print("\n--- Testing: \(cfg.name) ---")
+                let hw = HardwareCapabilities(concurrencyOverride: workerOverride)
+                let pipe = AnalysisPipeline(
+                    hardware: hw,
+                    lazyFeaturePrint: cfg.lazyFP,
+                    visionExecutionMode: cfg.mode,
+                    faceInputMaxPixelSize: cfg.faceSize,
+                    sceneInputMaxPixelSize: cfg.sceneSize
+                )
+                let tStart = Date()
+                let sess: SessionData
+                do {
+                    sess = try await pipe.runAnalysis(
+                        sourceFolder: sweepFolder,
+                        targetCount: min(sweepTargetCount / 2, 700)
+                    ) { _ in }
+                } catch {
+                    print("❌ Vision config test failed for \(cfg.name): \(error)")
+                    continue
+                }
+                let tWall = max(0.001, Date().timeIntervalSince(tStart))
+                let pps = Double(sess.photos.count) / tWall
+                let count = Double(max(1, sess.photos.count))
+                let pt = sess.phaseTimings ?? PhaseTimings()
+
+                let currentCategories = Dictionary(uniqueKeysWithValues: sess.photos.map { ($0.id, $0.category) })
+                let currentFaceCounts = Dictionary(uniqueKeysWithValues: sess.photos.map { ($0.id, $0.metrics.faceCount) })
+
+                if baselineCategories.isEmpty {
+                    baselineCategories = currentCategories
+                    baselineFaceCounts = currentFaceCounts
+                }
+
+                var catMatch = 0
+                var faceMatch = 0
+                for (id, cat) in currentCategories {
+                    if baselineCategories[id] == cat { catMatch += 1 }
+                    if baselineFaceCounts[id] == currentFaceCounts[id] { faceMatch += 1 }
+                }
+                let catAgrPct = Double(round((Double(catMatch) / count) * 1000) / 10)
+                let faceAgrPct = Double(round((Double(faceMatch) / count) * 1000) / 10)
+
+                let res = VisionConfigResult(
+                    configName: cfg.name,
+                    mode: cfg.mode.rawValue,
+                    facePixelSize: cfg.faceSize,
+                    scenePixelSize: cfg.sceneSize,
+                    wallClockSeconds: Double(round(tWall * 100) / 100),
+                    throughputPPS: Double(round(pps * 100) / 100),
+                    faceMsPerPhoto: Double(round((pt.faceDetectionSeconds / count) * 10000) / 10),
+                    sceneMsPerPhoto: Double(round((pt.sceneClassificationSeconds / count) * 10000) / 10),
+                    fpMsPerPhoto: Double(round((pt.featurePrintSeconds / count) * 10000) / 10),
+                    categoryAgreementPct: catAgrPct,
+                    faceCountAgreementPct: faceAgrPct
+                )
+                results.append(res)
+                print(String(format: "  %.2fs wall, %.2f PPS | Face: %.1f ms/p (%.1f%% agr), Scene: %.1f ms/p (%.1f%% agr), FP: %.1f ms/p",
+                             tWall, pps, res.faceMsPerPhoto, res.faceCountAgreementPct, res.sceneMsPerPhoto, res.categoryAgreementPct, res.fpMsPerPhoto))
+            }
+
+            print("\n====================================================")
+            print("📊 VISION CONFIGURATIONS SWEEP SUMMARY")
+            print("====================================================")
+            print("| Configuration | Wall (s) | Throughput (PPS) | Face (ms/p) | Face Agr % | Scene (ms/p) | Scene Agr % | FP (ms/p) |")
+            print("| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |")
+            for r in results {
+                print(String(format: "| %@ | %.2f | %.2f | %.1f | %.1f%% | %.1f | %.1f%% | %.1f |",
+                             r.configName, r.wallClockSeconds, r.throughputPPS, r.faceMsPerPhoto, r.faceCountAgreementPct, r.sceneMsPerPhoto, r.categoryAgreementPct, r.fpMsPerPhoto))
+            }
+            print("====================================================\n")
+
+            if let outPath = outputVisionConfigsJSONPath {
+                let url = URL(fileURLWithPath: outPath)
+                try? fileManager.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+                let enc = JSONEncoder()
+                enc.outputFormatting = [.prettyPrinted, .sortedKeys]
+                if let data = try? enc.encode(results) {
+                    try? data.write(to: url)
+                    print("✅ Saved vision configs JSON to \(outPath)")
+                }
+            }
+
+            if sweepOnly {
+                print("✅ Sweep-only mode completed successfully.")
+                return
+            }
+        }
+
         var peakMemoryBytes: UInt64 = getCurrentResidentMemoryBytes()
         let memorySamplingTask = Task {
             while !Task.isCancelled {
@@ -328,7 +508,13 @@ struct BenchmarkRunner {
         let hardware = HardwareCapabilities(concurrencyOverride: workerOverride)
         print("Hardware detected: \(hardware.cpuArchitecture), \(hardware.logicalProcessors) logical cores (\(hardware.recommendedConcurrency) concurrent workers)")
 
-        let pipeline = AnalysisPipeline(hardware: hardware)
+        let pipeline = AnalysisPipeline(
+            hardware: hardware,
+            lazyFeaturePrint: lazyFeaturePrint,
+            visionExecutionMode: visionExecutionMode,
+            faceInputMaxPixelSize: facePixelSize,
+            sceneInputMaxPixelSize: scenePixelSize
+        )
         let startTime = Date()
 
         do {
