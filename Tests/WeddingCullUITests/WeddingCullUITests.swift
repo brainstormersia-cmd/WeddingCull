@@ -105,8 +105,7 @@ final class WeddingCullUITests: XCTestCase {
 
         // 5. Verify real thumbnails are loaded in the grid (at least 1 loaded thumbnail)
         let loadedThumbPredicate = NSPredicate(format: "identifier == 'photo_thumbnail_loaded'")
-        let gridContainer = app.scrollViews["photo_grid"].exists ? app.scrollViews["photo_grid"] : app
-        let loadedThumbs = gridContainer.descendants(matching: .any).matching(loadedThumbPredicate)
+        let loadedThumbs = photoGrid.descendants(matching: .any).matching(loadedThumbPredicate)
         XCTAssertTrue(loadedThumbs.firstMatch.waitForExistence(timeout: 20.0), "Grid must display real loaded thumbnails")
 
         let loadedCount = loadedThumbs.count

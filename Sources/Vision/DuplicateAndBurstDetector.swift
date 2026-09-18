@@ -38,7 +38,22 @@ public final class DuplicateAndBurstDetector: Sendable {
                 }
 
                 for (_, exactGroup) in fullHashGroups where exactGroup.count > 1 {
-                    let sortedExact = exactGroup.sorted { $0.id < $1.id }
+                    let sortedExact = exactGroup.sorted { a, b in
+                        let dateA = a.metadata.captureDate ?? a.fileModificationDate
+                        let dateB = b.metadata.captureDate ?? b.fileModificationDate
+                        if dateA != dateB {
+                            return dateA < dateB
+                        }
+                        let aIsDup = a.fileName.localizedCaseInsensitiveContains("dup") || a.fileName.localizedCaseInsensitiveContains("copy")
+                        let bIsDup = b.fileName.localizedCaseInsensitiveContains("dup") || b.fileName.localizedCaseInsensitiveContains("copy")
+                        if aIsDup != bIsDup {
+                            return !aIsDup && bIsDup
+                        }
+                        if a.fileName != b.fileName {
+                            return a.fileName < b.fileName
+                        }
+                        return a.id < b.id
+                    }
                     let canonical = sortedExact[0]
                     for duplicate in sortedExact.dropFirst() {
                         duplicates[duplicate.id] = canonical.id
