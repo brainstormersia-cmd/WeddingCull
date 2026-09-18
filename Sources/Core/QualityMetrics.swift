@@ -13,12 +13,14 @@ public struct QualityMetrics: Codable, Sendable, Equatable {
     public var isSevereOverexposed: Bool
     public var faceCount: Int
     public var averageEyeOpenness: Double?
+    public var rawFaceCaptureQuality: Double?
 
     // Normalized scores (0.0 to 1.0)
     public var sharpnessScore: Double
     public var faceSharpnessScore: Double
     public var exposureScore: Double
     public var faceQualityScore: Double
+    public var faceCaptureQualityScore: Double?
     public var compositionProxyScore: Double
     public var uniquenessScore: Double
     public var semanticImportanceScore: Double
@@ -40,10 +42,12 @@ public struct QualityMetrics: Codable, Sendable, Equatable {
         isSevereOverexposed: Bool = false,
         faceCount: Int = 0,
         averageEyeOpenness: Double? = nil,
+        rawFaceCaptureQuality: Double? = nil,
         sharpnessScore: Double = 0.5,
         faceSharpnessScore: Double = 0.5,
         exposureScore: Double = 0.5,
         faceQualityScore: Double = 0.5,
+        faceCaptureQualityScore: Double? = nil,
         compositionProxyScore: Double = 0.5,
         uniquenessScore: Double = 0.5,
         semanticImportanceScore: Double = 0.5,
@@ -62,10 +66,12 @@ public struct QualityMetrics: Codable, Sendable, Equatable {
         self.isSevereOverexposed = isSevereOverexposed
         self.faceCount = faceCount
         self.averageEyeOpenness = averageEyeOpenness
+        self.rawFaceCaptureQuality = rawFaceCaptureQuality
         self.sharpnessScore = sharpnessScore
         self.faceSharpnessScore = faceSharpnessScore
         self.exposureScore = exposureScore
         self.faceQualityScore = faceQualityScore
+        self.faceCaptureQualityScore = faceCaptureQualityScore
         self.compositionProxyScore = compositionProxyScore
         self.uniquenessScore = uniquenessScore
         self.semanticImportanceScore = semanticImportanceScore

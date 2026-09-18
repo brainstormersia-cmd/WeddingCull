@@ -13,6 +13,7 @@ public struct FaceInstance: Sendable, Codable {
     public let boundingBox: CGRect
     public let eyeOpenness: Double
     public let faceQuality: Double
+    public let faceCaptureQuality: Double?
     public let identityEmbedding: [Float] // Normalized descriptor vector (64-d geometric or 128-d learned)
     public let descriptorType: DescriptorType
 
@@ -20,12 +21,14 @@ public struct FaceInstance: Sendable, Codable {
         boundingBox: CGRect,
         eyeOpenness: Double,
         faceQuality: Double,
+        faceCaptureQuality: Double? = nil,
         identityEmbedding: [Float],
         descriptorType: DescriptorType = .geometric
     ) {
         self.boundingBox = boundingBox
         self.eyeOpenness = eyeOpenness
         self.faceQuality = faceQuality
+        self.faceCaptureQuality = faceCaptureQuality
         self.identityEmbedding = identityEmbedding
         self.descriptorType = descriptorType
     }
@@ -73,21 +76,35 @@ public final class FaceIdentityRecognizer: @unchecked Sendable {
     }
 
     /// Detects faces and extracts true identity embeddings for each face in the image
-    public func extractFacesWithIdentity(from cgImage: CGImage) -> [FaceInstance] {
-        let request = VNDetectFaceLandmarksRequest()
-        let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
+    public func extractFacesWithIdentity(from cgImage: CGImage, enableFaceCaptureQuality: Bool = false) -> [FaceInstance] {
+        let landmarksRequest = VNDetectFaceLandmarksRequest()
+        var requests: [VNRequest] = [landmarksRequest]
+        var captureQualityRequest: VNDetectFaceCaptureQualityRequest? = nil
 
+        if enableFaceCaptureQuality {
+            let cqReq = VNDetectFaceCaptureQualityRequest()
+            requests.append(cqReq)
+            captureQualityRequest = cqReq
+        }
+
+        let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
         do {
-            try handler.perform([request])
+            try handler.perform(requests)
         } catch {
             return []
         }
 
-        return processObservations(request.results ?? [])
+        return processObservations(
+            landmarksRequest.results ?? [],
+            captureQualityObservations: captureQualityRequest?.results as? [VNFaceObservation]
+        )
     }
 
-    /// Processes already executed VNDetectFaceLandmarksRequest observations
-    public func processObservations(_ observations: [VNFaceObservation]) -> [FaceInstance] {
+    /// Processes already executed VNDetectFaceLandmarksRequest observations with optional capture quality observations
+    public func processObservations(
+        _ observations: [VNFaceObservation],
+        captureQualityObservations: [VNFaceObservation]? = nil
+    ) -> [FaceInstance] {
         guard !observations.isEmpty else {
             return []
         }
@@ -116,21 +133,52 @@ public final class FaceIdentityRecognizer: @unchecked Sendable {
             }
             let avgEyeOpen = (leftEyeOpen + rightEyeOpen) / 2.0
 
-            // Estimate face capture quality
-            let quality = Double(obs.confidence)
+            // Estimate face capture quality:
+            // If explicit captureQualityObservations provided, match by bounding box IoU
+            var matchedCaptureQuality: Double? = nil
+            if let cqObservations = captureQualityObservations, !cqObservations.isEmpty {
+                var bestIoU: Double = 0.0
+                var bestCQ: Double? = nil
+                for cqObs in cqObservations {
+                    let iou = computeBoundingBoxIoU(bbox, cqObs.boundingBox)
+                    if iou > bestIoU {
+                        bestIoU = iou
+                        if let fcq = cqObs.faceCaptureQuality {
+                            bestCQ = Double(fcq)
+                        }
+                    }
+                }
+                if bestIoU >= 0.3 {
+                    matchedCaptureQuality = bestCQ
+                }
+            } else if let fcq = obs.faceCaptureQuality {
+                matchedCaptureQuality = Double(fcq)
+            }
 
+            let quality = matchedCaptureQuality ?? Double(obs.confidence)
             let embedding = computeIdentityEmbedding(landmarks: obs.landmarks, bbox: bbox)
 
             results.append(FaceInstance(
                 boundingBox: bbox,
                 eyeOpenness: avgEyeOpen,
                 faceQuality: quality,
+                faceCaptureQuality: matchedCaptureQuality,
                 identityEmbedding: embedding,
                 descriptorType: descriptorType
             ))
         }
 
         return results
+    }
+
+    private func computeBoundingBoxIoU(_ a: CGRect, _ b: CGRect) -> Double {
+        let intersection = a.intersection(b)
+        if intersection.isNull || intersection.isEmpty { return 0.0 }
+        let areaA = a.width * a.height
+        let areaB = b.width * b.height
+        let areaI = intersection.width * intersection.height
+        let union = areaA + areaB - areaI
+        return union > 0 ? Double(areaI / union) : 0.0
     }
 
     /// Computes cosine distance between two face identity embeddings

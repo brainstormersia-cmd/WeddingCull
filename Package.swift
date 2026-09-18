@@ -16,7 +16,8 @@ let package = Package(
         .executable(name: "WeddingAlbumBenchmark", targets: ["WeddingAlbumBenchmark"]),
         .executable(name: "IQAValidationRunner", targets: ["IQAValidationRunner"]),
         .executable(name: "ReleaseRawValidator", targets: ["ReleaseRawValidator"]),
-        .executable(name: "MobileCLIPValidator", targets: ["MobileCLIPValidator"])
+        .executable(name: "MobileCLIPValidator", targets: ["MobileCLIPValidator"]),
+        .executable(name: "QualityBenchmarkV2", targets: ["QualityBenchmarkV2"])
     ],
     targets: [
         .target(
@@ -69,6 +70,11 @@ let package = Package(
             name: "MobileCLIPValidator",
             dependencies: ["WeddingCullCore"],
             path: "Tools/MobileCLIPValidator"
+        ),
+        .executableTarget(
+            name: "QualityBenchmarkV2",
+            dependencies: ["WeddingCullCore", "TestDatasetGeneratorLibrary"],
+            path: "Tools/QualityBenchmarkV2"
         ),
         .testTarget(
             name: "WeddingCullTests",

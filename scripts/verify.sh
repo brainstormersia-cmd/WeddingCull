@@ -98,6 +98,19 @@ else
     exit 1
 fi
 
+# 5b. Measure Photographic Quality Benchmark V2 & Ablation
+echo "--- Step 5b: Quality Benchmark V2 Execution ---"
+swift build -c release --product QualityBenchmarkV2
+if .build/release/QualityBenchmarkV2 \
+    --ground-truth docs/datasets/wedding-photo-series-ground-truth.json \
+    --output-json artifacts/quality-benchmark-v2.json \
+    --output-md artifacts/QUALITY_BENCHMARK_V2.md; then
+    echo "✅ Quality Benchmark V2 completed successfully."
+else
+    echo "❌ Quality Benchmark V2 execution failed!"
+    exit 1
+fi
+
 # Check if Core ML model is present and compiled
 if [ -d "models/mobileclip_s0_image.mlmodelc" ] || [ -d "models/mobileclip_s0_image.mlpackage" ]; then
     ADVANCED_AI="COREML_MOBILECLIP"

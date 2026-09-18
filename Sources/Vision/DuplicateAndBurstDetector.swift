@@ -7,7 +7,11 @@ public struct DuplicateResult: Sendable {
 }
 
 public final class DuplicateAndBurstDetector: Sendable {
-    public init() {}
+    public let enableFaceCaptureQuality: Bool
+
+    public init(enableFaceCaptureQuality: Bool = false) {
+        self.enableFaceCaptureQuality = enableFaceCaptureQuality
+    }
 
     /// Detects exact duplicates using staged hashing (size -> 4KB prefix -> full SHA256)
     public func detectExactDuplicates(items: [PhotoItem]) -> [String: String] {
@@ -168,12 +172,16 @@ public final class DuplicateAndBurstDetector: Sendable {
         )
     }
 
-    private func computeBurstFrameQuality(_ item: PhotoItem) -> Double {
+    public func computeBurstFrameQuality(_ item: PhotoItem) -> Double {
         var score: Double = 0.0
 
         // 1. Face quality & sharpness take precedence
         if item.metrics.faceCount > 0 {
-            score += item.metrics.faceQualityScore * 0.40
+            if enableFaceCaptureQuality, let fcq = item.metrics.rawFaceCaptureQuality {
+                score += fcq * 0.40
+            } else {
+                score += item.metrics.faceQualityScore * 0.40
+            }
             let faceSharp = (item.metrics.rawFaceSharpness != nil ? min(1.0, item.metrics.rawFaceSharpness! / 500.0) : item.metrics.faceSharpnessScore)
             score += faceSharp * 0.30
             if let eye = item.metrics.averageEyeOpenness {

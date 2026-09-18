@@ -1,0 +1,657 @@
+{
+  "version": "1.0",
+  "dataset_name": "WeddingCull Photo-Series Ground Truth Benchmark",
+  "description": "Empirical photographer culling ground truth across burst and moment sequences with micro-variations in face capture quality, eye state, focus, expression, and exposure.",
+  "total_series": 8,
+  "total_frames": 32,
+  "series": [
+    {
+      "series_id": "series_01_ceremony_first_kiss",
+      "scene_type": "ceremony",
+      "description": "Micro-burst during first kiss: frames differ by profile angle, eye blink, and movement blur.",
+      "ground_truth": {
+        "preferred_order": [
+          "kiss_frame_02",
+          "kiss_frame_01",
+          "kiss_frame_03",
+          "kiss_frame_04"
+        ],
+        "acceptable_keepers": [
+          "kiss_frame_02",
+          "kiss_frame_01"
+        ],
+        "unacceptable_rejects": [
+          "kiss_frame_03",
+          "kiss_frame_04"
+        ],
+        "reasons": {
+          "kiss_frame_02": "Peak kiss smile, both faces sharp, eyes closed naturally with affection (category: optimal)",
+          "kiss_frame_01": "Pre-kiss anticipation, slight profile turn, eyes open and sharp (category: pose)",
+          "kiss_frame_03": "Motion blur on groom head turn and awkward mouth transition (category: focus)",
+          "kiss_frame_04": "Bride involuntary blink with mid-movement blur and unflattering jaw angle (category: eyes)"
+        }
+      },
+      "frames": [
+        {
+          "photo_id": "kiss_frame_01",
+          "relative_time_seconds": 0.0,
+          "simulated_attributes": {
+            "sharpness": 0.85,
+            "face_count": 2,
+            "face_sharpness": 0.82,
+            "eye_openness": 0.88,
+            "face_confidence": 0.96,
+            "face_capture_quality": 0.74,
+            "exposure_score": 0.88
+          }
+        },
+        {
+          "photo_id": "kiss_frame_02",
+          "relative_time_seconds": 0.25,
+          "simulated_attributes": {
+            "sharpness": 0.92,
+            "face_count": 2,
+            "face_sharpness": 0.94,
+            "eye_openness": 0.40,
+            "face_confidence": 0.95,
+            "face_capture_quality": 0.92,
+            "exposure_score": 0.90
+          }
+        },
+        {
+          "photo_id": "kiss_frame_03",
+          "relative_time_seconds": 0.50,
+          "simulated_attributes": {
+            "sharpness": 0.62,
+            "face_count": 2,
+            "face_sharpness": 0.58,
+            "eye_openness": 0.70,
+            "face_confidence": 0.94,
+            "face_capture_quality": 0.45,
+            "exposure_score": 0.86
+          }
+        },
+        {
+          "photo_id": "kiss_frame_04",
+          "relative_time_seconds": 0.75,
+          "simulated_attributes": {
+            "sharpness": 0.55,
+            "face_count": 2,
+            "face_sharpness": 0.48,
+            "eye_openness": 0.08,
+            "face_confidence": 0.91,
+            "face_capture_quality": 0.22,
+            "exposure_score": 0.82
+          }
+        }
+      ]
+    },
+    {
+      "series_id": "series_02_recessional_confetti",
+      "scene_type": "ceremony",
+      "description": "Recessional aisle walk with guests throwing paper confetti.",
+      "ground_truth": {
+        "preferred_order": [
+          "confetti_frame_02",
+          "confetti_frame_01",
+          "confetti_frame_03",
+          "confetti_frame_04"
+        ],
+        "acceptable_keepers": [
+          "confetti_frame_02",
+          "confetti_frame_01"
+        ],
+        "unacceptable_rejects": [
+          "confetti_frame_03",
+          "confetti_frame_04"
+        ],
+        "reasons": {
+          "confetti_frame_02": "Joyful laughter, clear eye catchlights, confetti framing without face occlusion (category: optimal)",
+          "confetti_frame_01": "Good walking stride, slight confetti flutter near bride cheek (category: pose)",
+          "confetti_frame_03": "Large confetti petal occluding groom right eye, flinching grimace (category: expression)",
+          "confetti_frame_04": "Both bride and groom squinting shut against incoming rice toss (category: eyes)"
+        }
+      },
+      "frames": [
+        {
+          "photo_id": "confetti_frame_01",
+          "relative_time_seconds": 0.0,
+          "simulated_attributes": {
+            "sharpness": 0.86,
+            "face_count": 2,
+            "face_sharpness": 0.84,
+            "eye_openness": 0.85,
+            "face_confidence": 0.95,
+            "face_capture_quality": 0.78,
+            "exposure_score": 0.85
+          }
+        },
+        {
+          "photo_id": "confetti_frame_02",
+          "relative_time_seconds": 0.2,
+          "simulated_attributes": {
+            "sharpness": 0.90,
+            "face_count": 2,
+            "face_sharpness": 0.91,
+            "eye_openness": 0.92,
+            "face_confidence": 0.97,
+            "face_capture_quality": 0.94,
+            "exposure_score": 0.89
+          }
+        },
+        {
+          "photo_id": "confetti_frame_03",
+          "relative_time_seconds": 0.4,
+          "simulated_attributes": {
+            "sharpness": 0.81,
+            "face_count": 2,
+            "face_sharpness": 0.72,
+            "eye_openness": 0.65,
+            "face_confidence": 0.93,
+            "face_capture_quality": 0.48,
+            "exposure_score": 0.84
+          }
+        },
+        {
+          "photo_id": "confetti_frame_04",
+          "relative_time_seconds": 0.6,
+          "simulated_attributes": {
+            "sharpness": 0.78,
+            "face_count": 2,
+            "face_sharpness": 0.68,
+            "eye_openness": 0.12,
+            "face_confidence": 0.90,
+            "face_capture_quality": 0.28,
+            "exposure_score": 0.83
+          }
+        }
+      ]
+    },
+    {
+      "series_id": "series_03_father_speech_laugh",
+      "scene_type": "reception",
+      "description": "Father of the bride giving speech, spontaneous audience laughter.",
+      "ground_truth": {
+        "preferred_order": [
+          "speech_frame_02",
+          "speech_frame_01",
+          "speech_frame_03",
+          "speech_frame_04"
+        ],
+        "acceptable_keepers": [
+          "speech_frame_02",
+          "speech_frame_01"
+        ],
+        "unacceptable_rejects": [
+          "speech_frame_03",
+          "speech_frame_04"
+        ],
+        "reasons": {
+          "speech_frame_02": "Warm full smile, eyes engaged with audience, great catchlight (category: optimal)",
+          "speech_frame_01": "Polite smiling expression, good composition (category: pose)",
+          "speech_frame_03": "Mid-syllable mouth shape, looks awkward frozen in time (category: expression)",
+          "speech_frame_04": "Looking straight down at note cards, face shadowed, eyes hidden (category: pose)"
+        }
+      },
+      "frames": [
+        {
+          "photo_id": "speech_frame_01",
+          "relative_time_seconds": 0.0,
+          "simulated_attributes": {
+            "sharpness": 0.83,
+            "face_count": 1,
+            "face_sharpness": 0.82,
+            "eye_openness": 0.86,
+            "face_confidence": 0.96,
+            "face_capture_quality": 0.76,
+            "exposure_score": 0.84
+          }
+        },
+        {
+          "photo_id": "speech_frame_02",
+          "relative_time_seconds": 0.3,
+          "simulated_attributes": {
+            "sharpness": 0.89,
+            "face_count": 1,
+            "face_sharpness": 0.90,
+            "eye_openness": 0.88,
+            "face_confidence": 0.98,
+            "face_capture_quality": 0.93,
+            "exposure_score": 0.87
+          }
+        },
+        {
+          "photo_id": "speech_frame_03",
+          "relative_time_seconds": 0.6,
+          "simulated_attributes": {
+            "sharpness": 0.80,
+            "face_count": 1,
+            "face_sharpness": 0.79,
+            "eye_openness": 0.80,
+            "face_confidence": 0.95,
+            "face_capture_quality": 0.52,
+            "exposure_score": 0.83
+          }
+        },
+        {
+          "photo_id": "speech_frame_04",
+          "relative_time_seconds": 0.9,
+          "simulated_attributes": {
+            "sharpness": 0.75,
+            "face_count": 1,
+            "face_sharpness": 0.60,
+            "eye_openness": 0.25,
+            "face_confidence": 0.88,
+            "face_capture_quality": 0.30,
+            "exposure_score": 0.72
+          }
+        }
+      ]
+    },
+    {
+      "series_id": "series_04_bride_portrait_bokeh",
+      "scene_type": "portraits",
+      "description": "Shallow depth-of-field portrait (f/1.4) by window with blurry background.",
+      "ground_truth": {
+        "preferred_order": [
+          "bokeh_frame_02",
+          "bokeh_frame_01",
+          "bokeh_frame_03",
+          "bokeh_frame_04"
+        ],
+        "acceptable_keepers": [
+          "bokeh_frame_02",
+          "bokeh_frame_01"
+        ],
+        "unacceptable_rejects": [
+          "bokeh_frame_03",
+          "bokeh_frame_04"
+        ],
+        "reasons": {
+          "bokeh_frame_02": "Tack-sharp eye focus, luminous skin, dreamy bokeh, genuine soft smile (category: optimal)",
+          "bokeh_frame_01": "Sharp eye focus, slightly more formal expression (category: pose)",
+          "bokeh_frame_03": "Focus back-focused onto ear/hair, iris slightly soft (category: focus)",
+          "bokeh_frame_04": "Blink caught mid-action, eyes drooped half-shut (category: eyes)"
+        }
+      },
+      "frames": [
+        {
+          "photo_id": "bokeh_frame_01",
+          "relative_time_seconds": 0.0,
+          "simulated_attributes": {
+            "sharpness": 0.60,
+            "face_count": 1,
+            "face_sharpness": 0.85,
+            "eye_openness": 0.88,
+            "face_confidence": 0.97,
+            "face_capture_quality": 0.80,
+            "exposure_score": 0.88
+          }
+        },
+        {
+          "photo_id": "bokeh_frame_02",
+          "relative_time_seconds": 0.25,
+          "simulated_attributes": {
+            "sharpness": 0.62,
+            "face_count": 1,
+            "face_sharpness": 0.93,
+            "eye_openness": 0.91,
+            "face_confidence": 0.98,
+            "face_capture_quality": 0.95,
+            "exposure_score": 0.90
+          }
+        },
+        {
+          "photo_id": "bokeh_frame_03",
+          "relative_time_seconds": 0.50,
+          "simulated_attributes": {
+            "sharpness": 0.68,
+            "face_count": 1,
+            "face_sharpness": 0.52,
+            "eye_openness": 0.85,
+            "face_confidence": 0.96,
+            "face_capture_quality": 0.54,
+            "exposure_score": 0.87
+          }
+        },
+        {
+          "photo_id": "bokeh_frame_04",
+          "relative_time_seconds": 0.75,
+          "simulated_attributes": {
+            "sharpness": 0.58,
+            "face_count": 1,
+            "face_sharpness": 0.50,
+            "eye_openness": 0.15,
+            "face_confidence": 0.92,
+            "face_capture_quality": 0.25,
+            "exposure_score": 0.85
+          }
+        }
+      ]
+    },
+    {
+      "series_id": "series_05_first_dance_spin",
+      "scene_type": "dance",
+      "description": "Dramatic spin during couple's first dance under reception spotlights.",
+      "ground_truth": {
+        "preferred_order": [
+          "dance_frame_02",
+          "dance_frame_01",
+          "dance_frame_03",
+          "dance_frame_04"
+        ],
+        "acceptable_keepers": [
+          "dance_frame_02",
+          "dance_frame_01"
+        ],
+        "unacceptable_rejects": [
+          "dance_frame_03",
+          "dance_frame_04"
+        ],
+        "reasons": {
+          "dance_frame_02": "Peak rotation facing camera, laughing head tilt, flash frozen tack sharp (category: optimal)",
+          "dance_frame_01": "Quarter turn into spin, elegant posture (category: pose)",
+          "dance_frame_03": "Rotational motion blur across faces as spin speed increased (category: focus)",
+          "dance_frame_04": "Groom back of head occluding bride face completely (category: pose)"
+        }
+      },
+      "frames": [
+        {
+          "photo_id": "dance_frame_01",
+          "relative_time_seconds": 0.0,
+          "simulated_attributes": {
+            "sharpness": 0.78,
+            "face_count": 2,
+            "face_sharpness": 0.77,
+            "eye_openness": 0.82,
+            "face_confidence": 0.94,
+            "face_capture_quality": 0.72,
+            "exposure_score": 0.82
+          }
+        },
+        {
+          "photo_id": "dance_frame_02",
+          "relative_time_seconds": 0.3,
+          "simulated_attributes": {
+            "sharpness": 0.88,
+            "face_count": 2,
+            "face_sharpness": 0.89,
+            "eye_openness": 0.86,
+            "face_confidence": 0.96,
+            "face_capture_quality": 0.91,
+            "exposure_score": 0.86
+          }
+        },
+        {
+          "photo_id": "dance_frame_03",
+          "relative_time_seconds": 0.6,
+          "simulated_attributes": {
+            "sharpness": 0.54,
+            "face_count": 2,
+            "face_sharpness": 0.44,
+            "eye_openness": 0.75,
+            "face_confidence": 0.90,
+            "face_capture_quality": 0.32,
+            "exposure_score": 0.81
+          }
+        },
+        {
+          "photo_id": "dance_frame_04",
+          "relative_time_seconds": 0.9,
+          "simulated_attributes": {
+            "sharpness": 0.70,
+            "face_count": 1,
+            "face_sharpness": 0.50,
+            "eye_openness": 0.60,
+            "face_confidence": 0.85,
+            "face_capture_quality": 0.20,
+            "exposure_score": 0.79
+          }
+        }
+      ]
+    },
+    {
+      "series_id": "series_06_groom_reaction_aisle",
+      "scene_type": "ceremony",
+      "description": "Groom watching bride walk down aisle, emotional micro-reactions.",
+      "ground_truth": {
+        "preferred_order": [
+          "groom_frame_02",
+          "groom_frame_01",
+          "groom_frame_03",
+          "groom_frame_04"
+        ],
+        "acceptable_keepers": [
+          "groom_frame_02",
+          "groom_frame_01"
+        ],
+        "unacceptable_rejects": [
+          "groom_frame_03",
+          "groom_frame_04"
+        ],
+        "reasons": {
+          "groom_frame_02": "Overwhelmed tearful joy, wide eyes, unforgettable emotional reaction (category: optimal)",
+          "groom_frame_01": "Anticipatory neutral expression just before seeing bride (category: pose)",
+          "groom_frame_03": "Hand wiping eye, partially occluding mouth and cheek (category: expression)",
+          "groom_frame_04": "Looking down to ground while blinking, face obscured (category: eyes)"
+        }
+      },
+      "frames": [
+        {
+          "photo_id": "groom_frame_01",
+          "relative_time_seconds": 0.0,
+          "simulated_attributes": {
+            "sharpness": 0.84,
+            "face_count": 1,
+            "face_sharpness": 0.83,
+            "eye_openness": 0.85,
+            "face_confidence": 0.96,
+            "face_capture_quality": 0.75,
+            "exposure_score": 0.85
+          }
+        },
+        {
+          "photo_id": "groom_frame_02",
+          "relative_time_seconds": 0.25,
+          "simulated_attributes": {
+            "sharpness": 0.90,
+            "face_count": 1,
+            "face_sharpness": 0.92,
+            "eye_openness": 0.94,
+            "face_confidence": 0.98,
+            "face_capture_quality": 0.94,
+            "exposure_score": 0.88
+          }
+        },
+        {
+          "photo_id": "groom_frame_03",
+          "relative_time_seconds": 0.50,
+          "simulated_attributes": {
+            "sharpness": 0.79,
+            "face_count": 1,
+            "face_sharpness": 0.68,
+            "eye_openness": 0.60,
+            "face_confidence": 0.92,
+            "face_capture_quality": 0.50,
+            "exposure_score": 0.82
+          }
+        },
+        {
+          "photo_id": "groom_frame_04",
+          "relative_time_seconds": 0.75,
+          "simulated_attributes": {
+            "sharpness": 0.74,
+            "face_count": 1,
+            "face_sharpness": 0.58,
+            "eye_openness": 0.10,
+            "face_confidence": 0.89,
+            "face_capture_quality": 0.24,
+            "exposure_score": 0.79
+          }
+        }
+      ]
+    },
+    {
+      "series_id": "series_07_cake_cutting_frosting",
+      "scene_type": "cake",
+      "description": "Cutting cake, bride playfully placing frosting on groom's nose.",
+      "ground_truth": {
+        "preferred_order": [
+          "cake_frame_02",
+          "cake_frame_01",
+          "cake_frame_03",
+          "cake_frame_04"
+        ],
+        "acceptable_keepers": [
+          "cake_frame_02",
+          "cake_frame_01"
+        ],
+        "unacceptable_rejects": [
+          "cake_frame_03",
+          "cake_frame_04"
+        ],
+        "reasons": {
+          "cake_frame_02": "Spontaneous shared laughter, frosting on nose, sharp eyes and joyful smile (category: optimal)",
+          "cake_frame_01": "Hands on knife cutting first slice, traditional clean shot (category: pose)",
+          "cake_frame_03": "Groom chewing bite with puffed cheeks, unflattering candid (category: expression)",
+          "cake_frame_04": "Catering staff arm photobombing foreground across cake (category: pose)"
+        }
+      },
+      "frames": [
+        {
+          "photo_id": "cake_frame_01",
+          "relative_time_seconds": 0.0,
+          "simulated_attributes": {
+            "sharpness": 0.85,
+            "face_count": 2,
+            "face_sharpness": 0.82,
+            "eye_openness": 0.84,
+            "face_confidence": 0.95,
+            "face_capture_quality": 0.76,
+            "exposure_score": 0.86
+          }
+        },
+        {
+          "photo_id": "cake_frame_02",
+          "relative_time_seconds": 0.35,
+          "simulated_attributes": {
+            "sharpness": 0.91,
+            "face_count": 2,
+            "face_sharpness": 0.92,
+            "eye_openness": 0.89,
+            "face_confidence": 0.97,
+            "face_capture_quality": 0.93,
+            "exposure_score": 0.89
+          }
+        },
+        {
+          "photo_id": "cake_frame_03",
+          "relative_time_seconds": 0.70,
+          "simulated_attributes": {
+            "sharpness": 0.80,
+            "face_count": 2,
+            "face_sharpness": 0.74,
+            "eye_openness": 0.78,
+            "face_confidence": 0.94,
+            "face_capture_quality": 0.49,
+            "exposure_score": 0.84
+          }
+        },
+        {
+          "photo_id": "cake_frame_04",
+          "relative_time_seconds": 1.05,
+          "simulated_attributes": {
+            "sharpness": 0.71,
+            "face_count": 1,
+            "face_sharpness": 0.55,
+            "eye_openness": 0.70,
+            "face_confidence": 0.87,
+            "face_capture_quality": 0.25,
+            "exposure_score": 0.78
+          }
+        }
+      ]
+    },
+    {
+      "series_id": "series_08_family_formal_group",
+      "scene_type": "portraits",
+      "description": "Large formal family group (8 persons) on church steps.",
+      "ground_truth": {
+        "preferred_order": [
+          "family_frame_02",
+          "family_frame_01",
+          "family_frame_03",
+          "family_frame_04"
+        ],
+        "acceptable_keepers": [
+          "family_frame_02",
+          "family_frame_01"
+        ],
+        "unacceptable_rejects": [
+          "family_frame_03",
+          "family_frame_04"
+        ],
+        "reasons": {
+          "family_frame_02": "All 8 family members have eyes open, pleasant smiles, crisp focus across all rows (category: optimal)",
+          "family_frame_01": "Good formal, but ring bearer child looking slightly distracted (category: pose)",
+          "family_frame_03": "Grandmother mid-blink (eyes shut), uncle looking away (category: eyes)",
+          "family_frame_04": "Toddler burst into tears and covering face with hands (category: expression)"
+        }
+      },
+      "frames": [
+        {
+          "photo_id": "family_frame_01",
+          "relative_time_seconds": 0.0,
+          "simulated_attributes": {
+            "sharpness": 0.86,
+            "face_count": 8,
+            "face_sharpness": 0.82,
+            "eye_openness": 0.82,
+            "face_confidence": 0.95,
+            "face_capture_quality": 0.77,
+            "exposure_score": 0.87
+          }
+        },
+        {
+          "photo_id": "family_frame_02",
+          "relative_time_seconds": 0.4,
+          "simulated_attributes": {
+            "sharpness": 0.90,
+            "face_count": 8,
+            "face_sharpness": 0.91,
+            "eye_openness": 0.92,
+            "face_confidence": 0.97,
+            "face_capture_quality": 0.94,
+            "exposure_score": 0.89
+          }
+        },
+        {
+          "photo_id": "family_frame_03",
+          "relative_time_seconds": 0.8,
+          "simulated_attributes": {
+            "sharpness": 0.81,
+            "face_count": 8,
+            "face_sharpness": 0.71,
+            "eye_openness": 0.55,
+            "face_confidence": 0.94,
+            "face_capture_quality": 0.50,
+            "exposure_score": 0.85
+          }
+        },
+        {
+          "photo_id": "family_frame_04",
+          "relative_time_seconds": 1.2,
+          "simulated_attributes": {
+            "sharpness": 0.76,
+            "face_count": 7,
+            "face_sharpness": 0.62,
+            "eye_openness": 0.40,
+            "face_confidence": 0.88,
+            "face_capture_quality": 0.30,
+            "exposure_score": 0.83
+          }
+        }
+      ]
+    }
+  ]
+}

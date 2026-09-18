@@ -160,6 +160,8 @@ jobs:
           path: |
             artifacts/verification-report.json
             artifacts/benchmark.json
+            artifacts/quality-benchmark-v2.json
+            artifacts/QUALITY_BENCHMARK_V2.md
             BENCHMARKS.md
 
       - name: Upload Test Results and Screenshots

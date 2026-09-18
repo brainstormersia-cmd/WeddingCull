@@ -381,7 +381,7 @@ public actor AnalysisPipeline {
     private let qualityAnalyzer = TechnicalQualityAnalyzer()
     private let faceIdentityRecognizer = FaceIdentityRecognizer()
     private let featurePrintProvider = FeaturePrintProvider()
-    private let duplicateDetector = DuplicateAndBurstDetector()
+    private let duplicateDetector: DuplicateAndBurstDetector
     private let temporalSegmenter = TemporalSegmenter()
     private let classifier: MobileCLIPClassifier
     private let personClusterer = PersonClusterer()
@@ -397,6 +397,7 @@ public actor AnalysisPipeline {
     private let stageAWorkers: Int
     private let stageBWorkers: Int
     private let queueCapacity: Int
+    private let enableFaceCaptureQuality: Bool
 
     public init(
         hardware: HardwareCapabilities = HardwareCapabilities(),
@@ -411,11 +412,14 @@ public actor AnalysisPipeline {
         stageAWorkers: Int? = nil,
         stageBWorkers: Int? = nil,
         queueCapacity: Int = 8,
-        forceVisionFallback: Bool = false
+        forceVisionFallback: Bool = false,
+        enableFaceCaptureQuality: Bool = false
     ) {
         self.hardware = hardware
         self.previewPipeline = previewPipeline ?? PreviewPipeline(customCacheDirectory: customCacheDir)
         self.classifier = MobileCLIPClassifier(hardwareCapabilities: hardware, forceVisionFallback: forceVisionFallback)
+        self.enableFaceCaptureQuality = enableFaceCaptureQuality
+        self.duplicateDetector = DuplicateAndBurstDetector(enableFaceCaptureQuality: enableFaceCaptureQuality)
         self.lazyFeaturePrint = lazyFeaturePrint
         self.visionExecutionMode = visionExecutionMode
         self.faceInputMaxPixelSize = faceInputMaxPixelSize
@@ -515,6 +519,7 @@ public actor AnalysisPipeline {
         let visMode = self.visionExecutionMode
         let facePixelSize = self.faceInputMaxPixelSize
         let scenePixelSize = self.sceneInputMaxPixelSize
+        let isFaceCQEnabled = self.enableFaceCaptureQuality
 
         let summary: AnalysisCollectionSummary
 
@@ -556,6 +561,7 @@ public actor AnalysisPipeline {
                                         faceInputMaxPixelSize: facePixelSize,
                                         sceneInputMaxPixelSize: scenePixelSize,
                                         expectedBackend: mlClassifier.targetBackend.rawValue,
+                                        enableFaceCaptureQuality: isFaceCQEnabled,
                                         onThumbnailReady: { id in
                                             Task { await collector.recordThumbnailGenerated(for: id) }
                                         }
@@ -641,6 +647,7 @@ public actor AnalysisPipeline {
                                     faceInputMaxPixelSize: facePixelSize,
                                     sceneInputMaxPixelSize: scenePixelSize,
                                     classifierGate: classifierGate,
+                                    enableFaceCaptureQuality: isFaceCQEnabled,
                                     onThumbnailReady: { id in
                                         Task { await collector.recordThumbnailGenerated(for: id) }
                                     }
@@ -887,6 +894,7 @@ public actor AnalysisPipeline {
         faceInputMaxPixelSize: Int,
         sceneInputMaxPixelSize: Int,
         expectedBackend: String? = nil,
+        enableFaceCaptureQuality: Bool = false,
         onThumbnailReady: (@Sendable (String) -> Void)? = nil
     ) async throws -> StageAOutput {
         try await coordinator.waitIfPaused()
@@ -983,14 +991,32 @@ public actor AnalysisPipeline {
                     let tFaceStart = CFAbsoluteTimeGetCurrent()
                     let faceHandler = VNImageRequestHandler(cgImage: faceCG, options: [:])
                     let faceRequest = VNDetectFaceLandmarksRequest()
-                    try? faceHandler.perform([faceRequest])
-                    let faces = faceRecognizer.processObservations(faceRequest.results ?? [])
+                    var faceRequests: [VNRequest] = [faceRequest]
+                    var captureQualityRequest: VNDetectFaceCaptureQualityRequest? = nil
+                    if enableFaceCaptureQuality {
+                        let cqReq = VNDetectFaceCaptureQualityRequest()
+                        faceRequests.append(cqReq)
+                        captureQualityRequest = cqReq
+                    }
+                    try? faceHandler.perform(faceRequests)
+                    let faces = faceRecognizer.processObservations(
+                        faceRequest.results ?? [],
+                        captureQualityObservations: captureQualityRequest?.results as? [VNFaceObservation]
+                    )
                     metrics.faceCount = faces.count
                     if !faces.isEmpty {
                         let totalQuality = faces.reduce(0.0) { $0 + $1.faceQuality }
                         metrics.faceQualityScore = totalQuality / Double(faces.count)
                         let totalEyes = faces.reduce(0.0) { $0 + $1.eyeOpenness }
                         metrics.averageEyeOpenness = totalEyes / Double(faces.count)
+                        if enableFaceCaptureQuality {
+                            let validCQs = faces.compactMap { $0.faceCaptureQuality }
+                            if !validCQs.isEmpty {
+                                let avgCQ = validCQs.reduce(0.0, +) / Double(validCQs.count)
+                                metrics.rawFaceCaptureQuality = avgCQ
+                                metrics.faceCaptureQualityScore = avgCQ
+                            }
+                        }
                         metrics.rawFaceSharpness = tech.rawSharpness * 1.2
                     }
                     let tFaceEnd = CFAbsoluteTimeGetCurrent()
@@ -1166,6 +1192,7 @@ public actor AnalysisPipeline {
         faceInputMaxPixelSize: Int,
         sceneInputMaxPixelSize: Int,
         classifierGate: AsyncSemaphore? = nil,
+        enableFaceCaptureQuality: Bool = false,
         onThumbnailReady: (@Sendable (String) -> Void)? = nil
     ) async throws -> PhotoAnalysisResult {
         try await coordinator.waitIfPaused()
@@ -1182,6 +1209,7 @@ public actor AnalysisPipeline {
             faceInputMaxPixelSize: faceInputMaxPixelSize,
             sceneInputMaxPixelSize: sceneInputMaxPixelSize,
             expectedBackend: classifier.targetBackend.rawValue,
+            enableFaceCaptureQuality: enableFaceCaptureQuality,
             onThumbnailReady: onThumbnailReady
         )
 
@@ -1209,26 +1237,46 @@ public actor AnalysisPipeline {
            let faceCG = stageA.faceCG, let sceneCG = stageA.sceneCG, faceCG === sceneCG {
             let handler = VNImageRequestHandler(cgImage: faceCG, options: [:])
             let faceRequest = VNDetectFaceLandmarksRequest()
+            var combinedRequests: [VNRequest] = [faceRequest]
+            var captureQualityRequest: VNDetectFaceCaptureQualityRequest? = nil
+            if enableFaceCaptureQuality {
+                let cqReq = VNDetectFaceCaptureQualityRequest()
+                combinedRequests.append(cqReq)
+                captureQualityRequest = cqReq
+            }
             let sceneRequest = VNClassifyImageRequest()
+            combinedRequests.append(sceneRequest)
+
             let tVisionStart = CFAbsoluteTimeGetCurrent()
             if let gate = classifierGate {
                 await gate.acquire()
-                try? handler.perform([faceRequest, sceneRequest])
+                try? handler.perform(combinedRequests)
                 await gate.release()
             } else {
-                try? handler.perform([faceRequest, sceneRequest])
+                try? handler.perform(combinedRequests)
             }
             let tVisionEnd = CFAbsoluteTimeGetCurrent()
             let totalVisionDur = max(0.0, tVisionEnd - tVisionStart)
 
             var metrics = stageA.metrics
-            let faces = faceRecognizer.processObservations(faceRequest.results ?? [])
+            let faces = faceRecognizer.processObservations(
+                faceRequest.results ?? [],
+                captureQualityObservations: captureQualityRequest?.results as? [VNFaceObservation]
+            )
             metrics.faceCount = faces.count
             if !faces.isEmpty {
                 let totalQuality = faces.reduce(0.0) { $0 + $1.faceQuality }
                 metrics.faceQualityScore = totalQuality / Double(faces.count)
                 let totalEyes = faces.reduce(0.0) { $0 + $1.eyeOpenness }
                 metrics.averageEyeOpenness = totalEyes / Double(faces.count)
+                if enableFaceCaptureQuality {
+                    let validCQs = faces.compactMap { $0.faceCaptureQuality }
+                    if !validCQs.isEmpty {
+                        let avgCQ = validCQs.reduce(0.0, +) / Double(validCQs.count)
+                        metrics.rawFaceCaptureQuality = avgCQ
+                        metrics.faceCaptureQualityScore = avgCQ
+                    }
+                }
                 metrics.rawFaceSharpness = metrics.rawSharpness * 1.2
             }
 
