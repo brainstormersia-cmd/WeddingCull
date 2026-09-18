@@ -1,63 +1,69 @@
 {
   "title": "WeddingCull Final Release Dataset Validation Report",
-  "timestamp": "2026-09-18T00:14:46.188939+00:00",
-  "gitSHA": "cacf4c6010b4a238480a15553061469c07f11769",
+  "timestamp": "2026-09-18T09:03:42.391152+00:00",
+  "gitSHA": "dcf08818159a3e7eacf1983b821b23efb1399c3f",
   "overallVerdict": "PASS",
   "baselinePerformance": {
     "BASELINE_RELEASE_ARM64": {
       "buildConfiguration": "release",
       "architecture": "arm64",
-      "photosPerSecond": 18.7,
-      "peakRSSMB": 61,
-      "wallClockSeconds": 80.36,
+      "photosPerSecond": 48.9,
+      "peakRSSMB": 82,
+      "wallClockSeconds": 30.68,
       "datasetMode": "LOW_RES_SCALE",
+      "sessionReopenLatencySeconds": 0.089,
       "phaseTimings": {
-        "burstAndDuplicateSeconds": 0.06,
-        "clusteringAndSegmentationSeconds": 0.02,
-        "discoverySeconds": 0.47,
-        "faceAndFeatureSeconds": 91.06,
-        "previewGenerationSeconds": 9.51,
-        "qualityScoringSeconds": 7.99,
-        "rankingAndSelectionSeconds": 43.13,
-        "sceneClassificationSeconds": 0.01,
-        "sessionPersistenceSeconds": 0.17,
-        "totalWallClockSeconds": 80.36
+        "burstAndDuplicateSeconds": 0.48,
+        "clusteringAndSegmentationSeconds": 0.03,
+        "discoverySeconds": 0.6,
+        "faceAndFeatureSeconds": 3.87,
+        "faceDetectionSeconds": 3.87,
+        "featurePrintSeconds": 0.35,
+        "previewGenerationSeconds": 12.62,
+        "qualityScoringSeconds": 9.1,
+        "rankingAndSelectionSeconds": 1.42,
+        "sceneClassificationSeconds": 58.01,
+        "sessionPersistenceSeconds": 0.2,
+        "totalWallClockSeconds": 30.68
       },
-      "perceivedSpeedMetrics": {
-        "timeToFinalSelection": 80.36,
-        "timeToFirstAnalyzedPhoto": 0.52,
-        "timeToFirstThumbnail": 0.52,
-        "timeToFolderReady": 0.47,
-        "timeToInteractiveGrid": 0.98,
-        "timeToPreliminarySelection": 37.21
+      "pipelineReadinessMetrics": {
+        "timeToFinalSelection": 30.68,
+        "timeToFirstAnalyzedPhoto": 0.81,
+        "timeToFirstThumbnail": 0.63,
+        "timeToFolderReady": 0.6,
+        "timeToInteractiveGrid": 0.78,
+        "timeToPreliminarySelection": 29.23
       }
     },
     "BASELINE_RELEASE_INTEL": {
       "buildConfiguration": "release",
       "architecture": "x86_64",
-      "photosPerSecond": 3.1,
-      "peakRSSMB": 205,
-      "wallClockSeconds": 488.02,
+      "photosPerSecond": 4.3,
+      "peakRSSMB": 183,
+      "wallClockSeconds": 350.33,
       "datasetMode": "LOW_RES_SCALE",
+      "sessionReopenLatencySeconds": 0.084,
       "phaseTimings": {
-        "burstAndDuplicateSeconds": 0.15,
-        "clusteringAndSegmentationSeconds": 0.07,
-        "discoverySeconds": 1.64,
-        "faceAndFeatureSeconds": 1365.56,
-        "previewGenerationSeconds": 28.24,
-        "qualityScoringSeconds": 15.31,
-        "rankingAndSelectionSeconds": 132.39,
-        "sceneClassificationSeconds": 0.31,
-        "sessionPersistenceSeconds": 0.11,
-        "totalWallClockSeconds": 488.01
+        "burstAndDuplicateSeconds": 8.61,
+        "clusteringAndSegmentationSeconds": 0.08,
+        "discoverySeconds": 2.06,
+        "faceAndFeatureSeconds": 132.33,
+        "faceDetectionSeconds": 132.33,
+        "featurePrintSeconds": 8.38,
+        "previewGenerationSeconds": 1.22,
+        "qualityScoringSeconds": 17.18,
+        "rankingAndSelectionSeconds": 2.54,
+        "sceneClassificationSeconds": 518.33,
+        "sessionPersistenceSeconds": 0.1,
+        "totalWallClockSeconds": 350.33
       },
-      "perceivedSpeedMetrics": {
-        "timeToFinalSelection": 488.01,
-        "timeToFirstAnalyzedPhoto": 5.21,
-        "timeToFirstThumbnail": 5.21,
-        "timeToFolderReady": 1.64,
-        "timeToInteractiveGrid": 10.25,
-        "timeToPreliminarySelection": 355.55
+      "pipelineReadinessMetrics": {
+        "timeToFinalSelection": 350.33,
+        "timeToFirstAnalyzedPhoto": 2.61,
+        "timeToFirstThumbnail": 2.07,
+        "timeToFolderReady": 2.06,
+        "timeToInteractiveGrid": 2.08,
+        "timeToPreliminarySelection": 347.71
       }
     }
   },
@@ -68,18 +74,18 @@
         "buildConfiguration": "release",
         "targetCardinality": 700,
         "finalSelectedCount": 700,
-        "throughputPPS": 18.7,
-        "peakRSSMB": 61,
-        "wallClockSeconds": 80.36
+        "throughputPPS": 48.9,
+        "peakRSSMB": 82,
+        "wallClockSeconds": 30.68
       },
       "x86_64_native_intel": {
         "status": "EXECUTED",
         "buildConfiguration": "release",
         "targetCardinality": 700,
         "finalSelectedCount": 700,
-        "throughputPPS": 3.1,
-        "peakRSSMB": 205,
-        "wallClockSeconds": 488.02
+        "throughputPPS": 4.3,
+        "peakRSSMB": 183,
+        "wallClockSeconds": 350.33
       }
     },
     "realPublicDatasetValidation": {
@@ -88,15 +94,15 @@
         "tuningStatus": "FROZEN_REGRESSION_REFERENCE",
         "evaluatedAlbums": 8,
         "totalImages": 274,
-        "executionTimeSeconds": 7.34,
-        "meanPrecision": 0.3849140442890443,
-        "meanRecall": 0.3849140442890443,
-        "meanF1": 0.3849140442890443,
-        "meanJaccard": 0.2679997451749347,
-        "meanSpearmanRho": 0.07898768990343254,
-        "meanKendallTau": 0.06284997202713918,
+        "executionTimeSeconds": 13.98,
+        "meanPrecision": 0.38431308275058274,
+        "meanRecall": 0.38431308275058274,
+        "meanF1": 0.38431308275058274,
+        "meanJaccard": 0.2675237153567996,
+        "meanSpearmanRho": 0.08106452787277847,
+        "meanKendallTau": 0.06410380790000574,
         "meanGroupingARI": 0,
-        "meanEventCoverage": 0.8489583333333333
+        "meanEventCoverage": 0.8854166666666666
       },
       "spaqKonIQAesthetics": {
         "status": "NOT_VERIFIED_IN_PUBLIC_CI",
@@ -120,13 +126,38 @@
       "status": "EXECUTED",
       "backend": "MobileCLIP-S0",
       "revision": "3e0a7bfb9fe83da8a3efaa3fd8f7df24214bb947",
-      "latencyMs": 202.0541489124298
+      "latencyMs": 167.4904465675354
     },
     "selectionIntegrity": {
       "burstWinnerAgreement": 1,
       "categoryCoverage": 0.5,
       "duplicateLeakage": 0,
       "uniqueKeeperFalseRejectRate": 0
+    },
+    "pipelineReadinessAndUIInteractivity": {
+      "appleSilicon": {
+        "metrics": {
+          "timeToFinalSelection": 30.68,
+          "timeToFirstAnalyzedPhoto": 0.81,
+          "timeToFirstThumbnail": 0.63,
+          "timeToFolderReady": 0.6,
+          "timeToInteractiveGrid": 0.78,
+          "timeToPreliminarySelection": 29.23
+        },
+        "sessionReopenLatencySeconds": 0.089
+      },
+      "nativeIntel": {
+        "metrics": {
+          "timeToFinalSelection": 350.33,
+          "timeToFirstAnalyzedPhoto": 2.61,
+          "timeToFirstThumbnail": 2.07,
+          "timeToFolderReady": 2.06,
+          "timeToInteractiveGrid": 2.08,
+          "timeToPreliminarySelection": 347.71
+        },
+        "sessionReopenLatencySeconds": 0.084
+      },
+      "realUIMeasurement": null
     }
   }
 }

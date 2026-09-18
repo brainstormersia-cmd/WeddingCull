@@ -12,7 +12,7 @@
     "CR3" : 1,
     "JPG" : 1498
   },
-  "gitSHA" : "cacf4c6010b4a238480a15553061469c07f11769",
+  "gitSHA" : "dcf08818159a3e7eacf1983b821b23efb1399c3f",
   "hardware" : {
     "architecture" : "arm64",
     "logicalProcessors" : 3,
@@ -35,35 +35,46 @@
   },
   "memoryBudgetMB" : 2560,
   "memoryWithinBudget" : true,
-  "peakMemoryMB" : 61,
+  "peakMemoryMB" : 82,
   "perceivedSpeedMetrics" : {
-    "timeToFinalSelection" : 80.36,
-    "timeToFirstAnalyzedPhoto" : 0.52,
-    "timeToFirstThumbnail" : 0.52,
-    "timeToFolderReady" : 0.47,
-    "timeToInteractiveGrid" : 0.98,
-    "timeToPreliminarySelection" : 37.21
+    "timeToFinalSelection" : 30.68,
+    "timeToFirstAnalyzedPhoto" : 0.81,
+    "timeToFirstThumbnail" : 0.63,
+    "timeToFolderReady" : 0.6,
+    "timeToInteractiveGrid" : 0.78,
+    "timeToPreliminarySelection" : 29.23
   },
   "personClustersFormed" : 2,
   "phaseTimings" : {
-    "burstAndDuplicateSeconds" : 0.06,
-    "clusteringAndSegmentationSeconds" : 0.02,
-    "discoverySeconds" : 0.47,
-    "faceAndFeatureSeconds" : 91.06,
-    "previewGenerationSeconds" : 9.51,
-    "qualityScoringSeconds" : 7.99,
-    "rankingAndSelectionSeconds" : 43.13,
-    "sceneClassificationSeconds" : 0.01,
-    "sessionPersistenceSeconds" : 0.17,
-    "totalWallClockSeconds" : 80.36
+    "burstAndDuplicateSeconds" : 0.48,
+    "clusteringAndSegmentationSeconds" : 0.03,
+    "discoverySeconds" : 0.6,
+    "faceAndFeatureSeconds" : 3.87,
+    "faceDetectionSeconds" : 3.87,
+    "featurePrintSeconds" : 0.35,
+    "previewGenerationSeconds" : 12.62,
+    "qualityScoringSeconds" : 9.1,
+    "rankingAndSelectionSeconds" : 1.42,
+    "sceneClassificationSeconds" : 58.01,
+    "sessionPersistenceSeconds" : 0.2,
+    "totalWallClockSeconds" : 30.68
   },
-  "photosPerSecond" : 18.7,
+  "photosPerSecond" : 48.9,
+  "pipelineReadinessMetrics" : {
+    "timeToFinalSelection" : 30.68,
+    "timeToFirstAnalyzedPhoto" : 0.81,
+    "timeToFirstThumbnail" : 0.63,
+    "timeToFolderReady" : 0.6,
+    "timeToInteractiveGrid" : 0.78,
+    "timeToPreliminarySelection" : 29.23
+  },
   "rawFileCount" : 1,
   "rawJpegPairs" : 1,
   "rejectedCorrupt" : 1,
   "sessionPersistence" : true,
+  "sessionReopenLatencySeconds" : 0.089,
   "targetCardinality" : 700,
   "totalBytes" : 31648035,
-  "totalProcessingTimeSeconds" : 80.36,
-  "wallClockSeconds" : 80.36
+  "totalProcessingTimeSeconds" : 30.68,
+  "wallClockSeconds" : 30.68
 }

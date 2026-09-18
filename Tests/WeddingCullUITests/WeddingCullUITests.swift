@@ -217,20 +217,32 @@ final class WeddingCullUITests: XCTestCase {
         let tFirstThumb = CFAbsoluteTimeGetCurrent() - tFolderOpenStart
 
         // 3 & 4. Measure Folder Open -> 24 Rendered Cells & Successful Interactive Scroll
-        // In SwiftUI LazyVGrid, offscreen cells instantiate as the user scrolls into view.
+        // In SwiftUI LazyVGrid, offscreen cells instantiate as the user scrolls into view and may recycle.
         XCTAssertTrue(photoGrid.waitForExistence(timeout: 25.0), "Photo grid must appear in UI")
-        var renderedCount = loadedThumbs.count
+        var seenThumbnails = Set<String>()
+        func recordVisibleThumbs() {
+            let all = loadedThumbs.allElementsBoundByIndex
+            for elem in all {
+                let label = elem.label
+                if !label.isEmpty {
+                    seenThumbnails.insert(label)
+                }
+            }
+        }
+        recordVisibleThumbs()
+
         var totalScrollTime = 0.0
         let scrollDeadline = CFAbsoluteTimeGetCurrent() + 25.0
-        while renderedCount < 24 && CFAbsoluteTimeGetCurrent() < scrollDeadline {
+        while max(seenThumbnails.count, loadedThumbs.count) < 24 && CFAbsoluteTimeGetCurrent() < scrollDeadline {
             let tS = CFAbsoluteTimeGetCurrent()
             photoGrid.swipeUp()
             totalScrollTime += (CFAbsoluteTimeGetCurrent() - tS)
-            Thread.sleep(forTimeInterval: 0.2)
-            renderedCount = loadedThumbs.count
+            Thread.sleep(forTimeInterval: 0.25)
+            recordVisibleThumbs()
         }
         let t24Cells = CFAbsoluteTimeGetCurrent() - tFolderOpenStart
         let scrollDuration = max(0.01, totalScrollTime)
+        let renderedCount = max(seenThumbnails.count, loadedThumbs.count)
         XCTAssertGreaterThanOrEqual(renderedCount, min(24, 36), "At least 24 thumbnail cells must render after interactive scroll")
 
         print("====================================================")

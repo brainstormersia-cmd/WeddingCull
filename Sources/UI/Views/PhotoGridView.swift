@@ -159,6 +159,7 @@ public struct AsyncThumbnailView: View {
                     .resizable()
                     .aspectRatio(contentMode: .fill)
                     .accessibilityIdentifier(AccessibilityIdentifiers.photoThumbnailLoaded)
+                    .accessibilityLabel(item.fileName)
             } else {
                 RoundedRectangle(cornerRadius: 6)
                     .fill(Color.secondary.opacity(0.15))
@@ -173,6 +174,7 @@ public struct AsyncThumbnailView: View {
                         }
                     )
                     .accessibilityIdentifier(AccessibilityIdentifiers.photoThumbnailPlaceholder)
+                    .accessibilityLabel(item.fileName)
             }
         }
         .aspectRatio(3/2, contentMode: .fit)

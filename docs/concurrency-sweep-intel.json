@@ -1,0 +1,54 @@
+[
+  {
+    "faceDetectionSeconds" : 16.16,
+    "faceMsPerPhoto" : 64.9,
+    "featurePrintSeconds" : 4.19,
+    "fpMsPerPhoto" : 16.8,
+    "peakMemoryMB" : 190,
+    "rankingAndSelectionSeconds" : 0.07,
+    "sceneClassificationSeconds" : 53.59,
+    "sceneMsPerPhoto" : 215.2,
+    "throughputPPS" : 3.06,
+    "wallClockSeconds" : 81.33,
+    "workers" : 1
+  },
+  {
+    "faceDetectionSeconds" : 18.39,
+    "faceMsPerPhoto" : 73.9,
+    "featurePrintSeconds" : 6.14,
+    "fpMsPerPhoto" : 24.7,
+    "peakMemoryMB" : 180,
+    "rankingAndSelectionSeconds" : 0.08,
+    "sceneClassificationSeconds" : 74.61,
+    "sceneMsPerPhoto" : 299.6,
+    "throughputPPS" : 4.53,
+    "wallClockSeconds" : 54.91,
+    "workers" : 2
+  },
+  {
+    "faceDetectionSeconds" : 19.11,
+    "faceMsPerPhoto" : 76.7,
+    "featurePrintSeconds" : 5.51,
+    "fpMsPerPhoto" : 22.1,
+    "peakMemoryMB" : 189,
+    "rankingAndSelectionSeconds" : 0.09,
+    "sceneClassificationSeconds" : 124.26,
+    "sceneMsPerPhoto" : 499,
+    "throughputPPS" : 4.52,
+    "wallClockSeconds" : 55.09,
+    "workers" : 3
+  },
+  {
+    "faceDetectionSeconds" : 21.79,
+    "faceMsPerPhoto" : 87.5,
+    "featurePrintSeconds" : 5.43,
+    "fpMsPerPhoto" : 21.8,
+    "peakMemoryMB" : 186,
+    "rankingAndSelectionSeconds" : 0.09,
+    "sceneClassificationSeconds" : 192.92,
+    "sceneMsPerPhoto" : 774.8,
+    "throughputPPS" : 4.09,
+    "wallClockSeconds" : 60.84,
+    "workers" : 4
+  }
+]

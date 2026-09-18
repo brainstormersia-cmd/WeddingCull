@@ -2,30 +2,41 @@
   "architecture" : "x86_64",
   "buildConfiguration" : "release",
   "datasetMode" : "LOW_RES_SCALE",
-  "gitSHA" : "cacf4c6010b4a238480a15553061469c07f11769",
+  "gitSHA" : "dcf08818159a3e7eacf1983b821b23efb1399c3f",
   "inputFiles" : 1500,
   "logicalPhotos" : 1499,
-  "peakMemoryMB" : 205,
+  "peakMemoryMB" : 183,
   "perceivedSpeedMetrics" : {
-    "timeToFinalSelection" : 488.01,
-    "timeToFirstAnalyzedPhoto" : 5.21,
-    "timeToFirstThumbnail" : 5.21,
-    "timeToFolderReady" : 1.64,
-    "timeToInteractiveGrid" : 10.25,
-    "timeToPreliminarySelection" : 355.55
+    "timeToFinalSelection" : 350.33,
+    "timeToFirstAnalyzedPhoto" : 2.61,
+    "timeToFirstThumbnail" : 2.07,
+    "timeToFolderReady" : 2.06,
+    "timeToInteractiveGrid" : 2.08,
+    "timeToPreliminarySelection" : 347.71
   },
   "phaseTimings" : {
-    "burstAndDuplicateSeconds" : 0.15,
-    "clusteringAndSegmentationSeconds" : 0.07,
-    "discoverySeconds" : 1.64,
-    "faceAndFeatureSeconds" : 1365.56,
-    "previewGenerationSeconds" : 28.24,
-    "qualityScoringSeconds" : 15.31,
-    "rankingAndSelectionSeconds" : 132.39,
-    "sceneClassificationSeconds" : 0.31,
-    "sessionPersistenceSeconds" : 0.11,
-    "totalWallClockSeconds" : 488.01
+    "burstAndDuplicateSeconds" : 8.61,
+    "clusteringAndSegmentationSeconds" : 0.08,
+    "discoverySeconds" : 2.06,
+    "faceAndFeatureSeconds" : 132.33,
+    "faceDetectionSeconds" : 132.33,
+    "featurePrintSeconds" : 8.38,
+    "previewGenerationSeconds" : 1.22,
+    "qualityScoringSeconds" : 17.18,
+    "rankingAndSelectionSeconds" : 2.54,
+    "sceneClassificationSeconds" : 518.33,
+    "sessionPersistenceSeconds" : 0.1,
+    "totalWallClockSeconds" : 350.33
   },
-  "photosPerSecond" : 3.1,
-  "wallClockSeconds" : 488.02
+  "photosPerSecond" : 4.3,
+  "pipelineReadinessMetrics" : {
+    "timeToFinalSelection" : 350.33,
+    "timeToFirstAnalyzedPhoto" : 2.61,
+    "timeToFirstThumbnail" : 2.07,
+    "timeToFolderReady" : 2.06,
+    "timeToInteractiveGrid" : 2.08,
+    "timeToPreliminarySelection" : 347.71
+  },
+  "sessionReopenLatencySeconds" : 0.084,
+  "wallClockSeconds" : 350.33
 }
