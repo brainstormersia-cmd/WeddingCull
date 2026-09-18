@@ -347,10 +347,15 @@ final class DiversityAndTargetSelectionTests: XCTestCase {
         }
 
         for seg in segments {
-            guard let quota = segmentQuotas[seg.id], quota > 0 else { continue }
+            let quota = min(segmentQuotas[seg.id] ?? 0, maxSegmentCap)
+            guard quota > 0 else { continue }
             let segCandidates = remainingCandidates
-                .filter { $0.temporalSegmentID == seg.id }
-                .sorted { $0.metrics.overallScore > $1.metrics.overallScore }
+                .filter { seg.photoIDs.contains($0.id) }
+                .sorted { a, b in
+                    let scoreA = a.metrics.overallScore + (burstWinnerIDs.contains(a.id) ? 0.25 : 0.0) - (burstAlternativeIDs.contains(a.id) ? 0.35 : 0.0)
+                    let scoreB = b.metrics.overallScore + (burstWinnerIDs.contains(b.id) ? 0.25 : 0.0) - (burstAlternativeIDs.contains(b.id) ? 0.35 : 0.0)
+                    return scoreA > scoreB
+                }
 
             var segSelectedCount = segmentSelectedCounts[seg.id] ?? 0
 
@@ -484,7 +489,7 @@ final class DiversityAndTargetSelectionTests: XCTestCase {
             segPhotoMap[segID]?.append(photoID)
             item.temporalSegmentID = segID
             item.category = categories[(i / 10) % categories.count]
-            item.metrics.overallScore = 0.30 + Double((i * 37) % 70) / 100.0
+            item.metrics.overallScore = 0.20 + Double(i) / 400.0
             // Realistic varying perceptual hashes
             item.perceptualHash = UInt64((i * 1234567) & 0xFFFFFFFF)
 
