@@ -77,8 +77,11 @@ public struct SessionData: Codable, Sendable {
         self.segments = try container.decode([TemporalSegment].self, forKey: .segments)
         self.personClusters = try container.decode([PersonCluster].self, forKey: .personClusters)
         self.completedPhases = try container.decode([String].self, forKey: .completedPhases)
-        self.phaseTimings = try container.decodeIfPresent(PhaseTimings.self, forKey: .phaseTimings)
-        self.pipelineReadinessMetrics = (try container.decodeIfPresent(PipelineReadinessMetrics.self, forKey: .pipelineReadinessMetrics)) ?? (try container.decodeIfPresent(PipelineReadinessMetrics.self, forKey: .perceivedSpeedMetrics))
+        if let readiness = try container.decodeIfPresent(PipelineReadinessMetrics.self, forKey: .pipelineReadinessMetrics) {
+            self.pipelineReadinessMetrics = readiness
+        } else {
+            self.pipelineReadinessMetrics = try container.decodeIfPresent(PipelineReadinessMetrics.self, forKey: .perceivedSpeedMetrics)
+        }
     }
 
     public func encode(to encoder: Encoder) throws {
