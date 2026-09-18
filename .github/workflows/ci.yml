@@ -36,6 +36,10 @@ jobs:
         run: |
           ./scripts/test.sh --unit-only
 
+      - name: Build Feature Exporter on Apple Silicon
+        run: |
+          swift build -c release --product WeddingCullFeatureExporter
+
       - name: Upload Test Results and Screenshots (arm64)
         uses: actions/upload-artifact@v4
         if: always()
@@ -72,6 +76,10 @@ jobs:
       - name: Run Unit & Integration Tests on Real Intel Architecture
         run: |
           ./scripts/test.sh --unit-only
+
+      - name: Build Feature Exporter on Intel x86_64
+        run: |
+          swift build -c release --product WeddingCullFeatureExporter
 
       - name: Upload Test Results and Screenshots (Intel x86_64)
         uses: actions/upload-artifact@v4

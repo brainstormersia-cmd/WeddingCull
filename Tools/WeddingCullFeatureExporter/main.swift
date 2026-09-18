@@ -5,11 +5,11 @@ import ImageIO
 import WeddingCullCore
 #endif
 
-// MARK: - Provenance Metadata Header Schema
+// MARK: - Provenance Start Record Schema
 
-struct ProvenanceMetadata: Codable {
+struct ProvenanceStartRecord: Codable {
     let record_type: String
-    let experiment_state: String
+    let status: String
     let extractor: String
     let git_sha: String
     let platform: String
@@ -20,7 +20,30 @@ struct ProvenanceMetadata: Codable {
     let apple_vision_requested: Bool
     let apple_vision_framework_linked: Bool
     let feature_schema_version: String
-    let execution_timestamp: String
+    let dataset_root: String
+    let dataset_name: String
+    let total_series: Int
+    let total_frames: Int
+    let start_timestamp: String
+}
+
+// MARK: - Provenance Completion Record Schema
+
+struct ProvenanceCompletionRecord: Codable {
+    let record_type: String
+    let experiment_state: String
+    let extractor: String
+    let git_sha: String
+    let platform: String
+    let os_version: String
+    let architecture: String
+    let total_photos_processed: Int
+    let total_faces_extracted: Int
+    let total_decode_failures: Int
+    let total_vision_failures: Int
+    let elapsed_seconds: Double
+    let photos_per_second: Double
+    let completion_timestamp: String
 }
 
 // MARK: - Per-Face Record Schema
@@ -31,6 +54,9 @@ struct PerFaceMeasurement: Codable {
     let faceCaptureQuality: Double?
     let faceSharpness: Double
     let eyeOpenness: Double?
+    let eyeOpennessMeasured: Bool
+    let leftEyeLandmarksAvailable: Bool
+    let rightEyeLandmarksAvailable: Bool
 }
 
 // MARK: - Per-Photo Feature Record Schema
@@ -42,15 +68,24 @@ struct PhotoFeatureRecord: Codable {
     let image_path: String
     let decode_succeeded: Bool
     let vision_executed: Bool
+    let vision_request_succeeded: Bool
+    let vision_error: String?
     let face_detection_succeeded: Bool
     let face_count: Int
     let fcq_available: Bool
     let landmarks_available: Bool
+    let faces_with_measured_eyes_count: Int
     let rawSharpness: Double
     let rawFaceSharpness: Double?
+    let minFaceSharpness: Double?
+    let maxFaceSharpness: Double?
+    let medianFaceSharpness: Double?
     let detectionConfidence: Double
     let faceCaptureQuality: Double?
+    let minFaceCaptureQuality: Double?
+    let medianFaceCaptureQuality: Double?
     let averageEyeOpenness: Double?
+    let minEyeOpenness: Double?
     let meanLuminance: Double
     let shadowClipping: Double
     let highlightClipping: Double
@@ -69,6 +104,14 @@ struct PhotoFeatureRecord: Codable {
 @main
 struct WeddingCullFeatureExporterApp {
     static func main() {
+        // Enforce macOS environment requirement
+        #if !os(macOS)
+        print("❌ FATAL: BLOCKED_MACOS_REQUIRED")
+        print("WeddingCullFeatureExporter requires native macOS Apple Vision framework (VNDetectFaceLandmarksRequest, VNDetectFaceCaptureQualityRequest).")
+        print("Execution on non-macOS environments is strictly blocked to maintain experiment integrity.")
+        exit(86)
+        #endif
+
         let args = CommandLine.arguments
 
         func getArg(_ flag: String) -> String? {
@@ -92,8 +135,31 @@ struct WeddingCullFeatureExporterApp {
         print("Output Path: \(outputPath)")
         print("Prefer Train: \(preferTrain)")
 
-        // 1. Programmatic Environment Audit
-        let envGitSha = ProcessInfo.processInfo.environment["WEDDINGCULL_GIT_SHA"] ?? "UNSPECIFIED_GIT_SHA"
+        // 1. Mandatory Git SHA Audit
+        var detectedGitSha = ProcessInfo.processInfo.environment["WEDDINGCULL_GIT_SHA"]
+        if detectedGitSha == nil || detectedGitSha!.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || detectedGitSha == "UNSPECIFIED_GIT_SHA" {
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: "/usr/bin/git")
+            process.arguments = ["rev-parse", "HEAD"]
+            let pipe = Pipe()
+            process.standardOutput = pipe
+            do {
+                try process.run()
+                process.waitUntilExit()
+                if process.terminationStatus == 0 {
+                    let data = pipe.fileHandleForReading.readDataToEndOfFile()
+                    if let output = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines), !output.isEmpty {
+                        detectedGitSha = output
+                    }
+                }
+            } catch {}
+        }
+
+        guard let gitSha = detectedGitSha, !gitSha.isEmpty, gitSha != "UNSPECIFIED_GIT_SHA" else {
+            print("❌ FATAL: Valid Git SHA is strictly required for experiment provenance. Set WEDDINGCULL_GIT_SHA or ensure git repository is accessible.")
+            exit(87)
+        }
+
         let osVer = ProcessInfo.processInfo.operatingSystemVersionString
         #if arch(arm64)
         let arch = "arm64"
@@ -103,32 +169,11 @@ struct WeddingCullFeatureExporterApp {
         let arch = "unknown"
         #endif
 
-        #if os(macOS)
         let platform = "macOS"
         let appleVisionLinked = true
-        #else
-        let platform = "non-macOS"
-        let appleVisionLinked = false
-        #endif
 
         let isoFormatter = ISO8601DateFormatter()
-        let timestamp = isoFormatter.string(from: Date())
-
-        let provenance = ProvenanceMetadata(
-            record_type: "PROVENANCE_HEADER",
-            experiment_state: "EXECUTED_AUTHENTIC",
-            extractor: "WeddingCullFeatureExporter",
-            git_sha: envGitSha,
-            platform: platform,
-            os_version: osVer,
-            architecture: arch,
-            preview_max_edge: 1000,
-            technical_analysis_max_edge: 800,
-            apple_vision_requested: true,
-            apple_vision_framework_linked: appleVisionLinked,
-            feature_schema_version: "1.0",
-            execution_timestamp: timestamp
-        )
+        let startTimestamp = isoFormatter.string(from: Date())
 
         // 2. Load Dataset via Direct PhotoTriageAdapter
         let adapter = PhotoTriageAdapter()
@@ -156,6 +201,7 @@ struct WeddingCullFeatureExporterApp {
 
         var processedFrames = 0
         var totalDecodeFailures = 0
+        var totalVisionFailures = 0
         var totalExtractedFaces = 0
 
         // Prepare Output File
@@ -184,10 +230,40 @@ struct WeddingCullFeatureExporterApp {
             }
         }
 
-        // Write Header
-        writeJSONLine(provenance)
+        // Write Start Provenance
+        let startProvenance = ProvenanceStartRecord(
+            record_type: "PROVENANCE_START",
+            status: "STARTED",
+            extractor: "WeddingCullFeatureExporter",
+            git_sha: gitSha,
+            platform: platform,
+            os_version: osVer,
+            architecture: arch,
+            preview_max_edge: 1000,
+            technical_analysis_max_edge: 800,
+            apple_vision_requested: true,
+            apple_vision_framework_linked: appleVisionLinked,
+            feature_schema_version: "1.0",
+            dataset_root: datasetRoot,
+            dataset_name: dataset.dataset_name,
+            total_series: dataset.total_series,
+            total_frames: dataset.total_frames,
+            start_timestamp: startTimestamp
+        )
+        writeJSONLine(startProvenance)
 
         let tStart = CFAbsoluteTimeGetCurrent()
+
+        func computeMedian(_ values: [Double]) -> Double? {
+            guard !values.isEmpty else { return nil }
+            let sorted = values.sorted()
+            let count = sorted.count
+            if count % 2 == 1 {
+                return sorted[count / 2]
+            } else {
+                return (sorted[count / 2 - 1] + sorted[count / 2]) / 2.0
+            }
+        }
 
         // 4. Extract Superset of Measurements for every unique photo
         var seenPhotos = Set<String>()
@@ -209,15 +285,24 @@ struct WeddingCullFeatureExporterApp {
                         image_path: f.image_path,
                         decode_succeeded: false,
                         vision_executed: false,
+                        vision_request_succeeded: false,
+                        vision_error: "Preview decode failed",
                         face_detection_succeeded: false,
                         face_count: 0,
                         fcq_available: false,
                         landmarks_available: false,
+                        faces_with_measured_eyes_count: 0,
                         rawSharpness: 0.0,
                         rawFaceSharpness: nil,
+                        minFaceSharpness: nil,
+                        maxFaceSharpness: nil,
+                        medianFaceSharpness: nil,
                         detectionConfidence: 0.0,
                         faceCaptureQuality: nil,
+                        minFaceCaptureQuality: nil,
+                        medianFaceCaptureQuality: nil,
                         averageEyeOpenness: nil,
+                        minEyeOpenness: nil,
                         meanLuminance: 0.0,
                         shadowClipping: 0.0,
                         highlightClipping: 0.0,
@@ -238,11 +323,16 @@ struct WeddingCullFeatureExporterApp {
                 let tech = qualityAnalyzer.analyze(cgImage: previewCG)
 
                 // B. Apple Vision Face Analysis (1000px context)
-                let faces = faceRecognizer.extractFacesWithIdentity(from: previewCG, enableFaceCaptureQuality: true)
+                let faceResult = faceRecognizer.extractFacesWithIdentityResult(from: previewCG, enableFaceCaptureQuality: true)
+                let visionSucceeded = faceResult.visionRequestSucceeded
+                if !visionSucceeded {
+                    totalVisionFailures += 1
+                }
+                let faces = faceResult.faces
                 let faceDetected = !faces.isEmpty
                 totalExtractedFaces += faces.count
 
-                // C. Genuine Crop-based Face Sharpness
+                // C. Genuine Crop-based Face Sharpness & Landmark Measurements
                 var perFaceRecords: [PerFaceMeasurement] = []
                 var faceSharpnesses: [Double] = []
 
@@ -260,16 +350,31 @@ struct WeddingCullFeatureExporterApp {
                         detectionConfidence: face.detectionConfidence,
                         faceCaptureQuality: face.faceCaptureQuality,
                         faceSharpness: cropSharp,
-                        eyeOpenness: face.eyeOpenness
+                        eyeOpenness: face.eyeOpenness,
+                        eyeOpennessMeasured: face.eyeOpennessMeasured,
+                        leftEyeLandmarksAvailable: face.leftEyeLandmarksAvailable,
+                        rightEyeLandmarksAvailable: face.rightEyeLandmarksAvailable
                     ))
                 }
 
                 let avgFaceSharp = faceSharpnesses.isEmpty ? nil : (faceSharpnesses.reduce(0.0, +) / Double(faceSharpnesses.count))
+                let minFaceSharp = faceSharpnesses.min()
+                let maxFaceSharp = faceSharpnesses.max()
+                let medianFaceSharp = computeMedian(faceSharpnesses)
+
                 let avgConf = faces.isEmpty ? 0.8 : (faces.reduce(0.0) { $0 + $1.detectionConfidence } / Double(faces.count))
-                let avgEye = faces.isEmpty ? nil : (faces.reduce(0.0) { $0 + $1.eyeOpenness } / Double(faces.count))
+
                 let validCQs = faces.compactMap { $0.faceCaptureQuality }
                 let avgCQ = validCQs.isEmpty ? nil : (validCQs.reduce(0.0, +) / Double(validCQs.count))
-                let landmarksAvailable = faces.contains { $0.eyeOpenness != nil }
+                let minCQ = validCQs.min()
+                let medianCQ = computeMedian(validCQs)
+
+                let measuredEyes = faces.filter { $0.eyeOpennessMeasured }
+                let measuredEyesCount = measuredEyes.count
+                let validEyes = measuredEyes.compactMap { $0.eyeOpenness }
+                let avgEye = validEyes.isEmpty ? (faces.isEmpty ? nil : 0.8) : (validEyes.reduce(0.0, +) / Double(validEyes.count))
+                let minEye = validEyes.min()
+                let landmarksAvailable = faces.contains { $0.leftEyeLandmarksAvailable || $0.rightEyeLandmarksAvailable }
 
                 // D. Exposure
                 let expScore = QualityScorer.computeExposureScore(
@@ -322,15 +427,24 @@ struct WeddingCullFeatureExporterApp {
                     image_path: f.image_path,
                     decode_succeeded: true,
                     vision_executed: true,
+                    vision_request_succeeded: visionSucceeded,
+                    vision_error: faceResult.errorDescription,
                     face_detection_succeeded: faceDetected,
                     face_count: faces.count,
                     fcq_available: avgCQ != nil,
                     landmarks_available: landmarksAvailable,
+                    faces_with_measured_eyes_count: measuredEyesCount,
                     rawSharpness: tech.rawSharpness,
                     rawFaceSharpness: avgFaceSharp,
+                    minFaceSharpness: minFaceSharp,
+                    maxFaceSharpness: maxFaceSharp,
+                    medianFaceSharpness: medianFaceSharp,
                     detectionConfidence: avgConf,
                     faceCaptureQuality: avgCQ,
+                    minFaceCaptureQuality: minCQ,
+                    medianFaceCaptureQuality: medianCQ,
                     averageEyeOpenness: avgEye,
+                    minEyeOpenness: minEye,
                     meanLuminance: tech.meanLuminance,
                     shadowClipping: tech.shadowClipping,
                     highlightClipping: tech.highlightClipping,
@@ -353,12 +467,35 @@ struct WeddingCullFeatureExporterApp {
         }
 
         let elapsed = CFAbsoluteTimeGetCurrent() - tStart
+        let pps = Double(processedFrames) / max(0.001, elapsed)
+        let completionTimestamp = isoFormatter.string(from: Date())
+
+        // 5. Emit Final Provenance Completion (earned upon successful completion)
+        let completionRecord = ProvenanceCompletionRecord(
+            record_type: "PROVENANCE_COMPLETION",
+            experiment_state: "EXECUTED_AUTHENTIC",
+            extractor: "WeddingCullFeatureExporter",
+            git_sha: gitSha,
+            platform: platform,
+            os_version: osVer,
+            architecture: arch,
+            total_photos_processed: processedFrames,
+            total_faces_extracted: totalExtractedFaces,
+            total_decode_failures: totalDecodeFailures,
+            total_vision_failures: totalVisionFailures,
+            elapsed_seconds: elapsed,
+            photos_per_second: pps,
+            completion_timestamp: completionTimestamp
+        )
+        writeJSONLine(completionRecord)
+
         print("\n=== Authentic Feature Export Summary ===")
         print("Total Photos Processed: \(processedFrames)")
         print("Total Faces Extracted: \(totalExtractedFaces)")
         print("Decode Failures: \(totalDecodeFailures)")
-        print("Execution Time: \(String(format: "%.2f", elapsed)) s")
-        print("Throughput: \(String(format: "%.1f", Double(processedFrames) / max(0.001, elapsed))) PPS")
+        print("Vision Failures: \(totalVisionFailures)")
+        print("Execution Time: \(String(format: \"%.2f\", elapsed)) s")
+        print("Throughput: \(String(format: \"%.1f\", pps)) PPS")
         print("Authentic Feature Cache written to: \(outputPath)")
     }
 }

@@ -18,6 +18,9 @@ public struct FaceInstance: Sendable, Codable {
     public let faceSharpness: Double?
     public let identityEmbedding: [Float] // Normalized descriptor vector (64-d geometric or 128-d learned)
     public let descriptorType: DescriptorType
+    public let eyeOpennessMeasured: Bool
+    public let leftEyeLandmarksAvailable: Bool
+    public let rightEyeLandmarksAvailable: Bool
 
     public init(
         boundingBox: CGRect,
@@ -27,7 +30,10 @@ public struct FaceInstance: Sendable, Codable {
         faceCaptureQuality: Double? = nil,
         faceSharpness: Double? = nil,
         identityEmbedding: [Float],
-        descriptorType: DescriptorType = .geometric
+        descriptorType: DescriptorType = .geometric,
+        eyeOpennessMeasured: Bool = false,
+        leftEyeLandmarksAvailable: Bool = false,
+        rightEyeLandmarksAvailable: Bool = false
     ) {
         self.boundingBox = boundingBox
         self.eyeOpenness = eyeOpenness
@@ -38,6 +44,31 @@ public struct FaceInstance: Sendable, Codable {
         self.faceSharpness = faceSharpness
         self.identityEmbedding = identityEmbedding
         self.descriptorType = descriptorType
+        self.eyeOpennessMeasured = eyeOpennessMeasured
+        self.leftEyeLandmarksAvailable = leftEyeLandmarksAvailable
+        self.rightEyeLandmarksAvailable = rightEyeLandmarksAvailable
+    }
+}
+
+public struct FaceExtractionResult: Sendable {
+    public let faces: [FaceInstance]
+    public let visionRequestSucceeded: Bool
+    public let landmarksRequestSucceeded: Bool
+    public let captureQualityRequestSucceeded: Bool
+    public let errorDescription: String?
+
+    public init(
+        faces: [FaceInstance],
+        visionRequestSucceeded: Bool,
+        landmarksRequestSucceeded: Bool,
+        captureQualityRequestSucceeded: Bool,
+        errorDescription: String? = nil
+    ) {
+        self.faces = faces
+        self.visionRequestSucceeded = visionRequestSucceeded
+        self.landmarksRequestSucceeded = landmarksRequestSucceeded
+        self.captureQualityRequestSucceeded = captureQualityRequestSucceeded
+        self.errorDescription = errorDescription
     }
 }
 
@@ -84,6 +115,11 @@ public final class FaceIdentityRecognizer: @unchecked Sendable {
 
     /// Detects faces and extracts true identity embeddings for each face in the image
     public func extractFacesWithIdentity(from cgImage: CGImage, enableFaceCaptureQuality: Bool = false) -> [FaceInstance] {
+        return extractFacesWithIdentityResult(from: cgImage, enableFaceCaptureQuality: enableFaceCaptureQuality).faces
+    }
+
+    /// Full result API: Distinguishes Vision execution success vs failure and provides detailed request metrics
+    public func extractFacesWithIdentityResult(from cgImage: CGImage, enableFaceCaptureQuality: Bool = false) -> FaceExtractionResult {
         let landmarksRequest = VNDetectFaceLandmarksRequest()
         var requests: [VNRequest] = [landmarksRequest]
         var captureQualityRequest: VNDetectFaceCaptureQualityRequest? = nil
@@ -98,12 +134,26 @@ public final class FaceIdentityRecognizer: @unchecked Sendable {
         do {
             try handler.perform(requests)
         } catch {
-            return []
+            return FaceExtractionResult(
+                faces: [],
+                visionRequestSucceeded: false,
+                landmarksRequestSucceeded: false,
+                captureQualityRequestSucceeded: false,
+                errorDescription: error.localizedDescription
+            )
         }
 
-        return processObservations(
+        let faces = processObservations(
             landmarksRequest.results ?? [],
             captureQualityObservations: captureQualityRequest?.results as? [VNFaceObservation]
+        )
+
+        return FaceExtractionResult(
+            faces: faces,
+            visionRequestSucceeded: true,
+            landmarksRequestSucceeded: landmarksRequest.results != nil,
+            captureQualityRequestSucceeded: enableFaceCaptureQuality ? (captureQualityRequest?.results != nil) : false,
+            errorDescription: nil
         )
     }
 
@@ -130,15 +180,23 @@ public final class FaceIdentityRecognizer: @unchecked Sendable {
         for obs in sortedObservations {
             let bbox = obs.boundingBox
             // Calculate eye openness from landmarks
-            var leftEyeOpen = 0.8
-            var rightEyeOpen = 0.8
-            if let leftEye = obs.landmarks?.leftEye {
-                leftEyeOpen = computeEyeOpennessRatio(eye: leftEye)
+            let leftEye = obs.landmarks?.leftEye
+            let rightEye = obs.landmarks?.rightEye
+
+            let leftEyeAvailable = (leftEye?.pointCount ?? 0) > 0
+            let rightEyeAvailable = (rightEye?.pointCount ?? 0) > 0
+            let eyeMeasured = leftEyeAvailable || rightEyeAvailable
+
+            var avgEyeOpen = 0.8 // Default baseline fallback for legacy calculations
+            if leftEyeAvailable && rightEyeAvailable, let lEye = leftEye, let rEye = rightEye {
+                let lOpen = computeEyeOpennessRatio(eye: lEye)
+                let rOpen = computeEyeOpennessRatio(eye: rEye)
+                avgEyeOpen = (lOpen + rOpen) / 2.0
+            } else if leftEyeAvailable, let lEye = leftEye {
+                avgEyeOpen = computeEyeOpennessRatio(eye: lEye)
+            } else if rightEyeAvailable, let rEye = rightEye {
+                avgEyeOpen = computeEyeOpennessRatio(eye: rEye)
             }
-            if let rightEye = obs.landmarks?.rightEye {
-                rightEyeOpen = computeEyeOpennessRatio(eye: rightEye)
-            }
-            let avgEyeOpen = (leftEyeOpen + rightEyeOpen) / 2.0
 
             // Estimate face capture quality:
             // If explicit captureQualityObservations provided, match by bounding box IoU
@@ -173,7 +231,10 @@ public final class FaceIdentityRecognizer: @unchecked Sendable {
                 faceCaptureQuality: matchedCaptureQuality,
                 faceSharpness: nil,
                 identityEmbedding: embedding,
-                descriptorType: descriptorType
+                descriptorType: descriptorType,
+                eyeOpennessMeasured: eyeMeasured,
+                leftEyeLandmarksAvailable: leftEyeAvailable,
+                rightEyeLandmarksAvailable: rightEyeAvailable
             ))
         }
 

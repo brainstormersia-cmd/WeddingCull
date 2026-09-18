@@ -62,31 +62,36 @@ public struct RealSeriesFrame: Codable, Sendable {
 public struct GroundTruthPairwiseComparison: Codable, Sendable {
     public let photo_a: String
     public let photo_b: String
-    public let votes_a: Int
-    public let votes_b: Int
+    public let votes_a: Int?
+    public let votes_b: Int?
+    public let has_raw_votes: Bool
+    public let derived_order_preference: String?
     public let reasons: [String]?
 
     public var totalVotes: Int {
-        return votes_a + votes_b
+        return (votes_a ?? 0) + (votes_b ?? 0)
     }
 
     /// Derived majority winner if not tied
     public var majorityWinner: String? {
-        if votes_a > votes_b { return photo_a }
-        if votes_b > votes_a { return photo_b }
+        guard let va = votes_a, let vb = votes_b else {
+            return derived_order_preference
+        }
+        if va > vb { return photo_a }
+        if vb > va { return photo_b }
         return nil // Exact tie
     }
 
     /// Preference probability for photo_a: votes_a / totalVotes (0.5 if tied or no votes)
     public var preferenceProbabilityA: Double {
-        guard totalVotes > 0 else { return 0.5 }
-        return Double(votes_a) / Double(totalVotes)
+        guard let va = votes_a, let vb = votes_b, (va + vb) > 0 else { return 0.5 }
+        return Double(va) / Double(va + vb)
     }
 
     /// Preference probability for majority winner: max(votes_a, votes_b) / totalVotes
     public var preferenceProbabilityWinner: Double {
-        guard totalVotes > 0 else { return 0.5 }
-        return Double(max(votes_a, votes_b)) / Double(totalVotes)
+        guard let va = votes_a, let vb = votes_b, (va + vb) > 0 else { return 0.5 }
+        return Double(max(va, vb)) / Double(va + vb)
     }
 
     /// Annotator agreement: proportion of votes for majority winner
@@ -102,14 +107,18 @@ public struct GroundTruthPairwiseComparison: Codable, Sendable {
     public init(
         photo_a: String,
         photo_b: String,
-        votes_a: Int,
-        votes_b: Int,
+        votes_a: Int?,
+        votes_b: Int?,
+        has_raw_votes: Bool = true,
+        derived_order_preference: String? = nil,
         reasons: [String]? = nil
     ) {
         self.photo_a = photo_a
         self.photo_b = photo_b
         self.votes_a = votes_a
         self.votes_b = votes_b
+        self.has_raw_votes = has_raw_votes
+        self.derived_order_preference = derived_order_preference
         self.reasons = reasons
     }
 }

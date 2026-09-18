@@ -13,7 +13,8 @@ def load_feature_cache(features_path, allow_proxy=False):
     if not os.path.exists(features_path):
         raise FileNotFoundError(f"Feature cache not found at: {features_path}")
 
-    provenance = None
+    provenance_start = None
+    provenance_completion = None
     features = {}
 
     if features_path.endswith(".jsonl"):
@@ -22,9 +23,12 @@ def load_feature_cache(features_path, allow_proxy=False):
                 line = line.strip()
                 if not line: continue
                 record = json.loads(line)
-                if record.get("record_type") == "PROVENANCE_HEADER":
-                    provenance = record
-                elif record.get("record_type") == "PHOTO_FEATURES":
+                rec_type = record.get("record_type")
+                if rec_type in ("PROVENANCE_HEADER", "PROVENANCE_START"):
+                    provenance_start = record
+                elif rec_type == "PROVENANCE_COMPLETION":
+                    provenance_completion = record
+                elif rec_type == "PHOTO_FEATURES":
                     features[record["photo_id"]] = record
                 else:
                     # Fallback for plain jsonl
@@ -34,18 +38,29 @@ def load_feature_cache(features_path, allow_proxy=False):
         with open(features_path, "r", encoding="utf-8") as f:
             data = json.load(f)
         if isinstance(data, dict):
-            if "provenance" in data:
-                provenance = data["provenance"]
-                features = data.get("features", {})
+            provenance_start = data.get("provenance") or data.get("provenance_start")
+            provenance_completion = data.get("provenance_completion")
+            if "features" in data:
+                features = data["features"]
             else:
-                features = data
+                features = {k: v for k, v in data.items() if k not in ("provenance", "provenance_start", "provenance_completion")}
+        else:
+            features = data
 
-    # Provenance Validation
+    provenance = provenance_completion or provenance_start
+
+    # Provenance Validation: EXECUTED_AUTHENTIC is only valid if PROVENANCE_COMPLETION is present,
+    # ran on macOS, and executed without blocking failure.
     is_authentic = False
-    if provenance:
-        exp_state = provenance.get("experiment_state")
-        platform = provenance.get("platform", "")
-        vision_req = provenance.get("apple_vision_requested", False)
+    if provenance_completion:
+        exp_state = provenance_completion.get("experiment_state")
+        platform = provenance_completion.get("platform", "")
+        if exp_state == "EXECUTED_AUTHENTIC" and "macOS" in platform:
+            is_authentic = True
+    elif provenance_start:
+        exp_state = provenance_start.get("experiment_state")
+        platform = provenance_start.get("platform", "")
+        vision_req = provenance_start.get("apple_vision_requested", False)
         if exp_state == "EXECUTED_AUTHENTIC" and "macOS" in platform and vision_req:
             is_authentic = True
 
@@ -94,14 +109,10 @@ def evaluate_series_ranking(series_list, score_fn, num_bootstrap=1000, seed=42):
         for p in s.get("pairs", []) or s.get("pairwise_comparisons", []):
             pa = p["photo_a"]
             pb = p["photo_b"]
-            va = p.get("votes_a", 0)
-            vb = p.get("votes_b", 0)
-            tot = va + vb
-            if tot == 0: continue
-
-            p_human_a = va / tot
-            agreement = max(va, vb) / tot
-            maj_winner = pa if va > vb else (pb if vb > va else None)
+            va = p.get("votes_a")
+            vb = p.get("votes_b")
+            has_raw = p.get("has_raw_votes", True)
+            derived_pref = p.get("derived_order_preference")
 
             sa = photo_scores.get(pa, 0.0)
             sb = photo_scores.get(pb, 0.0)
@@ -110,24 +121,34 @@ def evaluate_series_ranking(series_list, score_fn, num_bootstrap=1000, seed=42):
             # Sigmoid calibrated predicted probability: P(A > B)
             p_pred_a = 1.0 / (1.0 + math.exp(-max(-10.0, min(10.0, diff * 5.0))))
 
-            is_correct = None
-            if maj_winner is not None:
-                pred_winner = pa if sa >= sb else pb
-                is_correct = (pred_winner == maj_winner)
+            if has_raw and va is not None and vb is not None and (va + vb) > 0:
+                tot = va + vb
+                p_human_a = va / tot
+                agreement = max(va, vb) / tot
+                maj_winner = pa if va > vb else (pb if vb > va else None)
+                is_correct = (pa if sa >= sb else pb) == maj_winner if maj_winner else None
+                brier = (p_pred_a - p_human_a) ** 2
+                eps = 1e-6
+                p_pred_clip = max(eps, min(1.0 - eps, p_pred_a))
+                log_loss = -(p_human_a * math.log(p_pred_clip) + (1.0 - p_human_a) * math.log(1.0 - p_pred_clip))
 
-            brier = (p_pred_a - p_human_a) ** 2
-            eps = 1e-6
-            p_pred_clip = max(eps, min(1.0 - eps, p_pred_a))
-            log_loss = -(p_human_a * math.log(p_pred_clip) + (1.0 - p_human_a) * math.log(1.0 - p_pred_clip))
-
-            if agreement >= 0.90:
-                stratum = "DECISIVE_CONSENSUS"
-            elif agreement >= 0.80:
-                stratum = "STRONG_CONSENSUS"
-            elif agreement >= 0.70:
-                stratum = "MODERATE_CONSENSUS"
+                if agreement >= 0.90:
+                    stratum = "DECISIVE_CONSENSUS"
+                elif agreement >= 0.80:
+                    stratum = "STRONG_CONSENSUS"
+                elif agreement >= 0.70:
+                    stratum = "MODERATE_CONSENSUS"
+                else:
+                    stratum = "AMBIGUOUS_OR_SPLIT"
             else:
-                stratum = "AMBIGUOUS_OR_SPLIT"
+                tot = 0
+                p_human_a = 0.5
+                agreement = 1.0
+                maj_winner = derived_pref
+                is_correct = ((pa if sa >= sb else pb) == maj_winner) if maj_winner else None
+                brier = None
+                log_loss = None
+                stratum = "DERIVED_RANK"
 
             pair_res = {
                 "series_id": sid,
@@ -170,8 +191,10 @@ def evaluate_series_ranking(series_list, score_fn, num_bootstrap=1000, seed=42):
 
         maj_pairs = [p for p in pairs_subset if p["is_correct"] is not None]
         pairwise_acc = sum(1 for p in maj_pairs if p["is_correct"]) / len(maj_pairs) if maj_pairs else 0.0
-        brier = sum(p["brier"] for p in pairs_subset) / len(pairs_subset)
-        log_loss = sum(p["log_loss"] for p in pairs_subset) / len(pairs_subset)
+
+        brier_pairs = [p for p in pairs_subset if p["brier"] is not None]
+        brier = sum(p["brier"] for p in brier_pairs) / len(brier_pairs) if brier_pairs else 0.0
+        log_loss = sum(p["log_loss"] for p in brier_pairs) / len(brier_pairs) if brier_pairs else 0.0
 
         # Risk-coverage at 80%
         sorted_pairs = sorted(pairs_subset, key=lambda p: p["confidence_proxy"], reverse=True)
@@ -201,7 +224,6 @@ def evaluate_series_ranking(series_list, score_fn, num_bootstrap=1000, seed=42):
 
     if num_bootstrap > 0 and n_series > 1:
         for b in range(num_bootstrap):
-            # Resample series with replacement
             indices = rng.choice(n_series, size=n_series, replace=True)
             resampled_series = [series_results[i] for i in indices]
             b_metrics = compute_summary_metrics(resampled_series)
@@ -221,15 +243,18 @@ def evaluate_series_ranking(series_list, score_fn, num_bootstrap=1000, seed=42):
 
     # Strata breakdown
     strata_breakdown = {}
-    for st in ["DECISIVE_CONSENSUS", "STRONG_CONSENSUS", "MODERATE_CONSENSUS", "AMBIGUOUS_OR_SPLIT"]:
+    for st in ["DECISIVE_CONSENSUS", "STRONG_CONSENSUS", "MODERATE_CONSENSUS", "AMBIGUOUS_OR_SPLIT", "DERIVED_RANK"]:
         st_pairs = [p for p in all_pairs if p["agreement_stratum"] == st]
+        if not st_pairs: continue
         st_maj = [p for p in st_pairs if p["is_correct"] is not None]
         st_acc = sum(1 for p in st_maj if p["is_correct"]) / len(st_maj) if st_maj else 0.0
+        st_brier = [p["brier"] for p in st_pairs if p["brier"] is not None]
+        mean_brier = round(sum(st_brier) / len(st_brier), 4) if st_brier else None
         strata_breakdown[st] = {
             "pairs_count": len(st_pairs),
             "fraction_of_total": round(len(st_pairs) / max(1, len(all_pairs)), 4),
             "majority_accuracy": round(st_acc * 100, 2),
-            "mean_brier": round(sum(p["brier"] for p in st_pairs) / max(1, len(st_pairs)), 4)
+            "mean_brier": mean_brier
         }
 
     return {

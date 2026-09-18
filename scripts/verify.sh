@@ -111,6 +111,16 @@ else
     exit 1
 fi
 
+# 5c. Verify WeddingCullFeatureExporter target build
+echo "--- Step 5c: Verify WeddingCullFeatureExporter Build ---"
+swift build -c release --product WeddingCullFeatureExporter
+if [ $? -eq 0 ]; then
+    echo "✅ WeddingCullFeatureExporter compiled successfully."
+else
+    echo "❌ WeddingCullFeatureExporter build failed!"
+    exit 1
+fi
+
 # Check if Core ML model is present and compiled
 if [ -d "models/mobileclip_s0_image.mlmodelc" ] || [ -d "models/mobileclip_s0_image.mlpackage" ]; then
     ADVANCED_AI="COREML_MOBILECLIP"

@@ -102,6 +102,7 @@ final class PhotoTriageAdapterDirectTests: XCTestCase {
         // Pair 1 vs 2: 2 votes for 2 (RIGHT in rev 1, LEFT in rev 2)
         let pair12 = pairs.first { $0.photo_a == "000015-01.JPG" && $0.photo_b == "000015-02.JPG" }
         XCTAssertNotNil(pair12)
+        XCTAssertTrue(pair12?.has_raw_votes ?? false)
         XCTAssertEqual(pair12?.votes_a, 0)
         XCTAssertEqual(pair12?.votes_b, 2)
         XCTAssertEqual(pair12?.majorityWinner, "000015-02.JPG")
@@ -111,8 +112,18 @@ final class PhotoTriageAdapterDirectTests: XCTestCase {
         // Pair 1 vs 3: 1 vote for 1 (LEFT in rev 3)
         let pair13 = pairs.first { $0.photo_a == "000015-01.JPG" && $0.photo_b == "000015-03.JPG" }
         XCTAssertNotNil(pair13)
+        XCTAssertTrue(pair13?.has_raw_votes ?? false)
         XCTAssertEqual(pair13?.votes_a, 1)
         XCTAssertEqual(pair13?.votes_b, 0)
         XCTAssertEqual(pair13?.majorityWinner, "000015-01.JPG")
+
+        // Pair 2 vs 3: No reviews present in review JSON -> has_raw_votes must be false, votes nil, derived order preserved
+        let pair23 = pairs.first { $0.photo_a == "000015-02.JPG" && $0.photo_b == "000015-03.JPG" }
+        XCTAssertNotNil(pair23)
+        XCTAssertFalse(pair23?.has_raw_votes ?? true)
+        XCTAssertNil(pair23?.votes_a)
+        XCTAssertNil(pair23?.votes_b)
+        XCTAssertEqual(pair23?.derived_order_preference, "000015-02.JPG")
+        XCTAssertEqual(pair23?.majorityWinner, "000015-02.JPG")
     }
 }

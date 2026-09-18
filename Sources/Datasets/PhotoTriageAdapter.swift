@@ -358,18 +358,14 @@ public final class PhotoTriageAdapter: DatasetAdapter, Sendable {
                     }
                 }
 
-                // If no review file, fallback to pairlist Bradley-Terry / ranks
-                if votesA + votesB == 0 {
-                    if pl.rank1 < pl.rank2 {
-                        votesA = 1
-                        votesB = 0
-                    } else if pl.rank2 < pl.rank1 {
-                        votesA = 0
-                        votesB = 1
-                    } else {
-                        votesA = 1
-                        votesB = 1
-                    }
+                let hasRawVotes = (votesA + votesB) > 0
+                let derivedPref: String?
+                if pl.rank1 < pl.rank2 {
+                    derivedPref = pa
+                } else if pl.rank2 < pl.rank1 {
+                    derivedPref = pb
+                } else {
+                    derivedPref = nil
                 }
 
                 var combinedReasons: [String] = []
@@ -381,8 +377,10 @@ public final class PhotoTriageAdapter: DatasetAdapter, Sendable {
                 pairwiseList.append(GroundTruthPairwiseComparison(
                     photo_a: pa,
                     photo_b: pb,
-                    votes_a: votesA,
-                    votes_b: votesB,
+                    votes_a: hasRawVotes ? votesA : nil,
+                    votes_b: hasRawVotes ? votesB : nil,
+                    has_raw_votes: hasRawVotes,
+                    derived_order_preference: derivedPref,
                     reasons: combinedReasons.isEmpty ? nil : combinedReasons
                 ))
             }

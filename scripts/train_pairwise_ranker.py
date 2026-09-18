@@ -10,8 +10,11 @@ from ranking_evaluator import load_feature_cache, evaluate_series_ranking
 FEATURE_NAMES = [
     "log_raw_sharpness",
     "log_face_sharpness",
+    "has_face",
     "detection_confidence",
+    "fcq_available",
     "face_capture_quality",
+    "eye_measured",
     "eye_openness",
     "mean_luminance",
     "shadow_clipping",
@@ -31,11 +34,16 @@ def extract_vector(feat):
     log_s = math.log1p(raw_s) / math.log1p(5000.0)
     log_fs = (math.log1p(raw_fs) / math.log1p(5000.0)) if raw_fs is not None else log_s
 
-    conf = feat.get("detectionConfidence", 0.5)
+    face_count = feat.get("face_count", 0)
+    has_face = 1.0 if face_count > 0 else 0.0
+    conf = feat.get("detectionConfidence", 0.5) if has_face else 0.0
+
     fcq = feat.get("faceCaptureQuality")
-    fcq_val = fcq if fcq is not None else 0.50
-    eye = feat.get("averageEyeOpenness")
-    eye_val = eye if eye is not None else 0.80
+    fcq_available = 1.0 if fcq is not None else 0.0
+    fcq_val = fcq if fcq is not None else 0.0
+
+    eye_measured = 1.0 if (feat.get("faces_with_measured_eyes_count", 0) > 0 or (feat.get("landmarks_available", False) and feat.get("averageEyeOpenness") is not None)) else 0.0
+    eye_val = feat.get("averageEyeOpenness", 0.0) if eye_measured else 0.0
 
     mean_lum = feat.get("meanLuminance", 0.5)
     shadow_clip = feat.get("shadowClipping", 0.0)
@@ -48,8 +56,11 @@ def extract_vector(feat):
     return np.array([
         log_s,
         log_fs,
+        has_face,
         conf,
+        fcq_available,
         fcq_val,
+        eye_measured,
         eye_val,
         mean_lum,
         shadow_clip,
@@ -102,15 +113,27 @@ def main():
     for s in fit_series:
         pairs = s.get("pairs", []) or s.get("pairwise_comparisons", [])
         if not pairs: continue
-        series_weight = 1.0 / float(len(pairs))  # Series-balanced weighting
 
+        # Filter to pairs that possess genuine raw crowd votes
+        valid_raw_pairs = []
         for p in pairs:
+            if p.get("has_raw_votes") is False:
+                continue
+            va = p.get("votes_a")
+            vb = p.get("votes_b")
+            if va is None or vb is None or (va + vb) == 0:
+                continue
+            valid_raw_pairs.append(p)
+
+        if not valid_raw_pairs: continue
+        series_weight = 1.0 / float(len(valid_raw_pairs))  # Series-balanced weighting
+
+        for p in valid_raw_pairs:
             pa = p["photo_a"]
             pb = p["photo_b"]
-            va = p.get("votes_a", 0)
-            vb = p.get("votes_b", 0)
+            va = p["votes_a"]
+            vb = p["votes_b"]
             tot = va + vb
-            if tot == 0: continue
 
             feat_a = features.get(pa)
             feat_b = features.get(pb)
@@ -130,7 +153,7 @@ def main():
     sample_weights = np.array(sample_weights_list, dtype=np.float64)
     sample_weights /= np.mean(sample_weights)  # Normalize weights to mean 1
 
-    print(f"Training on {len(X_diff)} pairwise comparisons from FIT split.")
+    print(f"Training on {len(X_diff)} pairwise comparisons from FIT split (strictly pairs with genuine raw votes).")
 
     # Objective: Weighted Soft Binary Cross-Entropy with L2 regularization
     num_feats = X_diff.shape[1]
