@@ -165,7 +165,7 @@ jobs:
       - name: Download and Compile MobileCLIP for Intel Benchmark
         run: |
           set -euo pipefail
-          python3 -m pip install --quiet --upgrade --break-system-packages "huggingface_hub[cli]"
+          python3 -m pip install --quiet --break-system-packages "huggingface_hub" || true
           ./scripts/fetch-models.sh
 
       - name: Execute MobileCLIP-S0 Benchmark on Intel (Core ML cpuAndGPU)
@@ -317,7 +317,7 @@ jobs:
       - name: Setup Python and Hugging Face Client
         run: |
           set -euo pipefail
-          python3 -m pip install --quiet --upgrade --break-system-packages "huggingface_hub[cli]"
+          python3 -m pip install --quiet --break-system-packages "huggingface_hub" || true
 
       - name: Download and Compile Apple MobileCLIP Model
         run: |
