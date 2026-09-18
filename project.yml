@@ -120,4 +120,13 @@ targets:
     dependencies:
       - target: WeddingCull
 
+  QualityBenchmarkV2:
+    type: tool
+    platform: macOS
+    sources:
+      - path: Tools/QualityBenchmarkV2
+      - path: Tools/TestDatasetGenerator/SyntheticWeddingGenerator.swift
+    dependencies:
+      - target: WeddingCull
+
 
