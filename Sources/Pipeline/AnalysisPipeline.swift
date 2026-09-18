@@ -223,6 +223,7 @@ public struct StageAOutput: Sendable {
     public let perceptualHash: UInt64?
     public let featurePrint: VNFeaturePrintObservation?
     public let faces: [FaceInstance]
+    public let cachedRecord: CachedAnalysisRecord?
 }
 public typealias StageAResult = StageAOutput
 
@@ -250,6 +251,7 @@ actor AnalysisCollector {
     private var faceInstancesMap: [String: [FaceInstance]] = [:]
     private var featurePrintsMap: [String: VNFeaturePrintObservation] = [:]
     private var completedCount: Int = 0
+    private var thumbnailCount: Int = 0
     private var totalPreviewSeconds: Double = 0.0
     private var totalQualitySeconds: Double = 0.0
     private var totalFaceSeconds: Double = 0.0
@@ -291,6 +293,17 @@ actor AnalysisCollector {
         self.progressReporter = progressReporter
     }
 
+    func recordThumbnailGenerated(for id: String) {
+        thumbnailCount += 1
+        let elapsedSoFar = CFAbsoluteTimeGetCurrent() - wallStart
+        if timeToFirstThumbnail == 0.0 {
+            timeToFirstThumbnail = elapsedSoFar
+        }
+        if thumbnailCount >= min(24, totalPhotos) && timeToInteractiveGrid == 0.0 {
+            timeToInteractiveGrid = elapsedSoFar
+        }
+    }
+
     func collect(_ res: PhotoAnalysisResult) {
         completedCount += 1
         analysisResults[res.id] = res
@@ -307,13 +320,13 @@ actor AnalysisCollector {
         }
 
         let elapsedSoFar = CFAbsoluteTimeGetCurrent() - wallStart
-        if completedCount == 1 {
-            if timeToFirstThumbnail == 0.0 {
-                timeToFirstThumbnail = elapsedSoFar
-            }
+        if timeToFirstThumbnail == 0.0 {
+            timeToFirstThumbnail = elapsedSoFar
+        }
+        if timeToFirstAnalyzedPhoto == 0.0 {
             timeToFirstAnalyzedPhoto = elapsedSoFar
         }
-        if completedCount == min(24, totalPhotos) && timeToInteractiveGrid == 0.0 {
+        if timeToInteractiveGrid == 0.0 && (completedCount >= min(24, totalPhotos) || thumbnailCount >= min(24, totalPhotos)) {
             timeToInteractiveGrid = elapsedSoFar
         }
 
@@ -541,7 +554,10 @@ public actor AnalysisPipeline {
                                         featurePrintProvider: fpProv,
                                         lazyFeaturePrint: isLazyFP,
                                         faceInputMaxPixelSize: facePixelSize,
-                                        sceneInputMaxPixelSize: scenePixelSize
+                                        sceneInputMaxPixelSize: scenePixelSize,
+                                        onThumbnailReady: { id in
+                                            Task { await collector.recordThumbnailGenerated(for: id) }
+                                        }
                                     )
                                     await channel.send(stageAOut)
                                 } catch {
@@ -565,7 +581,8 @@ public actor AnalysisPipeline {
                                     let res = try await Self.processStageB(
                                         stageA: stageAOut,
                                         coordinator: pipelineCoordinator,
-                                        classifier: mlClassifier
+                                        classifier: mlClassifier,
+                                        previewPipeline: previewPipe
                                     )
                                     await collector.collect(res)
                                 } catch {
@@ -622,7 +639,10 @@ public actor AnalysisPipeline {
                                     visionExecutionMode: visMode,
                                     faceInputMaxPixelSize: facePixelSize,
                                     sceneInputMaxPixelSize: scenePixelSize,
-                                    classifierGate: classifierGate
+                                    classifierGate: classifierGate,
+                                    onThumbnailReady: { id in
+                                        Task { await collector.recordThumbnailGenerated(for: id) }
+                                    }
                                 )
                                 await collector.collect(res)
                             } catch {
@@ -864,19 +884,46 @@ public actor AnalysisPipeline {
         featurePrintProvider: FeaturePrintProvider,
         lazyFeaturePrint: Bool,
         faceInputMaxPixelSize: Int,
-        sceneInputMaxPixelSize: Int
+        sceneInputMaxPixelSize: Int,
+        onThumbnailReady: (@Sendable (String) -> Void)? = nil
     ) async throws -> StageAOutput {
         try await coordinator.waitIfPaused()
         try Task.checkCancellation()
 
+        let cached = previewPipeline.loadAnalysisRecord(for: item)
+
+        let tPrevStart = CFAbsoluteTimeGetCurrent()
+        let previewResult = try? await previewPipeline.generatePreviewAndThumbnailWithImage(for: item)
+        let tPrevEnd = CFAbsoluteTimeGetCurrent()
+        let prevDuration = max(0.0, tPrevEnd - tPrevStart)
+
+        onThumbnailReady?(item.id)
+
+        if let cached = cached {
+            var fPrint: VNFeaturePrintObservation? = nil
+            if let fpData = cached.featurePrintData {
+                fPrint = try? NSKeyedUnarchiver.unarchivedObject(ofClass: VNFeaturePrintObservation.self, from: fpData)
+            }
+            return StageAOutput(
+                item: item,
+                previewDurationSeconds: prevDuration,
+                qualityDurationSeconds: 0.0,
+                faceDurationSeconds: 0.0,
+                featurePrintDurationSeconds: 0.0,
+                previewCG: previewResult?.previewImage ?? previewPipeline.loadPreviewCGImage(for: item),
+                faceCG: nil,
+                sceneCG: nil,
+                metrics: cached.metrics,
+                perceptualHash: cached.perceptualHash,
+                featurePrint: fPrint,
+                faces: cached.faces,
+                cachedRecord: cached
+            )
+        }
+
         return await withCheckedContinuation { continuation in
             DispatchQueue.global(qos: .userInitiated).async {
                 let out = autoreleasepool { () -> StageAOutput in
-                    let tPrevStart = CFAbsoluteTimeGetCurrent()
-                    let previewResult = try? previewPipeline.generatePreviewAndThumbnailWithImage(for: item)
-                    let tPrevEnd = CFAbsoluteTimeGetCurrent()
-                    let prevDuration = max(0.0, tPrevEnd - tPrevStart)
-
                     let previewCG = previewResult?.previewImage ?? previewPipeline.loadPreviewCGImage(for: item)
                     guard let previewCG = previewCG else {
                         return StageAOutput(
@@ -891,7 +938,8 @@ public actor AnalysisPipeline {
                             metrics: item.metrics,
                             perceptualHash: nil,
                             featurePrint: nil,
-                            faces: []
+                            faces: [],
+                            cachedRecord: nil
                         )
                     }
 
@@ -971,7 +1019,8 @@ public actor AnalysisPipeline {
                         metrics: metrics,
                         perceptualHash: pHash,
                         featurePrint: fPrint,
-                        faces: faces
+                        faces: faces,
+                        cachedRecord: nil
                     )
                 }
                 continuation.resume(returning: out)
@@ -983,10 +1032,29 @@ public actor AnalysisPipeline {
         stageA: StageAOutput,
         coordinator: AnalysisCoordinator,
         classifier: MobileCLIPClassifier,
+        previewPipeline: PreviewPipeline? = nil,
         classifierGate: AsyncSemaphore? = nil
     ) async throws -> PhotoAnalysisResult {
         try await coordinator.waitIfPaused()
         try Task.checkCancellation()
+
+        if let cached = stageA.cachedRecord {
+            return PhotoAnalysisResult(
+                id: stageA.item.id,
+                previewGenerated: true,
+                metrics: stageA.metrics,
+                perceptualHash: stageA.perceptualHash,
+                featurePrint: stageA.featurePrint,
+                faces: stageA.faces,
+                category: cached.category,
+                categoryConfidence: cached.categoryConfidence,
+                previewDurationSeconds: stageA.previewDurationSeconds,
+                qualityDurationSeconds: stageA.qualityDurationSeconds,
+                faceDurationSeconds: stageA.faceDurationSeconds,
+                featurePrintDurationSeconds: stageA.featurePrintDurationSeconds,
+                classificationDurationSeconds: 0.0
+            )
+        }
 
         guard let sceneCG = stageA.sceneCG ?? stageA.previewCG else {
             return PhotoAnalysisResult(
@@ -1016,11 +1084,13 @@ public actor AnalysisPipeline {
                     let tClassStart = CFAbsoluteTimeGetCurrent()
                     var category = stageA.item.category
                     var conf = 0.3
+                    var scores: [WeddingCategory: Double] = [:]
 
                     if classifier.isCoreMLModelLoaded {
                         let res = classifier.classifyWithBackend(cgImage: sceneCG, metadata: stageA.item.metadata, faceCount: stageA.faces.count)
                         category = res.category
                         conf = res.confidence
+                        scores[res.category] = res.confidence
                     } else {
                         let sceneHandler = VNImageRequestHandler(cgImage: sceneCG, options: [:])
                         let sceneRequest = VNClassifyImageRequest()
@@ -1028,6 +1098,7 @@ public actor AnalysisPipeline {
                         let res = classifier.classifyWithObservations(sceneRequest.results, metadata: stageA.item.metadata, faceCount: stageA.faces.count)
                         category = res.0
                         conf = res.1
+                        scores[res.0] = res.1
                     }
                     let tClassEnd = CFAbsoluteTimeGetCurrent()
                     let classDuration = max(0.0, tClassEnd - tClassStart)
@@ -1035,6 +1106,27 @@ public actor AnalysisPipeline {
                     if let gate = classifierGate {
                         Task { await gate.release() }
                     }
+
+                    // Save authoritative analysis record for deterministic warm cache reuse
+                    var fpData: Data? = nil
+                    if let fp = stageA.featurePrint {
+                        fpData = try? NSKeyedArchiver.archivedData(withRootObject: fp, requiringSecureCoding: true)
+                    }
+                    let record = CachedAnalysisRecord(
+                        photoID: stageA.item.id,
+                        previewCacheKey: stageA.item.previewCacheKey,
+                        fileSizeBytes: stageA.item.fileSizeBytes,
+                        fileModificationDate: stageA.item.fileModificationDate,
+                        metrics: stageA.metrics,
+                        perceptualHash: stageA.perceptualHash,
+                        category: category,
+                        categoryConfidence: conf,
+                        visionScores: scores,
+                        faces: stageA.faces,
+                        featurePrintData: fpData,
+                        classificationBackend: classifier.lastUsedBackend.rawValue
+                    )
+                    previewPipeline?.saveAnalysisRecord(record)
 
                     return PhotoAnalysisResult(
                         id: stageA.item.id,
@@ -1069,7 +1161,8 @@ public actor AnalysisPipeline {
         visionExecutionMode: VisionExecutionMode,
         faceInputMaxPixelSize: Int,
         sceneInputMaxPixelSize: Int,
-        classifierGate: AsyncSemaphore? = nil
+        classifierGate: AsyncSemaphore? = nil,
+        onThumbnailReady: (@Sendable (String) -> Void)? = nil
     ) async throws -> PhotoAnalysisResult {
         try await coordinator.waitIfPaused()
         try Task.checkCancellation()
@@ -1083,8 +1176,28 @@ public actor AnalysisPipeline {
             featurePrintProvider: featurePrintProvider,
             lazyFeaturePrint: lazyFeaturePrint,
             faceInputMaxPixelSize: faceInputMaxPixelSize,
-            sceneInputMaxPixelSize: sceneInputMaxPixelSize
+            sceneInputMaxPixelSize: sceneInputMaxPixelSize,
+            onThumbnailReady: onThumbnailReady
         )
+
+        // If cached record exists, skip vision requests
+        if let cached = stageA.cachedRecord {
+            return PhotoAnalysisResult(
+                id: item.id,
+                previewGenerated: true,
+                metrics: stageA.metrics,
+                perceptualHash: stageA.perceptualHash,
+                featurePrint: stageA.featurePrint,
+                faces: stageA.faces,
+                category: cached.category,
+                categoryConfidence: cached.categoryConfidence,
+                previewDurationSeconds: stageA.previewDurationSeconds,
+                qualityDurationSeconds: stageA.qualityDurationSeconds,
+                faceDurationSeconds: stageA.faceDurationSeconds,
+                featurePrintDurationSeconds: stageA.featurePrintDurationSeconds,
+                classificationDurationSeconds: 0.0
+            )
+        }
 
         // If combined vision perform mode is requested and supported
         if visionExecutionMode == .combined && !classifier.isCoreMLModelLoaded,
@@ -1115,6 +1228,29 @@ public actor AnalysisPipeline {
             }
 
             let res = classifier.classifyWithObservations(sceneRequest.results, metadata: item.metadata, faceCount: faces.count)
+            var scores: [WeddingCategory: Double] = [:]
+            scores[res.0] = res.1
+
+            var fpData: Data? = nil
+            if let fp = stageA.featurePrint {
+                fpData = try? NSKeyedArchiver.archivedData(withRootObject: fp, requiringSecureCoding: true)
+            }
+            let record = CachedAnalysisRecord(
+                photoID: item.id,
+                previewCacheKey: item.previewCacheKey,
+                fileSizeBytes: item.fileSizeBytes,
+                fileModificationDate: item.fileModificationDate,
+                metrics: metrics,
+                perceptualHash: stageA.perceptualHash,
+                category: res.0,
+                categoryConfidence: res.1,
+                visionScores: scores,
+                faces: faces,
+                featurePrintData: fpData,
+                classificationBackend: classifier.lastUsedBackend.rawValue
+            )
+            previewPipeline.saveAnalysisRecord(record)
+
             return PhotoAnalysisResult(
                 id: item.id,
                 previewGenerated: true,
@@ -1136,6 +1272,7 @@ public actor AnalysisPipeline {
             stageA: stageA,
             coordinator: coordinator,
             classifier: classifier,
+            previewPipeline: previewPipeline,
             classifierGate: classifierGate
         )
     }

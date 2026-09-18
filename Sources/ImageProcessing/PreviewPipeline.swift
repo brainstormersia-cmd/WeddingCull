@@ -2,10 +2,34 @@ import Foundation
 import CoreGraphics
 import ImageIO
 
+private actor InFlightManager {
+    private var inFlight: [String: Task<(previewURL: URL, thumbnailURL: URL, previewImage: CGImage?), Error>] = [:]
+
+    func execute(
+        key: String,
+        operation: @Sendable @escaping () throws -> (previewURL: URL, thumbnailURL: URL, previewImage: CGImage?)
+    ) async throws -> (previewURL: URL, thumbnailURL: URL, previewImage: CGImage?) {
+        if let existing = inFlight[key] {
+            return try await existing.value
+        }
+        let task = Task.detached(priority: .userInitiated) {
+            return try operation()
+        }
+        inFlight[key] = task
+        defer {
+            inFlight.removeValue(forKey: key)
+        }
+        return try await task.value
+    }
+}
+
 public final class PreviewPipeline: Sendable {
     public let cacheDirectory: URL
     public let previewsDirectory: URL
     public let thumbnailsDirectory: URL
+    public let analysisCache: AnalysisCache
+
+    private let inFlightManager = InFlightManager()
 
     public init(customCacheDirectory: URL? = nil) {
         let baseDir: URL
@@ -18,9 +42,18 @@ public final class PreviewPipeline: Sendable {
         self.cacheDirectory = baseDir
         self.previewsDirectory = baseDir.appendingPathComponent("previews", isDirectory: true)
         self.thumbnailsDirectory = baseDir.appendingPathComponent("thumbs", isDirectory: true)
+        self.analysisCache = AnalysisCache(baseCacheDirectory: baseDir)
 
         try? FileManager.default.createDirectory(at: previewsDirectory, withIntermediateDirectories: true)
         try? FileManager.default.createDirectory(at: thumbnailsDirectory, withIntermediateDirectories: true)
+    }
+
+    public func loadAnalysisRecord(for item: PhotoItem) -> CachedAnalysisRecord? {
+        return analysisCache.loadRecord(for: item)
+    }
+
+    public func saveAnalysisRecord(_ record: CachedAnalysisRecord) {
+        analysisCache.saveRecord(record)
     }
 
     public func previewURL(for item: PhotoItem) -> URL {
@@ -45,9 +78,19 @@ public final class PreviewPipeline: Sendable {
         return try performGeneratePreviewAndThumbnail(for: item)
     }
 
-    /// Asynchronous convenience calling the pure decoding and downsampling engine without thread pool starvation.
+    /// Asynchronous convenience calling the pure decoding and downsampling engine with in-flight deduplication.
     public func generatePreviewAndThumbnailWithImage(for item: PhotoItem) async throws -> (previewURL: URL, thumbnailURL: URL, previewImage: CGImage?) {
-        return try performGeneratePreviewAndThumbnail(for: item)
+        let pURL = previewURL(for: item)
+        let tURL = thumbnailURL(for: item)
+
+        if FileManager.default.fileExists(atPath: pURL.path) && FileManager.default.fileExists(atPath: tURL.path) {
+            let cachedImage = loadPreviewCGImage(for: item)
+            return (pURL, tURL, cachedImage)
+        }
+
+        return try await inFlightManager.execute(key: item.previewCacheKey) { [self] in
+            return try self.performGeneratePreviewAndThumbnail(for: item)
+        }
     }
 
     public func performGeneratePreviewAndThumbnail(for item: PhotoItem) throws -> (previewURL: URL, thumbnailURL: URL, previewImage: CGImage?) {
@@ -191,6 +234,7 @@ public final class PreviewPipeline: Sendable {
     public func clearCache() {
         try? FileManager.default.removeItem(at: previewsDirectory)
         try? FileManager.default.removeItem(at: thumbnailsDirectory)
+        analysisCache.clear()
         try? FileManager.default.createDirectory(at: previewsDirectory, withIntermediateDirectories: true)
         try? FileManager.default.createDirectory(at: thumbnailsDirectory, withIntermediateDirectories: true)
     }

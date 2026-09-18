@@ -64,6 +64,7 @@ struct BenchmarkRunner {
         var queueCapacity = 8
         var classificationBackendArg = "auto"
         var strictModel = false
+        var compareBaselineJSONPath: String? = nil
 
         var i = 1
         while i < args.count {
@@ -234,6 +235,11 @@ struct BenchmarkRunner {
                 }
             case "--strict-model":
                 strictModel = true
+            case "--compare-baseline-json":
+                if i + 1 < args.count {
+                    compareBaselineJSONPath = args[i + 1]
+                    i += 1
+                }
             default:
                 break
             }
@@ -909,10 +915,10 @@ struct BenchmarkRunner {
                     note: "Decoupled concurrency slots variation with clean cold cache. Tests concurrency independence."
                 ))
                 comparisons.append(compareSnapshots(
-                    name: "Cold 1 vs Warm 1 (Cold vs Warm)",
+                    name: "Cold 1 vs Warm 2 (Cold vs Warm)",
                     runA: cold1,
-                    runB: warm1,
-                    note: "Cold (raw decoded bitmaps) vs Warm (re-read lossy JPEG previews). Quantifies JPEG DCT effect."
+                    runB: warm2,
+                    note: "Cold start (fresh decode) vs Warm start (cached analysis reuse). Tests authoritative cache fidelity."
                 ))
 
             } catch {
@@ -945,6 +951,31 @@ struct BenchmarkRunner {
             if let data = try? enc.encode(comparisons) {
                 try? data.write(to: url)
                 print("✅ Saved determinism diagnostics JSON to \(outPath)")
+            }
+
+            if strictMode {
+                let warmWarm = comparisons.first(where: { $0.comparisonName.contains("Warm 1 vs Warm 2") })
+                let coldCold = comparisons.first(where: { $0.comparisonName.contains("Cold 1 vs Cold 2") })
+                let coldWarm = comparisons.first(where: { $0.comparisonName.contains("Cold 1 vs Warm 2") })
+
+                var determinismFailures: [String] = []
+                if let ww = warmWarm, ww.symmetricDifferenceCount > 0 {
+                    determinismFailures.append("Warm vs Warm determinism failed: \(ww.symmetricDifferenceCount) symmetric difference (expected 0)")
+                }
+                if let cc = coldCold, cc.symmetricDifferenceCount > 0 {
+                    determinismFailures.append("Cold vs Cold determinism failed: \(cc.symmetricDifferenceCount) symmetric difference (expected 0)")
+                }
+                if let cw = coldWarm, cw.symmetricDifferenceCount > 0 {
+                    determinismFailures.append("Cold vs Warm determinism failed: \(cw.symmetricDifferenceCount) symmetric difference (expected 0)")
+                }
+                if !determinismFailures.isEmpty {
+                    print("\n❌ STRICT DETERMINISM VALIDATION FAILED:")
+                    for f in determinismFailures {
+                        print("  - \(f)")
+                    }
+                    exit(1)
+                }
+                print("✅ Strict determinism validation PASSED: 0 symmetric differences across Cold/Cold, Warm/Warm, and Cold/Warm.")
             }
 
             if sweepOnly {
@@ -1366,11 +1397,15 @@ struct BenchmarkRunner {
                 let megapixelStats: MegapixelStats
                 let hardware: HardwareReport
                 let classificationBackend: String
+                let actualBackendUsed: String
+                let modelLoaded: Bool
                 let datasetSize: Int
                 let totalProcessingTimeSeconds: Double
                 let wallClockSeconds: Double
                 let photosPerSecond: Double
+                let classificationMsPerPhoto: Double
                 let peakMemoryMB: Int
+                let rssMB: Int
                 let memoryBudgetMB: Int
                 let memoryWithinBudget: Bool
                 let targetCardinality: Int
@@ -1380,9 +1415,43 @@ struct BenchmarkRunner {
                 let exportValidation: Bool
                 let sessionPersistence: Bool
                 let sessionReopenLatencySeconds: Double
+                let selectedIDs: [String]
+                let selectedIDAgreementPct: Double?
+                let selectedIDsMatch: Bool?
+                let selectedIDsSymmetricDifference: Int?
                 let phaseTimings: PhaseTimings?
                 let pipelineReadinessMetrics: PipelineReadinessMetrics?
                 let perceivedSpeedMetrics: PipelineReadinessMetrics?
+            }
+
+            let isModelLoaded = await pipeline.isCoreMLModelLoaded
+            let actualBackend = await pipeline.classifierBackendUsed
+            let actualBackendString = actualBackend.rawValue
+            let sceneClassSeconds = session.phaseTimings?.sceneClassificationSeconds ?? 0.0
+            let classMsPerPhoto = processedPhotos > 0 ? Double(round(((sceneClassSeconds / Double(processedPhotos)) * 1000.0) * 10) / 10) : 0.0
+
+            let selectedIDs = session.photos.filter { $0.selectionState.isIncludedInFinal }.map(\.id).sorted()
+            var selectedIDAgreementPct: Double? = nil
+            var selectedIDsMatch: Bool? = nil
+            var selectedIDsSymmetricDifference: Int? = nil
+
+            if let baselinePath = compareBaselineJSONPath {
+                if let baselineData = try? Data(contentsOf: URL(fileURLWithPath: baselinePath)),
+                   let baselineJSON = try? JSONSerialization.jsonObject(with: baselineData) as? [String: Any] {
+                    let baselineList = (baselineJSON["selectedIDs"] as? [String]) ?? []
+                    let baselineSet = Set(baselineList)
+                    let currentSet = Set(selectedIDs)
+                    if !baselineSet.isEmpty {
+                        let intersect = currentSet.intersection(baselineSet).count
+                        let union = currentSet.union(baselineSet).count
+                        selectedIDAgreementPct = union > 0 ? Double(round((Double(intersect) / Double(union)) * 1000) / 10) : 100.0
+                        selectedIDsMatch = (currentSet == baselineSet)
+                        selectedIDsSymmetricDifference = currentSet.symmetricDifference(baselineSet).count
+                        print("🔍 Baseline Comparison against \(baselinePath):")
+                        print(String(format: "   Selected ID Agreement: %.1f%% (%d / %d match, Symmetric Diff: %d)",
+                                     selectedIDAgreementPct ?? 0.0, intersect, baselineSet.count, selectedIDsSymmetricDifference ?? 0))
+                    }
+                }
             }
 
             let reportData = BenchmarkReportData(
@@ -1418,11 +1487,15 @@ struct BenchmarkRunner {
                     sceneClassificationSlots: classifySlots
                 ),
                 classificationBackend: backendUsed,
+                actualBackendUsed: actualBackendString,
+                modelLoaded: isModelLoaded,
                 datasetSize: processedPhotos,
                 totalProcessingTimeSeconds: Double(round(totalTime * 100) / 100),
                 wallClockSeconds: Double(round(totalTime * 100) / 100),
                 photosPerSecond: Double(round(throughput * 10) / 10),
+                classificationMsPerPhoto: classMsPerPhoto,
                 peakMemoryMB: peakMB,
+                rssMB: peakMB,
                 memoryBudgetMB: 2560,
                 memoryWithinBudget: peakMB <= 2560,
                 targetCardinality: session.targetSelectionCount,
@@ -1432,6 +1505,10 @@ struct BenchmarkRunner {
                 exportValidation: exportSuccess,
                 sessionPersistence: sessionReloadSuccess,
                 sessionReopenLatencySeconds: Double(round(sessionReopenLatencySeconds * 1000) / 1000),
+                selectedIDs: selectedIDs,
+                selectedIDAgreementPct: selectedIDAgreementPct,
+                selectedIDsMatch: selectedIDsMatch,
+                selectedIDsSymmetricDifference: selectedIDsSymmetricDifference,
                 phaseTimings: session.phaseTimings,
                 pipelineReadinessMetrics: session.pipelineReadinessMetrics ?? session.perceivedSpeedMetrics,
                 perceivedSpeedMetrics: session.pipelineReadinessMetrics ?? session.perceivedSpeedMetrics

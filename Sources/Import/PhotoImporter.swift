@@ -96,23 +96,46 @@ public final class PhotoImporter: Sendable {
     ) async throws -> [PhotoItem] {
         let discoveredURLs = try await discoverFiles(in: folderURL, recursive: true)
         let paired = groupRawJpegPairs(fileURLs: discoveredURLs)
-        var items: [PhotoItem] = []
-        items.reserveCapacity(paired.count)
-
         let total = paired.count
-        for (index, pair) in paired.enumerated() {
-            if Task.isCancelled { break }
+        if total == 0 { return [] }
 
-            let primaryURL = pair.primary
-            let item = readPhotoItem(primaryURL: primaryURL, rawURL: pair.raw, jpegURL: pair.jpeg, rootFolder: folderURL)
-            items.append(item)
+        var items = [PhotoItem?](repeating: nil, count: total)
+        let concurrency = max(1, min(ProcessInfo.processInfo.activeProcessorCount, 8))
 
-            if (index + 1) % 50 == 0 || index + 1 == total {
-                progress?(index + 1, total)
+        await withTaskGroup(of: (Int, PhotoItem).self) { group in
+            var submitted = 0
+            for _ in 0..<concurrency {
+                if submitted < total {
+                    let idx = submitted
+                    let pair = paired[idx]
+                    submitted += 1
+                    group.addTask {
+                        let item = self.readPhotoItem(primaryURL: pair.primary, rawURL: pair.raw, jpegURL: pair.jpeg, rootFolder: folderURL)
+                        return (idx, item)
+                    }
+                }
+            }
+
+            var completed = 0
+            while let (idx, item) = await group.next() {
+                items[idx] = item
+                completed += 1
+                if completed % 50 == 0 || completed == total {
+                    progress?(completed, total)
+                }
+                if submitted < total {
+                    let nextIdx = submitted
+                    let nextPair = paired[nextIdx]
+                    submitted += 1
+                    group.addTask {
+                        let item = self.readPhotoItem(primaryURL: nextPair.primary, rawURL: nextPair.raw, jpegURL: nextPair.jpeg, rootFolder: folderURL)
+                        return (nextIdx, item)
+                    }
+                }
             }
         }
 
-        return items
+        return items.compactMap { $0 }
     }
 
     public func readPhotoItem(primaryURL: URL, rawURL: URL?, jpegURL: URL?, rootFolder: URL) -> PhotoItem {

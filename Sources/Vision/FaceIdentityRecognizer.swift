@@ -4,12 +4,12 @@ import CoreML
 import Vision
 import Accelerate
 
-public enum DescriptorType: String, Sendable {
+public enum DescriptorType: String, Sendable, Codable {
     case geometric = "Geometric Landmark Proportions"
     case learnedEmbedding = "Learned Deep Embedding"
 }
 
-public struct FaceInstance: Sendable {
+public struct FaceInstance: Sendable, Codable {
     public let boundingBox: CGRect
     public let eyeOpenness: Double
     public let faceQuality: Double

@@ -141,6 +141,7 @@ jobs:
           .build/release/BenchmarkRunner \
             --diagnose-determinism 150 \
             --output-determinism-json artifacts/determinism-diagnostics-intel.json \
+            --strict \
             --sweep-only
 
       - name: Execute Intel Two-Stage Pipeline Sweep (Producer-Consumer Backpressure)
@@ -157,18 +158,18 @@ jobs:
           set -euo pipefail
           ./scripts/fetch-models.sh
 
-      - name: Execute MobileCLIP-S0 Benchmark on Intel (Core ML cpuAndGPU)
+      - name: Determine Optimal Intel Decoupled Concurrency Configuration
         run: |
           set -euo pipefail
-          mkdir -p artifacts
-          .build/release/BenchmarkRunner \
-            --count 150 \
-            --target 75 \
-            --classification-backend mobileclip \
-            --strict-model \
-            --output-json artifacts/benchmark-intel-mobileclip.json \
-            --output-md artifacts/BENCHMARKS-intel-mobileclip.md \
-            --sweep-only
+          python3 -c "
+          import json
+          with open('artifacts/classify-matrix-sweep-intel.json') as f:
+              data = json.load(f)
+          best = max(data, key=lambda x: x['throughputPPS'])
+          with open('best_config.env', 'w') as out:
+              out.write(f'BEST_WORKERS={best[\"pipelineWorkers\"]}\nBEST_SLOTS={best[\"classifySlots\"]}\n')
+          print(f'Winning Config: Pipeline {best[\"pipelineWorkers\"]}, Classify Slots {best[\"classifySlots\"]} ({best[\"throughputPPS\"]} PPS)')
+          "
 
       - name: Execute 1,500→700 Benchmark with Exactly 2 Global Workers
         run: |
@@ -186,33 +187,49 @@ jobs:
             --output-json artifacts/benchmark-intel-2workers.json \
             --output-md artifacts/BENCHMARKS-intel-2workers.md
 
-      - name: Execute 1,500→700 Benchmark with Winning Decoupled Configuration
+      - name: Execute 1,500→700 Benchmark on Intel (Apple Vision Backend)
         run: |
           set -euo pipefail
           mkdir -p artifacts
-          python3 -c "
-          import json
-          with open('artifacts/classify-matrix-sweep-intel.json') as f:
-              data = json.load(f)
-          best = max(data, key=lambda x: x['throughputPPS'])
-          with open('best_config.env', 'w') as out:
-              out.write(f'BEST_WORKERS={best[\"pipelineWorkers\"]}\nBEST_SLOTS={best[\"classifySlots\"]}\n')
-          print(f'Winning Config: Pipeline {best[\"pipelineWorkers\"]}, Classify Slots {best[\"classifySlots\"]} ({best[\"throughputPPS\"]} PPS)')
-          "
           source best_config.env
           .build/release/BenchmarkRunner \
             --count "${{ github.event.inputs.dataset_size || '1500' }}" \
             --target "${{ github.event.inputs.target_count || '700' }}" \
             --workers "$BEST_WORKERS" \
             --classify-slots "$BEST_SLOTS" \
+            --classification-backend vision \
             --dataset-mode LOW_RES_SCALE \
             --build-config release \
             --git-sha "$GITHUB_SHA" \
             --strict \
-            --phase-timings-json artifacts/baseline-phase-timings-intel.json \
-            --output-json artifacts/benchmark-intel.json \
-            --output-md artifacts/BENCHMARKS-intel.md
-          cp artifacts/benchmark-intel.json artifacts/baseline-intel-release.json
+            --phase-timings-json artifacts/baseline-phase-timings-intel-vision.json \
+            --output-json artifacts/benchmark-intel-vision.json \
+            --output-md artifacts/BENCHMARKS-intel-vision.md
+
+      - name: Execute 1,500→700 Benchmark on Intel (MobileCLIP-S0 Core ML Backend)
+        run: |
+          set -euo pipefail
+          mkdir -p artifacts
+          source best_config.env
+          .build/release/BenchmarkRunner \
+            --count "${{ github.event.inputs.dataset_size || '1500' }}" \
+            --target "${{ github.event.inputs.target_count || '700' }}" \
+            --workers "$BEST_WORKERS" \
+            --classify-slots "$BEST_SLOTS" \
+            --classification-backend mobileclip \
+            --strict-model \
+            --compare-baseline-json artifacts/benchmark-intel-vision.json \
+            --dataset-mode LOW_RES_SCALE \
+            --build-config release \
+            --git-sha "$GITHUB_SHA" \
+            --strict \
+            --phase-timings-json artifacts/baseline-phase-timings-intel-mobileclip.json \
+            --output-json artifacts/benchmark-intel-mobileclip.json \
+            --output-md artifacts/BENCHMARKS-intel-mobileclip.md
+          cp artifacts/benchmark-intel-mobileclip.json artifacts/benchmark-intel.json
+          cp artifacts/benchmark-intel-mobileclip.json artifacts/baseline-intel-release.json
+          cp artifacts/baseline-phase-timings-intel-mobileclip.json artifacts/baseline-phase-timings-intel.json
+          cp artifacts/BENCHMARKS-intel-mobileclip.md artifacts/BENCHMARKS-intel.md
 
       - name: Upload Intel Benchmark Artifact
         uses: actions/upload-artifact@v4
@@ -220,15 +237,18 @@ jobs:
           name: benchmark-intel
           path: |
             artifacts/benchmark-intel.json
+            artifacts/benchmark-intel-vision.json
+            artifacts/benchmark-intel-mobileclip.json
             artifacts/baseline-intel-release.json
             artifacts/baseline-phase-timings-intel.json
+            artifacts/baseline-phase-timings-intel-vision.json
+            artifacts/baseline-phase-timings-intel-mobileclip.json
             artifacts/benchmark-intel-2workers.json
             artifacts/baseline-phase-timings-intel-2workers.json
             artifacts/concurrency-sweep-intel.json
             artifacts/classify-matrix-sweep-intel.json
             artifacts/determinism-diagnostics-intel.json
             artifacts/two-stage-sweep-intel.json
-            artifacts/benchmark-intel-mobileclip.json
             artifacts/BENCHMARKS-intel*.md
 
   albumbench-validation:

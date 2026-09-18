@@ -288,6 +288,21 @@ def main():
             ids_str = "YES" if r.get('selectedIDsMatch') else "NO"
             md_content += f"| {r.get('configName')} | {r.get('wallClockSeconds'):.2f}s | **{r.get('throughputPPS'):.2f} PPS** | {r.get('peakMemoryMB')} MB | {r.get('sceneMsPerPhoto'):.1f} ms | {r.get('faceMsPerPhoto'):.1f} ms | {ids_str} |\n"
 
+    bench_intel_vis = read_json_safe(os.path.join(output_dir, "benchmark-intel-vision.json"))
+    bench_intel_mc = read_json_safe(os.path.join(output_dir, "benchmark-intel-mobileclip.json"))
+
+    if bench_intel_vis or bench_intel_mc:
+        md_content += "\n## Explicit Native Intel 1,500-Photo Backend Comparison\n\n"
+        md_content += "> Full 1,500-photo runs comparing Apple Vision (`VNClassifyImageRequest`) vs MobileCLIP-S0 Core ML (`.cpuAndGPU`).\n\n"
+        md_content += "| Backend | Model Loaded | Wall Clock (s) | Throughput (PPS) | Scene Classify (ms/p) | Peak RSS (MB) | Selected ID Agreement |\n"
+        md_content += "| :--- | :---: | :---: | :---: | :---: | :---: | :---: |\n"
+        if bench_intel_vis:
+            agr_vis = f"{bench_intel_vis.get('selectedIDAgreementPct', 100.0):.1f}%" if bench_intel_vis.get('selectedIDAgreementPct') is not None else "Baseline"
+            md_content += f"| **Apple Vision** | No (System Framework) | {bench_intel_vis.get('wallClockSeconds', 0):.2f}s | **{bench_intel_vis.get('photosPerSecond', 0):.2f} PPS** | {bench_intel_vis.get('classificationMsPerPhoto', 0):.1f} ms | {bench_intel_vis.get('peakMemoryMB', 0)} MB | {agr_vis} |\n"
+        if bench_intel_mc:
+            agr_mc = f"{bench_intel_mc.get('selectedIDAgreementPct', 0.0):.1f}%" if bench_intel_mc.get('selectedIDAgreementPct') is not None else "-"
+            md_content += f"| **MobileCLIP-S0 (Core ML)** | Yes (`.cpuAndGPU`) | {bench_intel_mc.get('wallClockSeconds', 0):.2f}s | **{bench_intel_mc.get('photosPerSecond', 0):.2f} PPS** | {bench_intel_mc.get('classificationMsPerPhoto', 0):.1f} ms | {bench_intel_mc.get('peakMemoryMB', 0)} MB | {agr_mc} |\n"
+
     if mobileclip_intel:
         md_content += "\n## Native Intel MobileCLIP-S0 Core ML Benchmark (.cpuAndGPU)\n\n"
         md_content += f"* **Backend Confirmed**: `{mobileclip_intel.get('classificationBackend', 'MobileCLIP-S0')}`\n"
