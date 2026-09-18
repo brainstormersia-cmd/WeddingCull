@@ -97,25 +97,14 @@ public final class MobileCLIPClassifier: ImageClassifierProtocol, @unchecked Sen
             }
             let config = MLModelConfiguration()
             // On Apple Silicon: .all (Neural Engine + GPU + CPU)
-            // On Intel: Check if running under Apple Paravirtual device (e.g. GitHub Actions macOS VM)
-            // where MPSGraph / Metal driver has known command-buffer hang/callback errors. Fall back to .cpuOnly.
-            if isAppleSilicon {
-                config.computeUnits = .all
-            } else {
-                #if canImport(Metal)
-                if let dev = MTLCreateSystemDefaultDevice(), dev.name.localizedCaseInsensitiveContains("paravirtual") {
-                    config.computeUnits = .cpuOnly
-                } else {
-                    config.computeUnits = .cpuAndGPU
-                }
-                #else
-                config.computeUnits = .cpuOnly
-                #endif
-            }
+            // On Intel: .cpuAndGPU (Intel Core CPU + integrated/discrete/paravirtual GPU)
+            // Note: predictionLock serializes model.prediction calls, preventing paravirtual Metal command-queue collisions.
+            config.computeUnits = isAppleSilicon ? .all : .cpuAndGPU
             self.coreMLModel = try MLModel(contentsOf: compiledURL, configuration: config)
             self.isCoreMLModelLoaded = true
             self.lastUsedBackend = .mobileCLIP
         } catch {
+            print("⚠️ MobileCLIP Core ML model load failed: \(error)")
             self.coreMLModel = nil
             self.isCoreMLModelLoaded = false
             self.lastUsedBackend = .visionFallback
@@ -133,6 +122,8 @@ public final class MobileCLIPClassifier: ImageClassifierProtocol, @unchecked Sen
             if let (cat, conf) = runMobileCLIPInference(model: model, cgImage: cgImage) {
                 lastUsedBackend = .mobileCLIP
                 return (cat, conf, .mobileCLIP)
+            } else {
+                print("⚠️ MobileCLIP inference returned nil; falling back to Apple Vision")
             }
         }
 
@@ -171,6 +162,7 @@ public final class MobileCLIPClassifier: ImageClassifierProtocol, @unchecked Sen
             defer { predictionLock.unlock() }
             outputProvider = try model.prediction(from: featureProvider)
         } catch {
+            print("⚠️ MobileCLIP prediction failed: \(error)")
             return nil
         }
 
