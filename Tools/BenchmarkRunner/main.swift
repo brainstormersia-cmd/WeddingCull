@@ -906,7 +906,6 @@ struct BenchmarkRunner {
                 """
             }
 
-            let readiness = session.pipelineReadinessMetrics ?? session.perceivedSpeedMetrics
             if let psm = readiness {
                 mdContent += """
 
