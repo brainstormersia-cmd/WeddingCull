@@ -114,26 +114,8 @@ public final class PreviewPipeline: Sendable {
                 throw NSError(domain: "PreviewPipeline", code: 1, userInfo: [NSLocalizedDescriptionKey: "Failed to open image source"])
             }
 
-            // Fallback chain for 1000px preview:
-            // 1. Try standard thumbnail generation
-            var previewCGImage: CGImage? = nil
-            let previewOptions: [CFString: Any] = [
-                kCGImageSourceCreateThumbnailFromImageAlways: true,
-                kCGImageSourceShouldCacheImmediately: true,
-                kCGImageSourceCreateThumbnailWithTransform: true,
-                kCGImageSourceThumbnailMaxPixelSize: 1000
-            ]
-            previewCGImage = CGImageSourceCreateThumbnailAtIndex(imageSource, 0, previewOptions as CFDictionary)
-
-            // 2. If thumbnail fails, try full image decode and downsample
-            if previewCGImage == nil {
-                let fullOptions: [CFString: Any] = [
-                    kCGImageSourceShouldCache: false
-                ]
-                if let fullImage = CGImageSourceCreateImageAtIndex(imageSource, 0, fullOptions as CFDictionary) {
-                    previewCGImage = downsample(cgImage: fullImage, maxPixelSize: 1000)
-                }
-            }
+            // Fallback chain for 1000px preview using production decoding engine
+            let previewCGImage = Self.decodeProductionPreview(from: item.sourceURL, maxPixelSize: 1000)
 
             guard let finalPreview = previewCGImage else {
                 throw NSError(domain: "PreviewPipeline", code: 2, userInfo: [NSLocalizedDescriptionKey: "Failed to generate preview: RAW/image decode unsupported on this configuration"])
@@ -164,7 +146,43 @@ public final class PreviewPipeline: Sendable {
         return (pURL, tURL, inMemoryPreview)
     }
 
+    /// Decodes a source image using production decoding rules:
+    /// - 1000px max pixel size thumbnail
+    /// - Automatic EXIF orientation transform (kCGImageSourceCreateThumbnailWithTransform: true)
+    /// - kCGImageSourceShouldCache: false
+    /// - Fallback to full decode + high-quality downsampling if thumbnail generation fails
+    public static func decodeProductionPreview(from sourceURL: URL, maxPixelSize: Int = 1000) -> CGImage? {
+        let options: [CFString: Any] = [
+            kCGImageSourceShouldCache: false
+        ]
+        guard let imageSource = CGImageSourceCreateWithURL(sourceURL as CFURL, options as CFDictionary) else {
+            return nil
+        }
+
+        let previewOptions: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceShouldCacheImmediately: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceThumbnailMaxPixelSize: maxPixelSize
+        ]
+        if let thumb = CGImageSourceCreateThumbnailAtIndex(imageSource, 0, previewOptions as CFDictionary) {
+            return thumb
+        }
+
+        let fullOptions: [CFString: Any] = [
+            kCGImageSourceShouldCache: false
+        ]
+        if let fullImage = CGImageSourceCreateImageAtIndex(imageSource, 0, fullOptions as CFDictionary) {
+            return downsample(cgImage: fullImage, maxPixelSize: maxPixelSize)
+        }
+        return nil
+    }
+
     public func downsample(cgImage: CGImage, maxPixelSize: Int) -> CGImage? {
+        return Self.downsample(cgImage: cgImage, maxPixelSize: maxPixelSize)
+    }
+
+    public static func downsample(cgImage: CGImage, maxPixelSize: Int) -> CGImage? {
         let width = cgImage.width
         let height = cgImage.height
         guard width > 0 && height > 0 else { return nil }

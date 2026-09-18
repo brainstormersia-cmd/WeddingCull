@@ -779,6 +779,9 @@ public actor AnalysisPipeline {
         }
 
         totalFeaturePrintSeconds += lazyFeaturePrintSeconds
+        
+        // Prepare pre-burst metrics (pure derivation of exposureScore without full ranking/overallScore)
+        items = scorer.preparePreBurstMetrics(items: items)
 
         let bursts = duplicateDetector.detectBursts(items: items, featurePrintDistances: featurePrintDistances)
         for burst in bursts {

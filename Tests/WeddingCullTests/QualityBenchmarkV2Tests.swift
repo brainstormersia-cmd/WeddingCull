@@ -239,4 +239,182 @@ final class QualityBenchmarkV2Tests: XCTestCase {
             }
         }
     }
+
+    func testPreBurstPreparationChangesOnlyIntendedFields() {
+        let scorer = QualityScorer()
+        var metrics = QualityMetrics()
+        metrics.rawSharpness = 420.0
+        metrics.rawFaceSharpness = 380.0
+        metrics.meanLuminance = 0.80 // High luminance
+        metrics.shadowClipping = 0.05
+        metrics.highlightClipping = 0.10
+        metrics.faceCount = 1
+        metrics.exposureScore = 0.50 // Uninitialized default
+
+        let initialItem = PhotoItem(
+            id: "test_pre_burst",
+            fileName: "test.jpg",
+            sourceURL: URL(fileURLWithPath: "/tmp/test.jpg"),
+            metrics: metrics
+        )
+
+        XCTAssertEqual(initialItem.metrics.overallScore, 0.0)
+        XCTAssertNil(initialItem.metrics.selectionReason)
+        XCTAssertEqual(initialItem.metrics.sharpnessScore, 0.0)
+        XCTAssertEqual(initialItem.metrics.technicalScore, 0.0)
+        XCTAssertEqual(initialItem.metrics.exposureScore, 0.50)
+
+        let preparedItems = scorer.preparePreBurstMetrics(items: [initialItem])
+        XCTAssertEqual(preparedItems.count, 1)
+        let prepared = preparedItems[0]
+
+        // Exposure score must be updated to the true calculated exposure score
+        let expectedExposure = QualityScorer.computeExposureScore(
+            meanLuminance: 0.80,
+            shadowClipping: 0.05,
+            highlightClipping: 0.10
+        )
+        XCTAssertEqual(prepared.metrics.exposureScore, expectedExposure, accuracy: 0.0001)
+        XCTAssertNotEqual(prepared.metrics.exposureScore, 0.50)
+
+        // ALL other derived scoring fields must remain untouched!
+        XCTAssertEqual(prepared.metrics.overallScore, 0.0, "overallScore must NOT be modified by pre-burst preparation")
+        XCTAssertNil(prepared.metrics.selectionReason, "selectionReason must NOT be populated by pre-burst preparation")
+        XCTAssertEqual(prepared.metrics.sharpnessScore, 0.0, "sharpnessScore must NOT be populated by pre-burst preparation")
+        XCTAssertEqual(prepared.metrics.technicalScore, 0.0, "technicalScore must NOT be populated by pre-burst preparation")
+        XCTAssertEqual(prepared.metrics.rawSharpness, 420.0)
+        XCTAssertEqual(prepared.metrics.rawFaceSharpness, 380.0)
+    }
+
+    func testPairwiseVoteDistributionAndAmbiguitySchema() throws {
+        // Test 1: Decisive majority (8 vs 2)
+        let pairA = GroundTruthPairwiseComparison(
+            photo_a: "img_001",
+            photo_b: "img_002",
+            votes_a: 8,
+            votes_b: 2,
+            reasons: ["sharper focus", "better smile"]
+        )
+        XCTAssertEqual(pairA.totalVotes, 10)
+        XCTAssertEqual(pairA.majorityWinner, "img_001")
+        XCTAssertEqual(pairA.preferenceProbabilityA, 0.80, accuracy: 0.001)
+        XCTAssertEqual(pairA.annotatorAgreement, 0.80, accuracy: 0.001)
+        XCTAssertFalse(pairA.isAmbiguous)
+        XCTAssertEqual(pairA.reasons?.count, 2)
+
+        // Test 2: Ambiguous division (6 vs 4)
+        let pairB = GroundTruthPairwiseComparison(
+            photo_a: "img_003",
+            photo_b: "img_004",
+            votes_a: 6,
+            votes_b: 4
+        )
+        XCTAssertEqual(pairB.totalVotes, 10)
+        XCTAssertEqual(pairB.majorityWinner, "img_003")
+        XCTAssertEqual(pairB.annotatorAgreement, 0.60, accuracy: 0.001)
+        XCTAssertTrue(pairB.isAmbiguous, "Pair with 60% agreement must be classified as ambiguous (< 70%)")
+
+        // Test 3: Dead tie (5 vs 5)
+        let pairC = GroundTruthPairwiseComparison(
+            photo_a: "img_005",
+            photo_b: "img_006",
+            votes_a: 5,
+            votes_b: 5
+        )
+        XCTAssertEqual(pairC.totalVotes, 10)
+        XCTAssertNil(pairC.majorityWinner, "Tie must produce nil majority winner")
+        XCTAssertEqual(pairC.annotatorAgreement, 0.50, accuracy: 0.001)
+        XCTAssertTrue(pairC.isAmbiguous)
+
+        // Test JSON round-trip
+        let encoder = JSONEncoder()
+        let data = try encoder.encode(pairA)
+        let decoder = JSONDecoder()
+        let decoded = try decoder.decode(GroundTruthPairwiseComparison.self, from: data)
+        XCTAssertEqual(decoded.photo_a, "img_001")
+        XCTAssertEqual(decoded.votes_a, 8)
+        XCTAssertEqual(decoded.votes_b, 2)
+        XCTAssertEqual(decoded.majorityWinner, "img_001")
+        XCTAssertEqual(decoded.annotatorAgreement, 0.80)
+    }
+
+    func testPhotoTriageAdapterInspectionAndMissingDataset() throws {
+        let adapter = PhotoTriageAdapter()
+        let missingURL = URL(fileURLWithPath: "/tmp/nonexistent_photo_triage_root_\(UUID().uuidString)")
+        let inspection = adapter.inspect(rootURL: missingURL)
+
+        XCTAssertFalse(inspection.isAvailable)
+        XCTAssertTrue(inspection.statusMessage.contains("not found"))
+
+        // Verify that loading missing root throws awaitingExternalDataset error
+        XCTAssertThrowsError(try adapter.loadDataset(from: missingURL)) { error in
+            guard let adapterErr = error as? PhotoTriageAdapter.AdapterError else {
+                XCTFail("Expected PhotoTriageAdapter.AdapterError, got \(error)")
+                return
+            }
+            if case .awaitingExternalDataset = adapterErr {
+                // Expected
+            } else {
+                XCTFail("Expected .awaitingExternalDataset, got \(adapterErr)")
+            }
+        }
+
+        // Test canonical manifest parsing
+        let sampleJSON = """
+        {
+          "version": "2.0",
+          "dataset_name": "PhotoTriage Synthetic Canonical Test",
+          "total_series": 1,
+          "total_frames": 2,
+          "series": [
+            {
+              "series_id": "pt_series_01",
+              "scene_type": "burst",
+              "frames": [
+                { "photo_id": "p1", "image_path": "images/p1.jpg" },
+                { "photo_id": "p2", "image_path": "images/p2.jpg" }
+              ],
+              "ground_truth": {
+                "pairwise_comparisons": [
+                  { "photo_a": "p1", "photo_b": "p2", "votes_a": 9, "votes_b": 1 }
+                ]
+              }
+            }
+          ]
+        }
+        """.data(using: .utf8)!
+
+        let rootURL = URL(fileURLWithPath: "/datasets/phototriage")
+        let parsed = try adapter.parseCanonicalManifest(data: sampleJSON, rootURL: rootURL)
+
+        XCTAssertEqual(parsed.total_series, 1)
+        XCTAssertEqual(parsed.series.count, 1)
+        XCTAssertEqual(parsed.series[0].frames.count, 2)
+        XCTAssertEqual(parsed.series[0].ground_truth.pairwise_comparisons?.count, 1)
+        XCTAssertEqual(parsed.series[0].ground_truth.pairwise_comparisons?[0].majorityWinner, "p1")
+        XCTAssertEqual(parsed.series[0].ground_truth.pairwise_comparisons?[0].annotatorAgreement, 0.90)
+    }
+
+    func testProductionPreviewDownsampleStatic() {
+        let width = 400
+        let height = 300
+        let colorSpace = CGColorSpaceCreateDeviceGray()
+        let ctx = CGContext(
+            data: nil,
+            width: width,
+            height: height,
+            bitsPerComponent: 8,
+            bytesPerRow: width,
+            space: colorSpace,
+            bitmapInfo: CGImageAlphaInfo.none.rawValue
+        )!
+        ctx.setFillColor(gray: 0.5, alpha: 1.0)
+        ctx.fill(CGRect(x: 0, y: 0, width: width, height: height))
+        let img = ctx.makeImage()!
+
+        let downsampled = PreviewPipeline.downsample(cgImage: img, maxPixelSize: 100)
+        XCTAssertNotNil(downsampled)
+        XCTAssertEqual(max(downsampled!.width, downsampled!.height), 100)
+    }
 }
+

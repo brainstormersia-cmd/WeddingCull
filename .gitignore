@@ -19,3 +19,7 @@ artifacts_*/
 __pycache__/
 !scripts/*.py
 .github_token
+/datasets/
+*.zip
+*.rar
+*.crdownload

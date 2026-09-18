@@ -3,6 +3,32 @@ import Foundation
 public final class QualityScorer: Sendable {
     public init() {}
 
+    /// Computes exposure score from mean luminance and shadow/highlight clipping
+    public static func computeExposureScore(
+        meanLuminance: Double,
+        shadowClipping: Double,
+        highlightClipping: Double
+    ) -> Double {
+        let luminanceDeviation = abs(meanLuminance - 0.5) * 2.0 // 0.0 optimal, 1.0 extreme
+        let clippingPenalty = (shadowClipping + highlightClipping) * 1.5
+        return max(0.05, 1.0 - (luminanceDeviation * 0.4 + clippingPenalty * 0.6))
+    }
+
+    /// Prepares only the necessary pre-burst metrics (exposureScore) before burst ranking,
+    /// without executing full scoring, overall score calculation, or diversity weighting.
+    public func preparePreBurstMetrics(items: [PhotoItem]) -> [PhotoItem] {
+        var updated = items
+        for i in 0..<updated.count {
+            let m = updated[i].metrics
+            updated[i].metrics.exposureScore = Self.computeExposureScore(
+                meanLuminance: m.meanLuminance,
+                shadowClipping: m.shadowClipping,
+                highlightClipping: m.highlightClipping
+            )
+        }
+        return updated
+    }
+
     /// Normalizes and computes all score components for a collection of photos
     public func scorePhotos(items: [PhotoItem]) -> [PhotoItem] {
         guard !items.isEmpty else { return [] }
@@ -32,10 +58,11 @@ public final class QualityScorer: Sendable {
             }
 
             // Exposure score: penalized by clipping and extreme deviations from optimal middle luminance
-            let luminanceDeviation = abs(m.meanLuminance - 0.5) * 2.0 // 0.0 optimal, 1.0 extreme
-            let clippingPenalty = (m.shadowClipping + m.highlightClipping) * 1.5
-            let expScore = max(0.05, 1.0 - (luminanceDeviation * 0.4 + clippingPenalty * 0.6))
-            m.exposureScore = expScore
+            m.exposureScore = Self.computeExposureScore(
+                meanLuminance: m.meanLuminance,
+                shadowClipping: m.shadowClipping,
+                highlightClipping: m.highlightClipping
+            )
 
             // Semantic importance score based on wedding category
             m.semanticImportanceScore = min(1.0, item.category.selectionWeight / 1.5)
