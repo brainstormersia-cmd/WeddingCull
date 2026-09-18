@@ -54,6 +54,16 @@ struct BenchmarkRunner {
         var classifySlots: Int? = nil
         var sweepClassifyMatrix = false
         var outputClassifyMatrixJSONPath: String? = nil
+        var diagnoseDeterminism = false
+        var outputDeterminismJSONPath: String? = nil
+        var sweepTwoStage = false
+        var outputTwoStageJSONPath: String? = nil
+        var useTwoStageArchitecture = false
+        var stageAWorkers: Int? = nil
+        var stageBWorkers: Int? = nil
+        var queueCapacity = 8
+        var classificationBackendArg = "auto"
+        var strictModel = false
 
         var i = 1
         while i < args.count {
@@ -178,6 +188,52 @@ struct BenchmarkRunner {
                     outputClassifyMatrixJSONPath = args[i + 1]
                     i += 1
                 }
+            case "--diagnose-determinism":
+                diagnoseDeterminism = true
+                if i + 1 < args.count, let c = Int(args[i + 1]) {
+                    datasetPhotoCount = c
+                    i += 1
+                }
+            case "--output-determinism-json":
+                if i + 1 < args.count {
+                    outputDeterminismJSONPath = args[i + 1]
+                    i += 1
+                }
+            case "--sweep-two-stage":
+                sweepTwoStage = true
+                if i + 1 < args.count, let c = Int(args[i + 1]) {
+                    datasetPhotoCount = c
+                    i += 1
+                }
+            case "--output-two-stage-json":
+                if i + 1 < args.count {
+                    outputTwoStageJSONPath = args[i + 1]
+                    i += 1
+                }
+            case "--two-stage":
+                useTwoStageArchitecture = true
+            case "--stage-a-workers":
+                if i + 1 < args.count, let w = Int(args[i + 1]) {
+                    stageAWorkers = w
+                    i += 1
+                }
+            case "--stage-b-workers":
+                if i + 1 < args.count, let w = Int(args[i + 1]) {
+                    stageBWorkers = w
+                    i += 1
+                }
+            case "--queue-capacity":
+                if i + 1 < args.count, let q = Int(args[i + 1]) {
+                    queueCapacity = q
+                    i += 1
+                }
+            case "--classification-backend":
+                if i + 1 < args.count {
+                    classificationBackendArg = args[i + 1].lowercased()
+                    i += 1
+                }
+            case "--strict-model":
+                strictModel = true
             default:
                 break
             }
@@ -555,9 +611,14 @@ struct BenchmarkRunner {
 
             for cfg in matrixConfigs {
                 print("\n--- Testing: Pipeline \(cfg.pipelineWorkers) workers / Classify \(cfg.classifySlots) slot(s) ---")
+                let isolatedCache = URL(fileURLWithPath: "artifacts/cache_matrix_w\(cfg.pipelineWorkers)_s\(cfg.classifySlots)")
+                try? fileManager.removeItem(at: isolatedCache)
+                defer { try? fileManager.removeItem(at: isolatedCache) }
+
                 let hw = HardwareCapabilities(concurrencyOverride: cfg.pipelineWorkers)
                 let pipe = AnalysisPipeline(
                     hardware: hw,
+                    customCacheDir: isolatedCache,
                     lazyFeaturePrint: true,
                     visionExecutionMode: .separate,
                     faceInputMaxPixelSize: 1000,
@@ -652,6 +713,418 @@ struct BenchmarkRunner {
             }
         }
 
+        if diagnoseDeterminism {
+            let diagCount = datasetPhotoCount
+            let diagFolder = datasetFolder
+            let diagTarget = targetSelectionCount
+            print("\n🔬 ==================================================================================")
+            print("🔬 EXECUTING DETERMINISM DIAGNOSTICS SUITE (\(diagCount) photos, target: \(diagTarget))")
+            print("🔬 ==================================================================================")
+
+            struct RunSnapshot {
+                let name: String
+                let photos: [PhotoItem]
+                let session: SessionData
+                let wallClockSeconds: Double
+                let throughputPPS: Double
+            }
+
+            func executeDiagRun(name: String, workers: Int, slots: Int, cacheDir: URL, cleanCache: Bool) async throws -> RunSnapshot {
+                if cleanCache {
+                    try? fileManager.removeItem(at: cacheDir)
+                }
+                try? fileManager.createDirectory(at: cacheDir, withIntermediateDirectories: true)
+                let hw = HardwareCapabilities(concurrencyOverride: workers)
+                let pipe = AnalysisPipeline(
+                    hardware: hw,
+                    customCacheDir: cacheDir,
+                    lazyFeaturePrint: true,
+                    visionExecutionMode: .separate,
+                    faceInputMaxPixelSize: 1000,
+                    sceneInputMaxPixelSize: 1000,
+                    sceneClassificationConcurrency: slots
+                )
+                let tStart = Date()
+                let sess = try await pipe.runAnalysis(sourceFolder: diagFolder, targetCount: diagTarget) { _ in }
+                let wall = max(0.001, Date().timeIntervalSince(tStart))
+                let pps = Double(sess.photos.count) / wall
+                return RunSnapshot(name: name, photos: sess.photos, session: sess, wallClockSeconds: wall, throughputPPS: pps)
+            }
+
+            struct DeterminismComparison: Codable {
+                let comparisonName: String
+                let runAName: String
+                let runBName: String
+                let selectedIDsMatch: Bool
+                let selectedCountA: Int
+                let selectedCountB: Int
+                let symmetricDifferenceCount: Int
+                let idsOnlyInA: [String]
+                let idsOnlyInB: [String]
+                let categoryAgreementPct: Double
+                let categoryMismatchCount: Int
+                let categoryMismatches: [String: String]
+                let faceCountAgreementPct: Double
+                let faceCountMismatchCount: Int
+                let burstGroupsCountA: Int
+                let burstGroupsCountB: Int
+                let burstWinnersMatch: Bool
+                let burstWinnerMismatchCount: Int
+                let segmentsCountA: Int
+                let segmentsCountB: Int
+                let maxOverallScoreDiff: Double
+                let meanOverallScoreDiff: Double
+                let isByteIdentical: Bool
+                let summaryNote: String
+            }
+
+            func compareSnapshots(name: String, runA: RunSnapshot, runB: RunSnapshot, note: String) -> DeterminismComparison {
+                let idsA = Set(runA.photos.filter { $0.selectionState == .selected }.map(\.id))
+                let idsB = Set(runB.photos.filter { $0.selectionState == .selected }.map(\.id))
+                let onlyA = Array(idsA.subtracting(idsB)).sorted()
+                let onlyB = Array(idsB.subtracting(idsA)).sorted()
+                let symDiff = onlyA.count + onlyB.count
+
+                let mapA = Dictionary(uniqueKeysWithValues: runA.photos.map { ($0.id, $0) })
+                let mapB = Dictionary(uniqueKeysWithValues: runB.photos.map { ($0.id, $0) })
+
+                var catMatches = 0
+                var catMismatches: [String: String] = [:]
+                var faceMatches = 0
+                var faceMismatchCount = 0
+                var scoreDiffs: [Double] = []
+
+                for id in mapA.keys.sorted() {
+                    guard let itemA = mapA[id], let itemB = mapB[id] else { continue }
+                    if itemA.category == itemB.category {
+                        catMatches += 1
+                    } else {
+                        catMismatches[id] = "\(itemA.category.rawValue) vs \(itemB.category.rawValue)"
+                    }
+                    if itemA.metrics.faceCount == itemB.metrics.faceCount {
+                        faceMatches += 1
+                    } else {
+                        faceMismatchCount += 1
+                    }
+                    let diff = abs(itemA.metrics.overallScore - itemB.metrics.overallScore)
+                    scoreDiffs.append(diff)
+                }
+
+                let totalCount = max(1, Double(mapA.count))
+                let catPct = Double(round((Double(catMatches) / totalCount) * 1000) / 10)
+                let facePct = Double(round((Double(faceMatches) / totalCount) * 1000) / 10)
+                let maxScoreDiff = scoreDiffs.max() ?? 0.0
+                let meanScoreDiff = scoreDiffs.isEmpty ? 0.0 : (scoreDiffs.reduce(0.0, +) / Double(scoreDiffs.count))
+
+                let bgA = runA.session.burstGroups
+                let bgB = runB.session.burstGroups
+                var burstWinnerMismatches = 0
+                for (id, groupA) in bgA {
+                    if let groupB = bgB[id] {
+                        if groupA.canonicalPhotoID != groupB.canonicalPhotoID {
+                            burstWinnerMismatches += 1
+                        }
+                    } else {
+                        burstWinnerMismatches += 1
+                    }
+                }
+
+                let isByteIdentical = (idsA == idsB) && (catMismatches.isEmpty) && (faceMismatchCount == 0) && (burstWinnerMismatches == 0) && (maxScoreDiff < 0.0001)
+
+                return DeterminismComparison(
+                    comparisonName: name,
+                    runAName: runA.name,
+                    runBName: runB.name,
+                    selectedIDsMatch: idsA == idsB,
+                    selectedCountA: idsA.count,
+                    selectedCountB: idsB.count,
+                    symmetricDifferenceCount: symDiff,
+                    idsOnlyInA: onlyA,
+                    idsOnlyInB: onlyB,
+                    categoryAgreementPct: catPct,
+                    categoryMismatchCount: catMismatches.count,
+                    categoryMismatches: catMismatches,
+                    faceCountAgreementPct: facePct,
+                    faceCountMismatchCount: faceMismatchCount,
+                    burstGroupsCountA: bgA.count,
+                    burstGroupsCountB: bgB.count,
+                    burstWinnersMatch: (burstWinnerMismatches == 0 && bgA.count == bgB.count),
+                    burstWinnerMismatchCount: burstWinnerMismatches,
+                    segmentsCountA: runA.session.temporalSegments.count,
+                    segmentsCountB: runB.session.temporalSegments.count,
+                    maxOverallScoreDiff: Double(round(maxScoreDiff * 100000) / 100000),
+                    meanOverallScoreDiff: Double(round(meanScoreDiff * 100000) / 100000),
+                    isByteIdentical: isByteIdentical,
+                    summaryNote: note
+                )
+            }
+
+            var comparisons: [DeterminismComparison] = []
+            do {
+                print("1️⃣ Running Cold Run 1 (Workers: 2, Classify Slots: 2)...")
+                let cold1Dir = URL(fileURLWithPath: "artifacts/cache_diag_cold1")
+                let cold1 = try await executeDiagRun(name: "Cold 1 (2/2)", workers: 2, slots: 2, cacheDir: cold1Dir, cleanCache: true)
+                defer { try? fileManager.removeItem(at: cold1Dir) }
+                print(String(format: "   Done: %.2fs wall, %.2f PPS, %d selected", cold1.wallClockSeconds, cold1.throughputPPS, cold1.photos.filter { $0.selectionState == .selected }.count))
+
+                print("2️⃣ Running Cold Run 2 (Workers: 2, Classify Slots: 2)...")
+                let cold2Dir = URL(fileURLWithPath: "artifacts/cache_diag_cold2")
+                let cold2 = try await executeDiagRun(name: "Cold 2 (2/2)", workers: 2, slots: 2, cacheDir: cold2Dir, cleanCache: true)
+                defer { try? fileManager.removeItem(at: cold2Dir) }
+                print(String(format: "   Done: %.2fs wall, %.2f PPS, %d selected", cold2.wallClockSeconds, cold2.throughputPPS, cold2.photos.filter { $0.selectionState == .selected }.count))
+
+                print("3️⃣ Running Warm Run 1 (populating warm cache, Workers: 2, Classify Slots: 2)...")
+                let warmDir = URL(fileURLWithPath: "artifacts/cache_diag_warm")
+                let warm1 = try await executeDiagRun(name: "Warm 1 (2/2)", workers: 2, slots: 2, cacheDir: warmDir, cleanCache: true)
+                print(String(format: "   Done: %.2fs wall, %.2f PPS, %d selected", warm1.wallClockSeconds, warm1.throughputPPS, warm1.photos.filter { $0.selectionState == .selected }.count))
+
+                print("4️⃣ Running Warm Run 2 (reusing warm cache, Workers: 2, Classify Slots: 2)...")
+                let warm2 = try await executeDiagRun(name: "Warm 2 (2/2)", workers: 2, slots: 2, cacheDir: warmDir, cleanCache: false)
+                defer { try? fileManager.removeItem(at: warmDir) }
+                print(String(format: "   Done: %.2fs wall, %.2f PPS, %d selected", warm2.wallClockSeconds, warm2.throughputPPS, warm2.photos.filter { $0.selectionState == .selected }.count))
+
+                print("5️⃣ Running Cold Run (Workers: 2, Classify Slots: 1)...")
+                let cold21Dir = URL(fileURLWithPath: "artifacts/cache_diag_cold_2_1")
+                let cold21 = try await executeDiagRun(name: "Cold (2/1)", workers: 2, slots: 1, cacheDir: cold21Dir, cleanCache: true)
+                defer { try? fileManager.removeItem(at: cold21Dir) }
+                print(String(format: "   Done: %.2fs wall, %.2f PPS, %d selected", cold21.wallClockSeconds, cold21.throughputPPS, cold21.photos.filter { $0.selectionState == .selected }.count))
+
+                // Comparisons
+                comparisons.append(compareSnapshots(
+                    name: "Cold 1 vs Cold 2 (Identical 2/2)",
+                    runA: cold1,
+                    runB: cold2,
+                    note: "Identical cold starts under concurrency. Tests scheduling, timing, and sorting determinism."
+                ))
+                comparisons.append(compareSnapshots(
+                    name: "Warm 1 vs Warm 2 (Identical 2/2)",
+                    runA: warm1,
+                    runB: warm2,
+                    note: "Identical warm starts reading cached disk JPEGs. Tests cache-reload determinism."
+                ))
+                comparisons.append(compareSnapshots(
+                    name: "Cold (2, 1) vs Cold (2, 2)",
+                    runA: cold21,
+                    runB: cold1,
+                    note: "Decoupled concurrency slots variation with clean cold cache. Tests concurrency independence."
+                ))
+                comparisons.append(compareSnapshots(
+                    name: "Cold 1 vs Warm 1 (Cold vs Warm)",
+                    runA: cold1,
+                    runB: warm1,
+                    note: "Cold (raw decoded bitmaps) vs Warm (re-read lossy JPEG previews). Quantifies JPEG DCT effect."
+                ))
+
+            } catch {
+                print("❌ Determinism diagnostic execution failed: \(error)")
+            }
+
+            print("\n==================================================================================")
+            print("📊 DETERMINISM DIAGNOSTICS SUMMARY REPORT")
+            print("==================================================================================")
+            print("| Comparison | Selected IDs Match | Cat Agr % | Face Agr % | Burst Winners | Max Score Diff | Byte-Identical? |")
+            print("| :--- | :---: | :---: | :---: | :---: | :---: | :---: |")
+            for c in comparisons {
+                print(String(format: "| %@ | %@ (%d diff) | %.1f%% | %.1f%% | %@ | %.5f | %@ |",
+                             c.comparisonName,
+                             c.selectedIDsMatch ? "YES ✅" : "NO ❌",
+                             c.symmetricDifferenceCount,
+                             c.categoryAgreementPct,
+                             c.faceCountAgreementPct,
+                             c.burstWinnersMatch ? "MATCH ✅" : "DIFF ❌",
+                             c.maxOverallScoreDiff,
+                             c.isByteIdentical ? "YES ✅" : "NO ⚠️"))
+            }
+            print("==================================================================================\n")
+
+            let outPath = outputDeterminismJSONPath ?? "artifacts/determinism_diagnostics.json"
+            let url = URL(fileURLWithPath: outPath)
+            try? fileManager.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            let enc = JSONEncoder()
+            enc.outputFormatting = [.prettyPrinted, .sortedKeys]
+            if let data = try? enc.encode(comparisons) {
+                try? data.write(to: url)
+                print("✅ Saved determinism diagnostics JSON to \(outPath)")
+            }
+
+            if sweepOnly {
+                print("✅ Determinism diagnostics completed successfully.")
+                return
+            }
+        }
+
+        if sweepTwoStage {
+            let sweepCount = datasetPhotoCount
+            let sweepFolder = datasetFolder
+            let sweepTarget = targetSelectionCount
+            print("\n🔬 ==================================================================================")
+            print("🔬 EXECUTING TWO-STAGE PIPELINE SWEEP (Producer-Consumer Backpressure)")
+            print("🔬 ==================================================================================")
+
+            struct TwoStageConfigDef {
+                let name: String
+                let stageAWorkers: Int
+                let stageBWorkers: Int
+                let queueCapacity: Int
+            }
+
+            let configurations: [TwoStageConfigDef] = [
+                TwoStageConfigDef(name: "Stage A: 2 / Stage B: 1 / Queue: 8", stageAWorkers: 2, stageBWorkers: 1, queueCapacity: 8),
+                TwoStageConfigDef(name: "Stage A: 2 / Stage B: 2 / Queue: 8", stageAWorkers: 2, stageBWorkers: 2, queueCapacity: 8),
+                TwoStageConfigDef(name: "Stage A: 3 / Stage B: 1 / Queue: 8", stageAWorkers: 3, stageBWorkers: 1, queueCapacity: 8),
+                TwoStageConfigDef(name: "Stage A: 3 / Stage B: 2 / Queue: 8", stageAWorkers: 3, stageBWorkers: 2, queueCapacity: 8),
+                TwoStageConfigDef(name: "Stage A: 4 / Stage B: 1 / Queue: 8", stageAWorkers: 4, stageBWorkers: 1, queueCapacity: 8),
+                TwoStageConfigDef(name: "Stage A: 4 / Stage B: 2 / Queue: 8", stageAWorkers: 4, stageBWorkers: 2, queueCapacity: 8),
+                TwoStageConfigDef(name: "Stage A: 2 / Stage B: 2 / Queue: 4", stageAWorkers: 2, stageBWorkers: 2, queueCapacity: 4),
+                TwoStageConfigDef(name: "Stage A: 2 / Stage B: 2 / Queue: 16", stageAWorkers: 2, stageBWorkers: 2, queueCapacity: 16),
+                TwoStageConfigDef(name: "Stage A: 3 / Stage B: 2 / Queue: 4", stageAWorkers: 3, stageBWorkers: 2, queueCapacity: 4),
+                TwoStageConfigDef(name: "Stage A: 3 / Stage B: 2 / Queue: 16", stageAWorkers: 3, stageBWorkers: 2, queueCapacity: 16)
+            ]
+
+            struct TwoStageResult: Codable {
+                let configName: String
+                let stageAWorkers: Int
+                let stageBWorkers: Int
+                let queueCapacity: Int
+                let wallClockSeconds: Double
+                let throughputPPS: Double
+                let peakMemoryMB: Int
+                let previewMsPerPhoto: Double
+                let qualityMsPerPhoto: Double
+                let faceMsPerPhoto: Double
+                let sceneMsPerPhoto: Double
+                let categoryAgreementPct: Double
+                let faceCountAgreementPct: Double
+                let selectedIDsMatch: Bool
+            }
+
+            var results: [TwoStageResult] = []
+            var baselineCategories: [String: WeddingCategory] = [:]
+            var baselineFaceCounts: [String: Int] = [:]
+            var baselineSelectedIDs: Set<String> = []
+
+            for cfg in configurations {
+                print("\n--- Testing: \(cfg.name) ---")
+                let isolatedCache = URL(fileURLWithPath: "artifacts/cache_twostage_a\(cfg.stageAWorkers)_b\(cfg.stageBWorkers)_q\(cfg.queueCapacity)")
+                try? fileManager.removeItem(at: isolatedCache)
+                defer { try? fileManager.removeItem(at: isolatedCache) }
+
+                var currentPeak: UInt64 = 0
+                let samplingTask = Task {
+                    while !Task.isCancelled {
+                        let usage = getCurrentResidentMemoryBytes()
+                        if usage > currentPeak {
+                            currentPeak = usage
+                        }
+                        try? await Task.sleep(nanoseconds: 50_000_000)
+                    }
+                }
+
+                let pipe = AnalysisPipeline(
+                    hardware: HardwareCapabilities(concurrencyOverride: cfg.stageAWorkers),
+                    customCacheDir: isolatedCache,
+                    lazyFeaturePrint: true,
+                    visionExecutionMode: .separate,
+                    faceInputMaxPixelSize: 1000,
+                    sceneInputMaxPixelSize: 1000,
+                    pipelineArchitecture: .twoStage,
+                    stageAWorkers: cfg.stageAWorkers,
+                    stageBWorkers: cfg.stageBWorkers,
+                    queueCapacity: cfg.queueCapacity
+                )
+
+                let tStart = Date()
+                let sess: SessionData
+                do {
+                    sess = try await pipe.runAnalysis(
+                        sourceFolder: sweepFolder,
+                        targetCount: sweepTarget
+                    ) { _ in }
+                } catch {
+                    samplingTask.cancel()
+                    print("❌ Two-stage test failed for \(cfg.name): \(error)")
+                    continue
+                }
+                samplingTask.cancel()
+                let tWall = max(0.001, Date().timeIntervalSince(tStart))
+                let pps = Double(sess.photos.count) / tWall
+                let peakMB = Int(round(Double(currentPeak) / (1024.0 * 1024.0)))
+                let count = Double(max(1, sess.photos.count))
+                let pt = sess.phaseTimings ?? PhaseTimings()
+
+                let currentCategories = Dictionary(uniqueKeysWithValues: sess.photos.map { ($0.id, $0.category) })
+                let currentFaceCounts = Dictionary(uniqueKeysWithValues: sess.photos.map { ($0.id, $0.metrics.faceCount) })
+                let currentSelectedIDs = Set(sess.photos.filter { $0.selectionState == .selected }.map(\.id))
+
+                if baselineCategories.isEmpty {
+                    baselineCategories = currentCategories
+                    baselineFaceCounts = currentFaceCounts
+                    baselineSelectedIDs = currentSelectedIDs
+                }
+
+                var catMatch = 0
+                var faceMatch = 0
+                for (id, cat) in currentCategories {
+                    if baselineCategories[id] == cat { catMatch += 1 }
+                    if baselineFaceCounts[id] == currentFaceCounts[id] { faceMatch += 1 }
+                }
+                let catAgrPct = Double(round((Double(catMatch) / count) * 1000) / 10)
+                let faceAgrPct = Double(round((Double(faceMatch) / count) * 1000) / 10)
+                let idsMatch = (currentSelectedIDs == baselineSelectedIDs)
+
+                let res = TwoStageResult(
+                    configName: cfg.name,
+                    stageAWorkers: cfg.stageAWorkers,
+                    stageBWorkers: cfg.stageBWorkers,
+                    queueCapacity: cfg.queueCapacity,
+                    wallClockSeconds: Double(round(tWall * 100) / 100),
+                    throughputPPS: Double(round(pps * 100) / 100),
+                    peakMemoryMB: peakMB,
+                    previewMsPerPhoto: Double(round((pt.previewGenerationSeconds / count) * 10000) / 10),
+                    qualityMsPerPhoto: Double(round((pt.qualityScoringSeconds / count) * 10000) / 10),
+                    faceMsPerPhoto: Double(round((pt.faceDetectionSeconds / count) * 10000) / 10),
+                    sceneMsPerPhoto: Double(round((pt.sceneClassificationSeconds / count) * 10000) / 10),
+                    categoryAgreementPct: catAgrPct,
+                    faceCountAgreementPct: faceAgrPct,
+                    selectedIDsMatch: idsMatch
+                )
+                results.append(res)
+                print(String(format: "  %.2fs wall, %.2f PPS, %d MB RSS | Scene: %.1f ms/p, Face: %.1f ms/p, IDs match: %@",
+                             tWall, pps, peakMB, res.sceneMsPerPhoto, res.faceMsPerPhoto, idsMatch ? "YES" : "NO"))
+            }
+
+            print("\n==================================================================================")
+            print("📊 TWO-STAGE PIPELINE SWEEP SUMMARY")
+            print("==================================================================================")
+            print("| Configuration | Wall (s) | Throughput (PPS) | Peak RSS (MB) | Scene (ms/p) | Face (ms/p) | IDs Match |")
+            print("| :--- | :---: | :---: | :---: | :---: | :---: | :---: |")
+            for r in results {
+                print(String(format: "| %@ | %.2f | %.2f | %d | %.1f | %.1f | %@ |",
+                             r.configName, r.wallClockSeconds, r.throughputPPS, r.peakMemoryMB, r.sceneMsPerPhoto, r.faceMsPerPhoto, r.selectedIDsMatch ? "YES" : "NO"))
+            }
+            if let best = results.max(by: { $0.throughputPPS < $1.throughputPPS }) {
+                print("----------------------------------------------------------------------------------")
+                print(String(format: "🏆 Optimal Two-Stage Configuration: %@ (%.2f PPS, %.2fs wall)",
+                             best.configName, best.throughputPPS, best.wallClockSeconds))
+            }
+            print("==================================================================================\n")
+
+            let outPath = outputTwoStageJSONPath ?? "artifacts/two_stage_sweep.json"
+            let url = URL(fileURLWithPath: outPath)
+            try? fileManager.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+            let enc = JSONEncoder()
+            enc.outputFormatting = [.prettyPrinted, .sortedKeys]
+            if let data = try? enc.encode(results) {
+                try? data.write(to: url)
+                print("✅ Saved two-stage sweep JSON to \(outPath)")
+            }
+
+            if sweepOnly {
+                print("✅ Two-stage sweep completed successfully.")
+                return
+            }
+        }
+
         var peakMemoryBytes: UInt64 = getCurrentResidentMemoryBytes()
         let memorySamplingTask = Task {
             while !Task.isCancelled {
@@ -667,13 +1140,20 @@ struct BenchmarkRunner {
         let hardware = HardwareCapabilities(concurrencyOverride: workerOverride)
         print("Hardware detected: \(hardware.cpuArchitecture), \(hardware.logicalProcessors) logical cores (\(hardware.recommendedConcurrency) concurrent workers)")
 
+        let forceVisionFallback = (classificationBackendArg == "vision")
+
         let pipeline = AnalysisPipeline(
             hardware: hardware,
             lazyFeaturePrint: lazyFeaturePrint,
             visionExecutionMode: visionExecutionMode,
             faceInputMaxPixelSize: facePixelSize,
             sceneInputMaxPixelSize: scenePixelSize,
-            sceneClassificationConcurrency: classifySlots
+            sceneClassificationConcurrency: classifySlots,
+            pipelineArchitecture: useTwoStageArchitecture ? .twoStage : .unified,
+            stageAWorkers: stageAWorkers,
+            stageBWorkers: stageBWorkers,
+            queueCapacity: queueCapacity,
+            forceVisionFallback: forceVisionFallback
         )
         let startTime = Date()
 
@@ -788,8 +1268,7 @@ struct BenchmarkRunner {
             }
             print(String(format: "  Session round-trip status: %@ (Reopen Latency: %.3f s, Target: < 2.0s)", sessionReloadSuccess ? "PASS" : "FAIL", sessionReopenLatencySeconds))
 
-            let backendUsed = (FileManager.default.fileExists(atPath: "models/mobileclip_s0_image.mlmodelc") ||
-                               FileManager.default.fileExists(atPath: "models/mobileclip_s0_image.mlpackage")) ? "MobileCLIP-S0" : "Apple Vision (Built-in)"
+            let backendUsed = pipeline.classifierBackendUsed.rawValue
 
             print("\n====================================================")
             print("📊 BENCHMARK EXECUTION RESULTS (100% MEASURED)")
@@ -1116,6 +1595,18 @@ struct BenchmarkRunner {
                     exit(1)
                 }
                 print("✅ Strict benchmark validation PASSED with zero anomalies.")
+            }
+
+            if strictModel && classificationBackendArg == "mobileclip" {
+                if !pipeline.isCoreMLModelLoaded {
+                    print("\n❌ STRICT MODEL ERROR: MobileCLIP-S0 Core ML model is not loaded!")
+                    exit(1)
+                }
+                if pipeline.classifierBackendUsed != .mobileCLIP {
+                    print("\n❌ STRICT MODEL ERROR: Classifier fell back to \(pipeline.classifierBackendUsed.rawValue) instead of MobileCLIP-S0!")
+                    exit(1)
+                }
+                print("✅ Strict model validation PASSED: MobileCLIP-S0 ran authentically via Core ML.")
             }
 
             exit(0)

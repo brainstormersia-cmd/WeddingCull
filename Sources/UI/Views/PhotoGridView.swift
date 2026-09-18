@@ -44,6 +44,43 @@ public struct PhotoGridView: View {
 
             Divider()
 
+            if appState.isAnalyzing, let prog = appState.analysisProgress {
+                HStack(spacing: 12) {
+                    ProgressView(value: Double(prog.completedUnits), total: Double(max(1, prog.totalUnits)))
+                        .progressViewStyle(.linear)
+                        .frame(maxWidth: 220)
+                        .accessibilityIdentifier(AccessibilityIdentifiers.analysisProgressIndicator)
+
+                    Text("\(prog.phase.rawValue): \(prog.message)")
+                        .font(.caption)
+                        .foregroundColor(.primary)
+                        .accessibilityIdentifier(AccessibilityIdentifiers.analysisPhaseLabel)
+
+                    Spacer()
+
+                    if appState.isPaused {
+                        Button("Riprendi") {
+                            appState.resumeAnalysis()
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        .accessibilityIdentifier(AccessibilityIdentifiers.analysisResumeButton)
+                    } else {
+                        Button("Pausa") {
+                            appState.pauseAnalysis()
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        .accessibilityIdentifier(AccessibilityIdentifiers.analysisPauseButton)
+                    }
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
+                .background(Color.accentColor.opacity(0.08))
+
+                Divider()
+            }
+
             ScrollView {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: thumbnailSize, maximum: thumbnailSize * 1.5), spacing: 10)], spacing: 10) {
                     ForEach(appState.filteredPhotos) { item in

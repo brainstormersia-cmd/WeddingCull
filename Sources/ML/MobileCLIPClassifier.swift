@@ -17,10 +17,12 @@ public final class MobileCLIPClassifier: ImageClassifierProtocol, @unchecked Sen
     public private(set) var isCoreMLModelLoaded: Bool = false
     public private(set) var lastUsedBackend: ClassificationBackend = .visionFallback
 
-    public init(hardwareCapabilities: HardwareCapabilities = HardwareCapabilities(), customModelURL: URL? = nil) {
+    public init(hardwareCapabilities: HardwareCapabilities = HardwareCapabilities(), customModelURL: URL? = nil, forceVisionFallback: Bool = false) {
         self.isAppleSilicon = hardwareCapabilities.isAppleSilicon
-        loadConceptEmbeddings()
-        loadCoreMLModel(customURL: customModelURL)
+        if !forceVisionFallback {
+            loadConceptEmbeddings()
+            loadCoreMLModel(customURL: customModelURL)
+        }
     }
 
     private func loadConceptEmbeddings() {

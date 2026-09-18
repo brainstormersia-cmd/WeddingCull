@@ -39,6 +39,10 @@ def main():
     dup_burst_rep = read_json_safe(os.path.join(output_dir, "duplicate-burst-report.json"))
     iqa_report = read_json_safe(os.path.join(output_dir, "iqa-report.json"))
     ui_readiness = read_json_safe(os.path.join(output_dir, "ui-readiness-measurement.json"))
+    det_intel = read_json_safe(os.path.join(output_dir, "determinism-diagnostics-intel.json"))
+    det_arm64 = read_json_safe(os.path.join(output_dir, "determinism-diagnostics-arm64.json"))
+    two_stage_intel = read_json_safe(os.path.join(output_dir, "two-stage-sweep-intel.json"))
+    mobileclip_intel = read_json_safe(os.path.join(output_dir, "benchmark-intel-mobileclip.json"))
 
     # Determine status of each subsystem
     # 1. 1500->700 ARM64
@@ -259,6 +263,37 @@ def main():
         for r in classify_matrix_intel:
             ids_str = "YES" if r.get('selectedIDsMatch') else "NO"
             md_content += f"| {r.get('pipelineWorkers')} | {r.get('classifySlots')} | {r.get('wallClockSeconds'):.2f}s | **{r.get('throughputPPS'):.2f} PPS** | {r.get('sceneMsPerPhoto'):.1f} ms | {r.get('faceMsPerPhoto'):.1f} ms | {r.get('categoryAgreementPct'):.1f}% | {ids_str} |\n"
+
+    if det_intel or det_arm64:
+        md_content += "\n## Pipeline Determinism & Reproducibility Diagnostics\n\n"
+        md_content += "> Verifies identical cold-start determinism, warm-cache reload consistency, decoupled concurrency slot invariance, and quantifies lossy preview JPEG impact.\n\n"
+        for label, det_list in [("Native Intel (x86_64)", det_intel), ("Apple Silicon (arm64)", det_arm64)]:
+            if det_list:
+                md_content += f"### {label}\n\n"
+                md_content += "| Comparison | Selected IDs Match | Cat Agr % | Face Agr % | Burst Winners | Max Score Diff | Byte-Identical? |\n"
+                md_content += "| :--- | :---: | :---: | :---: | :---: | :---: | :---: |\n"
+                for c in det_list:
+                    match_str = "YES ✅" if c.get('selectedIDsMatch') else f"NO ❌ ({c.get('symmetricDifferenceCount', 0)} diff)"
+                    bw_str = "MATCH ✅" if c.get('burstWinnersMatch') else "DIFF ❌"
+                    byte_str = "YES ✅" if c.get('isByteIdentical') else "NO ⚠️"
+                    md_content += f"| {c.get('comparisonName')} | {match_str} | {c.get('categoryAgreementPct'):.1f}% | {c.get('faceCountAgreementPct'):.1f}% | {bw_str} | {c.get('maxOverallScoreDiff', 0):.5f} | {byte_str} |\n"
+                md_content += "\n"
+
+    if two_stage_intel:
+        md_content += "\n## Native Intel Two-Stage Pipeline Sweep (Producer-Consumer Backpressure)\n\n"
+        md_content += "> Benchmarks decoupled producer (Stage A: preview/quality/face) and consumer (Stage B: scene classification) with bounded backpressure channels.\n\n"
+        md_content += "| Configuration | Wall Clock (s) | Throughput (PPS) | Peak RSS (MB) | Scene Classify (ms/p) | Face Detect (ms/p) | IDs Match |\n"
+        md_content += "| :--- | :---: | :---: | :---: | :---: | :---: | :---: |\n"
+        for r in two_stage_intel:
+            ids_str = "YES" if r.get('selectedIDsMatch') else "NO"
+            md_content += f"| {r.get('configName')} | {r.get('wallClockSeconds'):.2f}s | **{r.get('throughputPPS'):.2f} PPS** | {r.get('peakMemoryMB')} MB | {r.get('sceneMsPerPhoto'):.1f} ms | {r.get('faceMsPerPhoto'):.1f} ms | {ids_str} |\n"
+
+    if mobileclip_intel:
+        md_content += "\n## Native Intel MobileCLIP-S0 Core ML Benchmark (.cpuAndGPU)\n\n"
+        md_content += f"* **Backend Confirmed**: `{mobileclip_intel.get('classificationBackend', 'MobileCLIP-S0')}`\n"
+        md_content += f"* **Wall-clock Time**: {mobileclip_intel.get('wallClockSeconds', 'N/A')}s\n"
+        md_content += f"* **Throughput**: **{mobileclip_intel.get('photosPerSecond', 'N/A')} PPS**\n"
+        md_content += f"* **Peak Memory**: {mobileclip_intel.get('peakMemoryMB', 'N/A')} MB\n"
 
     if bench_intel_2w:
         md_content += "\n## Native Intel 1,500-Photo Scaling Comparison\n\n"

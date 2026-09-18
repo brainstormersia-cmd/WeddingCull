@@ -59,7 +59,7 @@ public final class ThumbnailLoader: ObservableObject {
                 // Ensure thumbnail file exists or generate it
                 let thumbURL = pipeline.thumbnailURL(for: item)
                 if !FileManager.default.fileExists(atPath: thumbURL.path) {
-                    _ = try? pipeline.generatePreviewAndThumbnail(for: item)
+                    _ = try? await pipeline.generatePreviewAndThumbnailWithImage(for: item)
                 }
 
                 if Task.isCancelled { return nil }
@@ -107,7 +107,7 @@ public final class ThumbnailLoader: ObservableObject {
 
                 let prevURL = pipeline.previewURL(for: item)
                 if !FileManager.default.fileExists(atPath: prevURL.path) {
-                    _ = try? pipeline.generatePreviewAndThumbnail(for: item)
+                    _ = try? await pipeline.generatePreviewAndThumbnailWithImage(for: item)
                 }
 
                 if Task.isCancelled { return nil }

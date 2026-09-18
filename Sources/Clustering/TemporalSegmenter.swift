@@ -6,11 +6,14 @@ public final class TemporalSegmenter: Sendable {
     public func segment(items: [PhotoItem]) -> [TemporalSegment] {
         guard !items.isEmpty else { return [] }
 
-        // Sort chronologically
+        // Sort chronologically (with strict ID tie-breaker for photos taken at identical timestamp)
         let sorted = items.sorted {
             let dateA = $0.metadata.captureDate ?? $0.fileModificationDate
             let dateB = $1.metadata.captureDate ?? $1.fileModificationDate
-            return dateA < dateB
+            if dateA != dateB {
+                return dateA < dateB
+            }
+            return $0.id < $1.id
         }
 
         var segments: [TemporalSegment] = []
@@ -51,12 +54,17 @@ public final class TemporalSegmenter: Sendable {
         let firstDate = items.first?.metadata.captureDate ?? items.first?.fileModificationDate ?? Date()
         let lastDate = items.last?.metadata.captureDate ?? items.last?.fileModificationDate ?? Date()
 
-        // Majority vote for segment category
+        // Majority vote for segment category (with deterministic rawValue tie-breaker)
         var categoryCounts: [WeddingCategory: Int] = [:]
         for item in items {
             categoryCounts[item.category, default: 0] += 1
         }
-        let dominantCategory = categoryCounts.max(by: { $0.value < $1.value })?.key ?? .other
+        let dominantCategory = categoryCounts.max { a, b in
+            if a.value != b.value {
+                return a.value < b.value
+            }
+            return a.key.rawValue < b.key.rawValue
+        }?.key ?? .other
 
         let formatter = DateFormatter()
         formatter.timeStyle = .short

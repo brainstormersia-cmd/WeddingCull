@@ -92,10 +92,18 @@ public final class FaceIdentityRecognizer: @unchecked Sendable {
             return []
         }
 
-        var results: [FaceInstance] = []
-        results.reserveCapacity(observations.count)
+        // Sort observations deterministically by spatial location (left-to-right, then bottom-to-top)
+        let sortedObservations = observations.sorted { a, b in
+            if a.boundingBox.origin.x != b.boundingBox.origin.x {
+                return a.boundingBox.origin.x < b.boundingBox.origin.x
+            }
+            return a.boundingBox.origin.y < b.boundingBox.origin.y
+        }
 
-        for obs in observations {
+        var results: [FaceInstance] = []
+        results.reserveCapacity(sortedObservations.count)
+
+        for obs in sortedObservations {
             let bbox = obs.boundingBox
             // Calculate eye openness from landmarks
             var leftEyeOpen = 0.8

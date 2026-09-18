@@ -99,6 +99,87 @@ public enum VisionExecutionMode: String, Codable, Sendable {
     case combined
 }
 
+public enum PipelineArchitecture: String, Codable, Sendable {
+    case unified
+    case twoStage
+}
+
+actor BoundedChannel<T: Sendable> {
+    private let capacity: Int
+    private var buffer: [T] = []
+    private var isClosed = false
+    private var readWaiters: [CheckedContinuation<T?, Never>] = []
+    private var writeWaiters: [CheckedContinuation<Void, Never>] = []
+
+    init(capacity: Int) {
+        self.capacity = max(1, capacity)
+    }
+
+    func send(_ element: T) async {
+        if isClosed { return }
+        while buffer.count >= capacity && !isClosed {
+            await withCheckedContinuation { cont in
+                writeWaiters.append(cont)
+            }
+        }
+        if isClosed { return }
+        buffer.append(element)
+        if let reader = readWaiters.first {
+            readWaiters.removeFirst()
+            let val = buffer.removeFirst()
+            reader.resume(returning: val)
+            if let writer = writeWaiters.first {
+                writeWaiters.removeFirst()
+                writer.resume()
+            }
+        }
+    }
+
+    func receive() async -> T? {
+        if !buffer.isEmpty {
+            let val = buffer.removeFirst()
+            if let writer = writeWaiters.first {
+                writeWaiters.removeFirst()
+                writer.resume()
+            }
+            return val
+        }
+        if isClosed {
+            return nil
+        }
+        return await withCheckedContinuation { cont in
+            readWaiters.append(cont)
+        }
+    }
+
+    func close() {
+        isClosed = true
+        while let reader = readWaiters.first {
+            readWaiters.removeFirst()
+            reader.resume(returning: nil)
+        }
+        while let writer = writeWaiters.first {
+            writeWaiters.removeFirst()
+            writer.resume()
+        }
+    }
+}
+
+public struct StageAOutput: Sendable {
+    public let item: PhotoItem
+    public let previewDurationSeconds: Double
+    public let qualityDurationSeconds: Double
+    public let faceDurationSeconds: Double
+    public let featurePrintDurationSeconds: Double
+    public let previewCG: CGImage?
+    public let faceCG: CGImage?
+    public let sceneCG: CGImage?
+    public let metrics: QualityMetrics
+    public let perceptualHash: UInt64?
+    public let featurePrint: VNFeaturePrintObservation?
+    public let faces: [FaceInstance]
+}
+
 public actor AnalysisPipeline {
     private let hardware: HardwareCapabilities
     private let importer = PhotoImporter()
@@ -118,6 +199,10 @@ public actor AnalysisPipeline {
     private let faceInputMaxPixelSize: Int
     private let sceneInputMaxPixelSize: Int
     private let sceneClassificationConcurrency: Int?
+    private let pipelineArchitecture: PipelineArchitecture
+    private let stageAWorkers: Int
+    private let stageBWorkers: Int
+    private let queueCapacity: Int
 
     public init(
         hardware: HardwareCapabilities = HardwareCapabilities(),
@@ -127,16 +212,33 @@ public actor AnalysisPipeline {
         visionExecutionMode: VisionExecutionMode = .separate,
         faceInputMaxPixelSize: Int = 1000,
         sceneInputMaxPixelSize: Int = 1000,
-        sceneClassificationConcurrency: Int? = nil
+        sceneClassificationConcurrency: Int? = nil,
+        pipelineArchitecture: PipelineArchitecture = .unified,
+        stageAWorkers: Int? = nil,
+        stageBWorkers: Int? = nil,
+        queueCapacity: Int = 8,
+        forceVisionFallback: Bool = false
     ) {
         self.hardware = hardware
         self.previewPipeline = previewPipeline ?? PreviewPipeline(customCacheDirectory: customCacheDir)
-        self.classifier = MobileCLIPClassifier(hardwareCapabilities: hardware)
+        self.classifier = MobileCLIPClassifier(hardwareCapabilities: hardware, forceVisionFallback: forceVisionFallback)
         self.lazyFeaturePrint = lazyFeaturePrint
         self.visionExecutionMode = visionExecutionMode
         self.faceInputMaxPixelSize = faceInputMaxPixelSize
         self.sceneInputMaxPixelSize = sceneInputMaxPixelSize
         self.sceneClassificationConcurrency = sceneClassificationConcurrency
+        self.pipelineArchitecture = pipelineArchitecture
+        self.stageAWorkers = stageAWorkers ?? hardware.recommendedConcurrency
+        self.stageBWorkers = stageBWorkers ?? (sceneClassificationConcurrency ?? 1)
+        self.queueCapacity = max(1, queueCapacity)
+    }
+
+    public var classifierBackendUsed: ClassificationBackend {
+        return classifier.lastUsedBackend
+    }
+
+    public var isCoreMLModelLoaded: Bool {
+        return classifier.isCoreMLModelLoaded
     }
 
     public func pause() async {
@@ -154,7 +256,9 @@ public actor AnalysisPipeline {
     public func runAnalysis(
         sourceFolder: URL,
         targetCount: Int = 700,
-        progressHandler: (@Sendable (AnalysisProgress) -> Void)? = nil
+        progressHandler: (@Sendable (AnalysisProgress) -> Void)? = nil,
+        onPhotosDiscovered: (@Sendable ([PhotoItem]) -> Void)? = nil,
+        onPhotosUpdated: (@Sendable ([PhotoItem]) -> Void)? = nil
     ) async throws -> SessionData {
         let startTime = Date()
 
@@ -196,16 +300,17 @@ public actor AnalysisPipeline {
             return dateA < dateB
         }
 
+        // Publish discovered photos immediately for progressive UI display
+        onPhotosDiscovered?(items)
+
         let totalPhotos = items.count
 
         // Phase 2, 3 & 4: Concurrent Preview, Technical Quality, Faces & FeaturePrints
         report(phase: .quality, current: 0, total: totalPhotos, message: "Starting concurrent analysis...")
         
-        let maxConcurrency = hardware.recommendedConcurrency
         var analysisResults: [String: PhotoAnalysisResult] = [:]
         analysisResults.reserveCapacity(totalPhotos)
 
-        var itemIndex = 0
         let pipelineCoordinator = self.coordinator
         let previewPipe = self.previewPipeline
         let qualityAn = self.qualityAnalyzer
@@ -221,26 +326,6 @@ public actor AnalysisPipeline {
         var timeToInteractiveGrid: Double = 0.0
         var timeToFirstAnalyzedPhoto: Double = 0.0
 
-        let classifierGate: DispatchSemaphore?
-        if let slots = self.sceneClassificationConcurrency {
-            classifierGate = DispatchSemaphore(value: max(1, slots))
-        } else {
-            classifierGate = nil
-        }
-
-        // Progressive first-page thumbnail delivery: render first 24 thumbs immediately so grid is ready
-        let firstBatchCount = min(24, totalPhotos)
-        for i in 0..<firstBatchCount {
-            _ = try? previewPipe.generatePreviewAndThumbnail(for: items[i])
-            let elapsed = CFAbsoluteTimeGetCurrent() - wallStart
-            if i == 0 && timeToFirstThumbnail == 0.0 {
-                timeToFirstThumbnail = elapsed
-            }
-        }
-        if timeToInteractiveGrid == 0.0 {
-            timeToInteractiveGrid = CFAbsoluteTimeGetCurrent() - wallStart
-        }
-
         var totalPreviewSeconds = 0.0
         var totalQualitySeconds = 0.0
         var totalFaceSeconds = 0.0
@@ -248,67 +333,142 @@ public actor AnalysisPipeline {
         var totalVisionSeconds = 0.0
         var totalClassificationSeconds = 0.0
 
-        try await withThrowingTaskGroup(of: PhotoAnalysisResult.self) { group in
-            // Initial task submission up to maxConcurrency
-            while itemIndex < min(maxConcurrency, totalPhotos) {
-                let currentItem = items[itemIndex]
-                itemIndex += 1
-                group.addTask {
-                    return try await Self.processItem(
-                        item: currentItem,
-                        coordinator: pipelineCoordinator,
-                        previewPipeline: previewPipe,
-                        qualityAnalyzer: qualityAn,
-                        faceRecognizer: faceRec,
-                        featurePrintProvider: fpProv,
-                        classifier: mlClassifier,
-                        lazyFeaturePrint: isLazyFP,
-                        visionExecutionMode: visMode,
-                        faceInputMaxPixelSize: facePixelSize,
-                        sceneInputMaxPixelSize: scenePixelSize,
-                        classifierGate: classifierGate
-                    )
+        if self.pipelineArchitecture == .twoStage {
+            // True Two-Stage Producer-Consumer Pipeline:
+            // Stage A: Preview + Quality + Face Recognition -> BoundedChannel (backpressure)
+            // Stage B: Dedicated Scene Classification Workers
+            let channel = BoundedChannel<StageAOutput>(capacity: self.queueCapacity)
+            let stageAWorkerCount = max(1, self.stageAWorkers)
+            let stageBWorkerCount = max(1, self.stageBWorkers)
+
+            let stageATask = Task {
+                await withTaskGroup(of: Void.self) { aGroup in
+                    var stageAIndex = 0
+                    let stageALock = NSLock()
+
+                    for _ in 0..<stageAWorkerCount {
+                        aGroup.addTask {
+                            while true {
+                                if Task.isCancelled { break }
+                                let nextItem: PhotoItem? = stageALock.withLock {
+                                    guard stageAIndex < totalPhotos else { return nil }
+                                    let item = items[stageAIndex]
+                                    stageAIndex += 1
+                                    return item
+                                }
+                                guard let item = nextItem else { break }
+
+                                do {
+                                    let stageAOut = try await Self.processStageA(
+                                        item: item,
+                                        coordinator: pipelineCoordinator,
+                                        previewPipeline: previewPipe,
+                                        qualityAnalyzer: qualityAn,
+                                        faceRecognizer: faceRec,
+                                        featurePrintProvider: fpProv,
+                                        lazyFeaturePrint: isLazyFP,
+                                        faceInputMaxPixelSize: facePixelSize,
+                                        sceneInputMaxPixelSize: scenePixelSize
+                                    )
+                                    await channel.send(stageAOut)
+                                } catch {
+                                    break
+                                }
+                            }
+                        }
+                    }
                 }
+                await channel.close()
             }
 
             var completedCount = 0
-            while let result = try await group.next() {
-                completedCount += 1
-                analysisResults[result.id] = result
-                totalPreviewSeconds += result.previewDurationSeconds
-                totalQualitySeconds += result.qualityDurationSeconds
-                totalFaceSeconds += result.faceDurationSeconds
-                totalFeaturePrintSeconds += result.featurePrintDurationSeconds
-                totalVisionSeconds += result.visionDurationSeconds
-                totalClassificationSeconds += result.classificationDurationSeconds
+            let stageBLock = NSLock()
+            var updateBatch: [PhotoItem] = []
 
-                let elapsedSoFar = CFAbsoluteTimeGetCurrent() - wallStart
-                if completedCount == 1 {
-                    if timeToFirstThumbnail == 0.0 {
-                        timeToFirstThumbnail = elapsedSoFar
+            try await withThrowingTaskGroup(of: Void.self) { bGroup in
+                for _ in 0..<stageBWorkerCount {
+                    bGroup.addTask {
+                        while let stageAOut = await channel.receive() {
+                            try Task.checkCancellation()
+                            let res = try await Self.processStageB(
+                                stageA: stageAOut,
+                                coordinator: pipelineCoordinator,
+                                classifier: mlClassifier
+                            )
+
+                            let (countSoFar, batchToSend) = stageBLock.withLock { () -> (Int, [PhotoItem]?) in
+                                completedCount += 1
+                                analysisResults[res.id] = res
+                                totalPreviewSeconds += res.previewDurationSeconds
+                                totalQualitySeconds += res.qualityDurationSeconds
+                                totalFaceSeconds += res.faceDurationSeconds
+                                totalFeaturePrintSeconds += res.featurePrintDurationSeconds
+                                totalVisionSeconds += res.visionDurationSeconds
+                                totalClassificationSeconds += res.classificationDurationSeconds
+
+                                let elapsedSoFar = CFAbsoluteTimeGetCurrent() - wallStart
+                                if completedCount == 1 {
+                                    timeToFirstThumbnail = elapsedSoFar
+                                    timeToFirstAnalyzedPhoto = elapsedSoFar
+                                }
+                                if completedCount == min(24, totalPhotos) && timeToInteractiveGrid == 0.0 {
+                                    timeToInteractiveGrid = elapsedSoFar
+                                }
+
+                                if let itemIdx = items.firstIndex(where: { $0.id == res.id }) {
+                                    items[itemIdx].metrics = res.metrics
+                                    items[itemIdx].perceptualHash = res.perceptualHash
+                                    items[itemIdx].category = res.category
+                                    items[itemIdx].categoryConfidence = res.categoryConfidence
+                                    updateBatch.append(items[itemIdx])
+                                }
+
+                                if updateBatch.count >= 10 || completedCount == totalPhotos {
+                                    let copy = updateBatch
+                                    updateBatch.removeAll(keepingCapacity: true)
+                                    return (completedCount, copy)
+                                }
+                                return (completedCount, nil)
+                            }
+
+                            if let batch = batchToSend {
+                                onPhotosUpdated?(batch)
+                            }
+
+                            if totalPhotos <= 20 || countSoFar % 10 == 0 || countSoFar == totalPhotos {
+                                report(
+                                    phase: .quality,
+                                    current: countSoFar,
+                                    total: totalPhotos,
+                                    message: "Two-stage analyzed \(countSoFar)/\(totalPhotos) photos (A: \(stageAWorkerCount)w, B: \(stageBWorkerCount)w, Q: \(self.queueCapacity))"
+                                )
+                            }
+                        }
                     }
-                    timeToFirstAnalyzedPhoto = elapsedSoFar
                 }
-                if completedCount == min(24, totalPhotos) && timeToInteractiveGrid == 0.0 {
-                    timeToInteractiveGrid = elapsedSoFar
-                }
+            }
+            _ = try await stageATask.value
+        } else {
+            // Unified Execution Engine with progressive stream
+            let maxConcurrency = hardware.recommendedConcurrency
+            let classifierGate: DispatchSemaphore?
+            if let slots = self.sceneClassificationConcurrency {
+                classifierGate = DispatchSemaphore(value: max(1, slots))
+            } else {
+                classifierGate = nil
+            }
 
-                if totalPhotos <= 20 || completedCount % 10 == 0 || completedCount == totalPhotos {
-                    report(
-                        phase: .quality,
-                        current: completedCount,
-                        total: totalPhotos,
-                        message: "Analyzed \(completedCount)/\(totalPhotos) photos (\(maxConcurrency) concurrent workers)"
-                    )
-                }
+            var itemIndex = 0
+            var completedCount = 0
+            var updateBatch: [PhotoItem] = []
 
-                // Submit next item if available
-                if itemIndex < totalPhotos {
-                    let nextItem = items[itemIndex]
+            try await withThrowingTaskGroup(of: PhotoAnalysisResult.self) { group in
+                while itemIndex < min(maxConcurrency, totalPhotos) {
+                    let currentItem = items[itemIndex]
                     itemIndex += 1
                     group.addTask {
                         return try await Self.processItem(
-                            item: nextItem,
+                            item: currentItem,
                             coordinator: pipelineCoordinator,
                             previewPipeline: previewPipe,
                             qualityAnalyzer: qualityAn,
@@ -321,6 +481,71 @@ public actor AnalysisPipeline {
                             sceneInputMaxPixelSize: scenePixelSize,
                             classifierGate: classifierGate
                         )
+                    }
+                }
+
+                while let result = try await group.next() {
+                    completedCount += 1
+                    analysisResults[result.id] = result
+                    totalPreviewSeconds += result.previewDurationSeconds
+                    totalQualitySeconds += result.qualityDurationSeconds
+                    totalFaceSeconds += result.faceDurationSeconds
+                    totalFeaturePrintSeconds += result.featurePrintDurationSeconds
+                    totalVisionSeconds += result.visionDurationSeconds
+                    totalClassificationSeconds += result.classificationDurationSeconds
+
+                    let elapsedSoFar = CFAbsoluteTimeGetCurrent() - wallStart
+                    if completedCount == 1 {
+                        if timeToFirstThumbnail == 0.0 {
+                            timeToFirstThumbnail = elapsedSoFar
+                        }
+                        timeToFirstAnalyzedPhoto = elapsedSoFar
+                    }
+                    if completedCount == min(24, totalPhotos) && timeToInteractiveGrid == 0.0 {
+                        timeToInteractiveGrid = elapsedSoFar
+                    }
+
+                    if let itemIdx = items.firstIndex(where: { $0.id == result.id }) {
+                        items[itemIdx].metrics = result.metrics
+                        items[itemIdx].perceptualHash = result.perceptualHash
+                        items[itemIdx].category = result.category
+                        items[itemIdx].categoryConfidence = result.categoryConfidence
+                        updateBatch.append(items[itemIdx])
+                    }
+
+                    if updateBatch.count >= 10 || completedCount == totalPhotos {
+                        onPhotosUpdated?(updateBatch)
+                        updateBatch.removeAll(keepingCapacity: true)
+                    }
+
+                    if totalPhotos <= 20 || completedCount % 10 == 0 || completedCount == totalPhotos {
+                        report(
+                            phase: .quality,
+                            current: completedCount,
+                            total: totalPhotos,
+                            message: "Analyzed \(completedCount)/\(totalPhotos) photos (\(maxConcurrency) concurrent workers)"
+                        )
+                    }
+
+                    if itemIndex < totalPhotos {
+                        let nextItem = items[itemIndex]
+                        itemIndex += 1
+                        group.addTask {
+                            return try await Self.processItem(
+                                item: nextItem,
+                                coordinator: pipelineCoordinator,
+                                previewPipeline: previewPipe,
+                                qualityAnalyzer: qualityAn,
+                                faceRecognizer: faceRec,
+                                featurePrintProvider: fpProv,
+                                classifier: mlClassifier,
+                                lazyFeaturePrint: isLazyFP,
+                                visionExecutionMode: visMode,
+                                faceInputMaxPixelSize: facePixelSize,
+                                sceneInputMaxPixelSize: scenePixelSize,
+                                classifierGate: classifierGate
+                            )
+                        }
                     }
                 }
             }
@@ -552,6 +777,192 @@ public actor AnalysisPipeline {
         )
     }
 
+    private static func processStageA(
+        item: PhotoItem,
+        coordinator: AnalysisCoordinator,
+        previewPipeline: PreviewPipeline,
+        qualityAnalyzer: TechnicalQualityAnalyzer,
+        faceRecognizer: FaceIdentityRecognizer,
+        featurePrintProvider: FeaturePrintProvider,
+        lazyFeaturePrint: Bool,
+        faceInputMaxPixelSize: Int,
+        sceneInputMaxPixelSize: Int
+    ) async throws -> StageAOutput {
+        try await coordinator.waitIfPaused()
+        try Task.checkCancellation()
+
+        let tPrevStart = CFAbsoluteTimeGetCurrent()
+        let previewResult = try? await previewPipeline.generatePreviewAndThumbnailWithImage(for: item)
+        let tPrevEnd = CFAbsoluteTimeGetCurrent()
+        let prevDuration = max(0.0, tPrevEnd - tPrevStart)
+
+        let previewCG = previewResult?.previewImage ?? previewPipeline.loadPreviewCGImage(for: item)
+        guard let previewCG = previewCG else {
+            return StageAOutput(
+                item: item,
+                previewDurationSeconds: prevDuration,
+                qualityDurationSeconds: 0,
+                faceDurationSeconds: 0,
+                featurePrintDurationSeconds: 0,
+                previewCG: nil,
+                faceCG: nil,
+                sceneCG: nil,
+                metrics: item.metrics,
+                perceptualHash: nil,
+                featurePrint: nil,
+                faces: []
+            )
+        }
+
+        // Technical quality metrics
+        let tQualStart = CFAbsoluteTimeGetCurrent()
+        let tech = qualityAnalyzer.analyze(cgImage: previewCG)
+        var metrics = item.metrics
+        metrics.rawSharpness = tech.rawSharpness
+        metrics.meanLuminance = tech.meanLuminance
+        metrics.shadowClipping = tech.shadowClipping
+        metrics.highlightClipping = tech.highlightClipping
+        metrics.dynamicRangeProxy = tech.dynamicRangeProxy
+        metrics.contrastProxy = tech.contrastProxy
+        metrics.compositionProxyScore = tech.compositionProxyScore
+        metrics.isSevereUnderexposed = tech.isSevereUnderexposed
+        metrics.isSevereOverexposed = tech.isSevereOverexposed
+
+        // Perceptual dHash
+        let pHash = PerceptualHash.computeDHash(from: previewCG)
+        let tQualEnd = CFAbsoluteTimeGetCurrent()
+        let qualDuration = max(0.0, tQualEnd - tQualStart)
+
+        // Dedicated downscaled Vision inputs
+        let faceCG: CGImage
+        if faceInputMaxPixelSize < 1000, let down = previewPipeline.downsample(cgImage: previewCG, maxPixelSize: faceInputMaxPixelSize) {
+            faceCG = down
+        } else {
+            faceCG = previewCG
+        }
+
+        let sceneCG: CGImage
+        if sceneInputMaxPixelSize < 1000, let down = previewPipeline.downsample(cgImage: previewCG, maxPixelSize: sceneInputMaxPixelSize) {
+            sceneCG = down
+        } else {
+            sceneCG = previewCG
+        }
+
+        // Face Detection & Identity Landmarks
+        let tFaceStart = CFAbsoluteTimeGetCurrent()
+        let faceHandler = VNImageRequestHandler(cgImage: faceCG, options: [:])
+        let faceRequest = VNDetectFaceLandmarksRequest()
+        try? faceHandler.perform([faceRequest])
+        let faces = faceRecognizer.processObservations(faceRequest.results ?? [])
+        metrics.faceCount = faces.count
+        if !faces.isEmpty {
+            let totalQuality = faces.reduce(0.0) { $0 + $1.faceQuality }
+            metrics.faceQualityScore = totalQuality / Double(faces.count)
+            let totalEyes = faces.reduce(0.0) { $0 + $1.eyeOpenness }
+            metrics.averageEyeOpenness = totalEyes / Double(faces.count)
+            metrics.rawFaceSharpness = tech.rawSharpness * 1.2
+        }
+        let tFaceEnd = CFAbsoluteTimeGetCurrent()
+        let faceDuration = max(0.0, tFaceEnd - tFaceStart)
+
+        // FeaturePrint (eager mode only)
+        var fPrint: VNFeaturePrintObservation? = nil
+        var fpDuration: Double = 0.0
+        if !lazyFeaturePrint {
+            let tFpStart = CFAbsoluteTimeGetCurrent()
+            let fpHandler = VNImageRequestHandler(cgImage: previewCG, options: [:])
+            let fpRequest = VNGenerateImageFeaturePrintRequest()
+            try? fpHandler.perform([fpRequest])
+            fPrint = fpRequest.results?.first as? VNFeaturePrintObservation
+            let tFpEnd = CFAbsoluteTimeGetCurrent()
+            fpDuration = max(0.0, tFpEnd - tFpStart)
+        }
+
+        return StageAOutput(
+            item: item,
+            previewDurationSeconds: prevDuration,
+            qualityDurationSeconds: qualDuration,
+            faceDurationSeconds: faceDuration,
+            featurePrintDurationSeconds: fpDuration,
+            previewCG: previewCG,
+            faceCG: faceCG,
+            sceneCG: sceneCG,
+            metrics: metrics,
+            perceptualHash: pHash,
+            featurePrint: fPrint,
+            faces: faces
+        )
+    }
+
+    private static func processStageB(
+        stageA: StageAOutput,
+        coordinator: AnalysisCoordinator,
+        classifier: MobileCLIPClassifier,
+        classifierGate: DispatchSemaphore? = nil
+    ) async throws -> PhotoAnalysisResult {
+        try await coordinator.waitIfPaused()
+        try Task.checkCancellation()
+
+        guard let sceneCG = stageA.sceneCG ?? stageA.previewCG else {
+            return PhotoAnalysisResult(
+                id: stageA.item.id,
+                previewGenerated: false,
+                metrics: stageA.metrics,
+                perceptualHash: stageA.perceptualHash,
+                featurePrint: stageA.featurePrint,
+                faces: stageA.faces,
+                category: stageA.item.category,
+                categoryConfidence: 0.3,
+                previewDurationSeconds: stageA.previewDurationSeconds,
+                qualityDurationSeconds: stageA.qualityDurationSeconds,
+                faceDurationSeconds: stageA.faceDurationSeconds,
+                featurePrintDurationSeconds: stageA.featurePrintDurationSeconds,
+                classificationDurationSeconds: 0
+            )
+        }
+
+        let tClassStart = CFAbsoluteTimeGetCurrent()
+        var category = stageA.item.category
+        var conf = 0.3
+
+        if classifier.isCoreMLModelLoaded {
+            let res = classifier.classifyWithBackend(cgImage: sceneCG, metadata: stageA.item.metadata, faceCount: stageA.faces.count)
+            category = res.category
+            conf = res.confidence
+        } else {
+            let sceneHandler = VNImageRequestHandler(cgImage: sceneCG, options: [:])
+            let sceneRequest = VNClassifyImageRequest()
+            if let gate = classifierGate {
+                gate.wait()
+                try? sceneHandler.perform([sceneRequest])
+                gate.signal()
+            } else {
+                try? sceneHandler.perform([sceneRequest])
+            }
+            let res = classifier.classifyWithObservations(sceneRequest.results, metadata: stageA.item.metadata, faceCount: stageA.faces.count)
+            category = res.0
+            conf = res.1
+        }
+        let tClassEnd = CFAbsoluteTimeGetCurrent()
+        let classDuration = max(0.0, tClassEnd - tClassStart)
+
+        return PhotoAnalysisResult(
+            id: stageA.item.id,
+            previewGenerated: true,
+            metrics: stageA.metrics,
+            perceptualHash: stageA.perceptualHash,
+            featurePrint: stageA.featurePrint,
+            faces: stageA.faces,
+            category: category,
+            categoryConfidence: conf,
+            previewDurationSeconds: stageA.previewDurationSeconds,
+            qualityDurationSeconds: stageA.qualityDurationSeconds,
+            faceDurationSeconds: stageA.faceDurationSeconds,
+            featurePrintDurationSeconds: stageA.featurePrintDurationSeconds,
+            classificationDurationSeconds: classDuration
+        )
+    }
+
     private static func processItem(
         item: PhotoItem,
         coordinator: AnalysisCoordinator,
@@ -566,182 +977,72 @@ public actor AnalysisPipeline {
         sceneInputMaxPixelSize: Int,
         classifierGate: DispatchSemaphore? = nil
     ) async throws -> PhotoAnalysisResult {
-        // Handle pause and cancellation
         try await coordinator.waitIfPaused()
         try Task.checkCancellation()
 
-        return await withCheckedContinuation { continuation in
-            DispatchQueue.global(qos: .userInitiated).async {
-                let result = autoreleasepool { () -> PhotoAnalysisResult in
-                    let tPrevStart = CFAbsoluteTimeGetCurrent()
-                    let previewResult = try? previewPipeline.generatePreviewAndThumbnailWithImage(for: item)
-                    let tPrevEnd = CFAbsoluteTimeGetCurrent()
-                    let prevDuration = max(0.0, tPrevEnd - tPrevStart)
+        let stageA = try await processStageA(
+            item: item,
+            coordinator: coordinator,
+            previewPipeline: previewPipeline,
+            qualityAnalyzer: qualityAnalyzer,
+            faceRecognizer: faceRecognizer,
+            featurePrintProvider: featurePrintProvider,
+            lazyFeaturePrint: lazyFeaturePrint,
+            faceInputMaxPixelSize: faceInputMaxPixelSize,
+            sceneInputMaxPixelSize: sceneInputMaxPixelSize
+        )
 
-                    let previewCG = previewResult?.previewImage ?? previewPipeline.loadPreviewCGImage(for: item)
-                    guard let previewCG = previewCG else {
-                        return PhotoAnalysisResult(
-                            id: item.id,
-                            previewGenerated: false,
-                            metrics: item.metrics,
-                            perceptualHash: nil,
-                            featurePrint: nil,
-                            faces: [],
-                            category: item.category,
-                            categoryConfidence: 0.3,
-                            previewDurationSeconds: prevDuration,
-                            qualityDurationSeconds: 0,
-                            faceDurationSeconds: 0,
-                            featurePrintDurationSeconds: 0,
-                            classificationDurationSeconds: 0
-                        )
-                    }
-
-                    // Technical quality metrics
-                    let tQualStart = CFAbsoluteTimeGetCurrent()
-                    let tech = qualityAnalyzer.analyze(cgImage: previewCG)
-                    var metrics = item.metrics
-                    metrics.rawSharpness = tech.rawSharpness
-                    metrics.meanLuminance = tech.meanLuminance
-                    metrics.shadowClipping = tech.shadowClipping
-                    metrics.highlightClipping = tech.highlightClipping
-                    metrics.dynamicRangeProxy = tech.dynamicRangeProxy
-                    metrics.contrastProxy = tech.contrastProxy
-                    metrics.compositionProxyScore = tech.compositionProxyScore
-                    metrics.isSevereUnderexposed = tech.isSevereUnderexposed
-                    metrics.isSevereOverexposed = tech.isSevereOverexposed
-
-                    // Perceptual dHash
-                    let pHash = PerceptualHash.computeDHash(from: previewCG)
-                    let tQualEnd = CFAbsoluteTimeGetCurrent()
-                    let qualDuration = max(0.0, tQualEnd - tQualStart)
-
-                    // Dedicated downscaled Vision inputs (if configured smaller than 1000px)
-                    let faceCG: CGImage
-                    if faceInputMaxPixelSize < 1000, let down = previewPipeline.downsample(cgImage: previewCG, maxPixelSize: faceInputMaxPixelSize) {
-                        faceCG = down
-                    } else {
-                        faceCG = previewCG
-                    }
-
-                    let sceneCG: CGImage
-                    if sceneInputMaxPixelSize < 1000, let down = previewPipeline.downsample(cgImage: previewCG, maxPixelSize: sceneInputMaxPixelSize) {
-                        sceneCG = down
-                    } else {
-                        sceneCG = previewCG
-                    }
-
-                    var faces: [FaceInstance] = []
-                    var faceDuration: Double = 0.0
-                    var (category, conf): (WeddingCategory, Double) = (item.category, 0.3)
-                    var classDuration: Double = 0.0
-
-                    if visionExecutionMode == .combined && !classifier.isCoreMLModelLoaded && faceCG === sceneCG {
-                        // Combined perform([faceRequest, sceneRequest]) restoration
-                        let handler = VNImageRequestHandler(cgImage: faceCG, options: [:])
-                        let faceRequest = VNDetectFaceLandmarksRequest()
-                        let sceneRequest = VNClassifyImageRequest()
-                        let tVisionStart = CFAbsoluteTimeGetCurrent()
-                        if let gate = classifierGate {
-                            gate.wait()
-                            try? handler.perform([faceRequest, sceneRequest])
-                            gate.signal()
-                        } else {
-                            try? handler.perform([faceRequest, sceneRequest])
-                        }
-                        let tVisionEnd = CFAbsoluteTimeGetCurrent()
-                        let totalVisionDur = max(0.0, tVisionEnd - tVisionStart)
-
-                        faces = faceRecognizer.processObservations(faceRequest.results ?? [])
-                        metrics.faceCount = faces.count
-                        if !faces.isEmpty {
-                            let totalQuality = faces.reduce(0.0) { $0 + $1.faceQuality }
-                            metrics.faceQualityScore = totalQuality / Double(faces.count)
-                            let totalEyes = faces.reduce(0.0) { $0 + $1.eyeOpenness }
-                            metrics.averageEyeOpenness = totalEyes / Double(faces.count)
-                            metrics.rawFaceSharpness = tech.rawSharpness * 1.2
-                        }
-
-                        let res = classifier.classifyWithObservations(sceneRequest.results, metadata: item.metadata, faceCount: faces.count)
-                        category = res.0
-                        conf = res.1
-
-                        faceDuration = totalVisionDur * 0.5
-                        classDuration = totalVisionDur * 0.5
-                    } else {
-                        // Separate perform() calls
-                        // 1. Face Detection & Identity Landmarks
-                        let tFaceStart = CFAbsoluteTimeGetCurrent()
-                        let faceHandler = VNImageRequestHandler(cgImage: faceCG, options: [:])
-                        let faceRequest = VNDetectFaceLandmarksRequest()
-                        try? faceHandler.perform([faceRequest])
-                        faces = faceRecognizer.processObservations(faceRequest.results ?? [])
-                        metrics.faceCount = faces.count
-                        if !faces.isEmpty {
-                            let totalQuality = faces.reduce(0.0) { $0 + $1.faceQuality }
-                            metrics.faceQualityScore = totalQuality / Double(faces.count)
-                            let totalEyes = faces.reduce(0.0) { $0 + $1.eyeOpenness }
-                            metrics.averageEyeOpenness = totalEyes / Double(faces.count)
-                            metrics.rawFaceSharpness = tech.rawSharpness * 1.2
-                        }
-                        let tFaceEnd = CFAbsoluteTimeGetCurrent()
-                        faceDuration = max(0.0, tFaceEnd - tFaceStart)
-
-                        // 3. Scene & Concept Classification
-                        let tClassStart = CFAbsoluteTimeGetCurrent()
-                        if classifier.isCoreMLModelLoaded {
-                            let res = classifier.classifyWithBackend(cgImage: sceneCG, metadata: item.metadata, faceCount: faces.count)
-                            category = res.category
-                            conf = res.confidence
-                        } else {
-                            let sceneHandler = (sceneCG === faceCG) ? faceHandler : VNImageRequestHandler(cgImage: sceneCG, options: [:])
-                            let sceneRequest = VNClassifyImageRequest()
-                            if let gate = classifierGate {
-                                gate.wait()
-                                try? sceneHandler.perform([sceneRequest])
-                                gate.signal()
-                            } else {
-                                try? sceneHandler.perform([sceneRequest])
-                            }
-                            let res = classifier.classifyWithObservations(sceneRequest.results, metadata: item.metadata, faceCount: faces.count)
-                            category = res.0
-                            conf = res.1
-                        }
-                        let tClassEnd = CFAbsoluteTimeGetCurrent()
-                        classDuration = max(0.0, tClassEnd - tClassStart)
-                    }
-
-                    // 2. FeaturePrint Generation (eager mode only)
-                    var fPrint: VNFeaturePrintObservation? = nil
-                    var fpDuration: Double = 0.0
-                    if !lazyFeaturePrint {
-                        let tFpStart = CFAbsoluteTimeGetCurrent()
-                        let fpHandler = VNImageRequestHandler(cgImage: previewCG, options: [:])
-                        let fpRequest = VNGenerateImageFeaturePrintRequest()
-                        try? fpHandler.perform([fpRequest])
-                        fPrint = fpRequest.results?.first as? VNFeaturePrintObservation
-                        let tFpEnd = CFAbsoluteTimeGetCurrent()
-                        fpDuration = max(0.0, tFpEnd - tFpStart)
-                    }
-
-                    return PhotoAnalysisResult(
-                        id: item.id,
-                        previewGenerated: true,
-                        metrics: metrics,
-                        perceptualHash: pHash,
-                        featurePrint: fPrint,
-                        faces: faces,
-                        category: category,
-                        categoryConfidence: conf,
-                        previewDurationSeconds: prevDuration,
-                        qualityDurationSeconds: qualDuration,
-                        faceDurationSeconds: faceDuration,
-                        featurePrintDurationSeconds: fpDuration,
-                        classificationDurationSeconds: classDuration
-                    )
-                }
-                continuation.resume(returning: result)
+        // If combined vision perform mode is requested and supported
+        if visionExecutionMode == .combined && !classifier.isCoreMLModelLoaded,
+           let faceCG = stageA.faceCG, let sceneCG = stageA.sceneCG, faceCG === sceneCG {
+            let handler = VNImageRequestHandler(cgImage: faceCG, options: [:])
+            let faceRequest = VNDetectFaceLandmarksRequest()
+            let sceneRequest = VNClassifyImageRequest()
+            let tVisionStart = CFAbsoluteTimeGetCurrent()
+            if let gate = classifierGate {
+                gate.wait()
+                try? handler.perform([faceRequest, sceneRequest])
+                gate.signal()
+            } else {
+                try? handler.perform([faceRequest, sceneRequest])
             }
+            let tVisionEnd = CFAbsoluteTimeGetCurrent()
+            let totalVisionDur = max(0.0, tVisionEnd - tVisionStart)
+
+            var metrics = stageA.metrics
+            let faces = faceRecognizer.processObservations(faceRequest.results ?? [])
+            metrics.faceCount = faces.count
+            if !faces.isEmpty {
+                let totalQuality = faces.reduce(0.0) { $0 + $1.faceQuality }
+                metrics.faceQualityScore = totalQuality / Double(faces.count)
+                let totalEyes = faces.reduce(0.0) { $0 + $1.eyeOpenness }
+                metrics.averageEyeOpenness = totalEyes / Double(faces.count)
+                metrics.rawFaceSharpness = metrics.rawSharpness * 1.2
+            }
+
+            let res = classifier.classifyWithObservations(sceneRequest.results, metadata: item.metadata, faceCount: faces.count)
+            return PhotoAnalysisResult(
+                id: item.id,
+                previewGenerated: true,
+                metrics: metrics,
+                perceptualHash: stageA.perceptualHash,
+                featurePrint: stageA.featurePrint,
+                faces: faces,
+                category: res.0,
+                categoryConfidence: res.1,
+                previewDurationSeconds: stageA.previewDurationSeconds,
+                qualityDurationSeconds: stageA.qualityDurationSeconds,
+                faceDurationSeconds: totalVisionDur * 0.5,
+                featurePrintDurationSeconds: stageA.featurePrintDurationSeconds,
+                classificationDurationSeconds: totalVisionDur * 0.5
+            )
         }
+
+        return try await processStageB(
+            stageA: stageA,
+            coordinator: coordinator,
+            classifier: classifier,
+            classifierGate: classifierGate
+        )
     }
 }

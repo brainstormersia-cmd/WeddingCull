@@ -106,15 +106,63 @@ public final class AppState: ObservableObject {
 
         analysisTask = Task {
             do {
-                let result = try await pipeline.runAnalysis(sourceFolder: folderURL, targetCount: targetCount) { [weak self] progress in
-                    Task { @MainActor [weak self] in
-                        self?.analysisProgress = progress
-                        self?.statusMessage = "\(progress.phase.rawValue): \(progress.message)"
+                let result = try await pipeline.runAnalysis(
+                    sourceFolder: folderURL,
+                    targetCount: targetCount,
+                    progressHandler: { [weak self] progress in
+                        Task { @MainActor [weak self] in
+                            self?.analysisProgress = progress
+                            self?.statusMessage = "\(progress.phase.rawValue): \(progress.message)"
+                        }
+                    },
+                    onPhotosDiscovered: { [weak self] discoveredItems in
+                        Task { @MainActor [weak self] in
+                            guard let self = self else { return }
+                            self.session.sourceFolderPath = folderURL.path
+                            self.session.targetSelectionCount = targetCount
+                            self.session.photos = discoveredItems
+                            if self.selectedPhotoID == nil {
+                                self.selectedPhotoID = discoveredItems.first?.id
+                            }
+                            // Transition directly to review grid so user can scroll and interact immediately!
+                            self.navigationState = .review
+                            self.statusMessage = "Discovered \(discoveredItems.count) photos. Analyzing in background..."
+                        }
+                    },
+                    onPhotosUpdated: { [weak self] updatedItems in
+                        Task { @MainActor [weak self] in
+                            guard let self = self else { return }
+                            for updated in updatedItems {
+                                if let idx = self.session.photos.firstIndex(where: { $0.id == updated.id }) {
+                                    let prevSelection = self.session.photos[idx].selectionState
+                                    self.session.photos[idx] = updated
+                                    // Strictly preserve user manual decisions!
+                                    if prevSelection == .userSelected || prevSelection == .userRejected {
+                                        self.session.photos[idx].selectionState = prevSelection
+                                    }
+                                }
+                            }
+                        }
+                    }
+                )
+
+                self.session.burstGroups = result.burstGroups
+                self.session.segments = result.segments
+                self.session.personClusters = result.personClusters
+                self.session.phaseTimings = result.phaseTimings
+                self.session.pipelineReadinessMetrics = result.pipelineReadinessMetrics
+                for finalItem in result.photos {
+                    if let idx = self.session.photos.firstIndex(where: { $0.id == finalItem.id }) {
+                        let prevSelection = self.session.photos[idx].selectionState
+                        self.session.photos[idx] = finalItem
+                        if prevSelection == .userSelected || prevSelection == .userRejected {
+                            self.session.photos[idx].selectionState = prevSelection
+                        }
                     }
                 }
-
-                self.session = result
-                self.selectedPhotoID = result.photos.first?.id
+                if self.selectedPhotoID == nil {
+                    self.selectedPhotoID = self.session.photos.first?.id
+                }
                 self.isAnalyzing = false
                 self.isPaused = false
                 self.navigationState = .review

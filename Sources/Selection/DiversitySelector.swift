@@ -79,8 +79,13 @@ public final class DiversitySelector: Sendable {
             // Adjust rounding drift to match remainingTargetAfterUser
             var diff = remainingTargetAfterUser - allocated
             if diff > 0 {
-                // Distribute extra quota starting from the largest segments
-                let sortedSegIDs = segments.sorted(by: { $0.photoIDs.count > $1.photoIDs.count }).map { $0.id }
+                // Distribute extra quota starting from the largest segments (tie-break strictly on seg ID)
+                let sortedSegIDs = segments.sorted {
+                    if $0.photoIDs.count != $1.photoIDs.count {
+                        return $0.photoIDs.count > $1.photoIDs.count
+                    }
+                    return $0.id < $1.id
+                }.map { $0.id }
                 var idx = 0
                 while diff > 0 && !sortedSegIDs.isEmpty {
                     let segID = sortedSegIDs[idx % sortedSegIDs.count]
@@ -90,8 +95,13 @@ public final class DiversitySelector: Sendable {
                 }
             } else if diff < 0 {
                 // Need to reduce quotas.
-                // First pass: reduce quotas that are > 1, starting from smallest segments
-                let smallestFirst = segments.sorted(by: { $0.photoIDs.count < $1.photoIDs.count }).map { $0.id }
+                // First pass: reduce quotas that are > 1, starting from smallest segments (tie-break strictly on seg ID)
+                let smallestFirst = segments.sorted {
+                    if $0.photoIDs.count != $1.photoIDs.count {
+                        return $0.photoIDs.count < $1.photoIDs.count
+                    }
+                    return $0.id < $1.id
+                }.map { $0.id }
                 var madeProgress = true
                 while diff < 0 && madeProgress {
                     madeProgress = false
@@ -184,7 +194,10 @@ public final class DiversitySelector: Sendable {
                 .sorted { a, b in
                     let scoreA = a.metrics.overallScore + (burstWinnerIDs.contains(a.id) ? 0.25 : 0.0) - (burstAlternativeIDs.contains(a.id) ? 0.35 : 0.0)
                     let scoreB = b.metrics.overallScore + (burstWinnerIDs.contains(b.id) ? 0.25 : 0.0) - (burstAlternativeIDs.contains(b.id) ? 0.35 : 0.0)
-                    return scoreA > scoreB
+                    if scoreA != scoreB {
+                        return scoreA > scoreB
+                    }
+                    return a.id < b.id
                 }
 
             for cand in segCandidates {
@@ -232,7 +245,7 @@ public final class DiversitySelector: Sendable {
                 let sim = maxSimToSelected[cand.id] ?? 0.0
                 let mmrScore = (lambda * quality) - ((1.0 - lambda) * sim * 1.5)
 
-                if mmrScore > bestMMRScore {
+                if mmrScore > bestMMRScore || (mmrScore == bestMMRScore && (bestCandidate == nil || cand.id < bestCandidate!.id)) {
                     bestMMRScore = mmrScore
                     bestCandidate = cand
                 }
@@ -243,11 +256,16 @@ public final class DiversitySelector: Sendable {
         }
 
         // Pass C: EXACT TARGET COUNT GUARANTEE
-        // If still below target due to strict thresholds, fill from best remaining candidates
+        // If still below target due to strict thresholds, fill from best remaining candidates (strict total order)
         if selectedIDs.count < effectiveTarget {
             let unselected = remainingCandidates
                 .filter { !selectedIDs.contains($0.id) }
-                .sorted { $0.metrics.overallScore > $1.metrics.overallScore }
+                .sorted {
+                    if $0.metrics.overallScore != $1.metrics.overallScore {
+                        return $0.metrics.overallScore > $1.metrics.overallScore
+                    }
+                    return $0.id < $1.id
+                }
 
             for cand in unselected {
                 if selectedIDs.count >= effectiveTarget { break }

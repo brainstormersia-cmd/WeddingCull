@@ -23,6 +23,9 @@ public final class PreviewPipeline: Sendable {
         try? FileManager.default.createDirectory(at: thumbnailsDirectory, withIntermediateDirectories: true)
     }
 
+    private let inFlightLock = NSLock()
+    private var inFlightTasks: [String: Task<(previewURL: URL, thumbnailURL: URL, previewImage: CGImage?), Error>] = [:]
+
     public func previewURL(for item: PhotoItem) -> URL {
         return previewsDirectory.appendingPathComponent("\(item.previewCacheKey).jpg")
     }
@@ -35,12 +38,53 @@ public final class PreviewPipeline: Sendable {
         return FileManager.default.fileExists(atPath: previewURL(for: item).path)
     }
 
+    @discardableResult
     public func generatePreviewAndThumbnail(for item: PhotoItem) throws -> (previewURL: URL, thumbnailURL: URL) {
-        let result = try generatePreviewAndThumbnailWithImage(for: item)
+        let result = try performGeneratePreviewAndThumbnail(for: item)
         return (result.previewURL, result.thumbnailURL)
     }
 
     public func generatePreviewAndThumbnailWithImage(for item: PhotoItem) throws -> (previewURL: URL, thumbnailURL: URL, previewImage: CGImage?) {
+        return try performGeneratePreviewAndThumbnail(for: item)
+    }
+
+    /// Asynchronous single-owner in-flight coalesced generation.
+    /// Deduplicates concurrent generation requests from UI and analysis pipeline.
+    public func generatePreviewAndThumbnailWithImage(for item: PhotoItem) async throws -> (previewURL: URL, thumbnailURL: URL, previewImage: CGImage?) {
+        let pURL = previewURL(for: item)
+        let tURL = thumbnailURL(for: item)
+
+        if FileManager.default.fileExists(atPath: pURL.path) && FileManager.default.fileExists(atPath: tURL.path) {
+            let cachedImage = loadPreviewCGImage(for: item)
+            return (pURL, tURL, cachedImage)
+        }
+
+        let key = item.previewCacheKey
+        let existingTask: Task<(previewURL: URL, thumbnailURL: URL, previewImage: CGImage?), Error>? = inFlightLock.withLock {
+            return inFlightTasks[key]
+        }
+
+        if let existing = existingTask {
+            return try await existing.value
+        }
+
+        let newTask = Task<(previewURL: URL, thumbnailURL: URL, previewImage: CGImage?), Error> {
+            defer {
+                self.inFlightLock.withLock {
+                    _ = self.inFlightTasks.removeValue(forKey: key)
+                }
+            }
+            return try self.performGeneratePreviewAndThumbnail(for: item)
+        }
+
+        inFlightLock.withLock {
+            inFlightTasks[key] = newTask
+        }
+
+        return try await newTask.value
+    }
+
+    public func performGeneratePreviewAndThumbnail(for item: PhotoItem) throws -> (previewURL: URL, thumbnailURL: URL, previewImage: CGImage?) {
         let pURL = previewURL(for: item)
         let tURL = thumbnailURL(for: item)
 
@@ -164,7 +208,10 @@ public final class PreviewPipeline: Sendable {
     }
 
     private func saveCGImage(_ cgImage: CGImage, to fileURL: URL, compressionQuality: Double) throws {
-        guard let destination = CGImageDestinationCreateWithURL(fileURL as CFURL, "public.jpeg" as CFString, 1, nil) else {
+        let parentDir = fileURL.deletingLastPathComponent()
+        let tempURL = parentDir.appendingPathComponent(".tmp_\(UUID().uuidString)_\(fileURL.lastPathComponent)")
+
+        guard let destination = CGImageDestinationCreateWithURL(tempURL as CFURL, "public.jpeg" as CFString, 1, nil) else {
             throw NSError(domain: "PreviewPipeline", code: 4, userInfo: [NSLocalizedDescriptionKey: "Failed to create image destination"])
         }
 
@@ -173,8 +220,23 @@ public final class PreviewPipeline: Sendable {
         ]
 
         CGImageDestinationAddImage(destination, cgImage, options as CFDictionary)
-        if !CGImageDestinationFinalize(destination) {
+        guard CGImageDestinationFinalize(destination) else {
+            try? FileManager.default.removeItem(at: tempURL)
             throw NSError(domain: "PreviewPipeline", code: 5, userInfo: [NSLocalizedDescriptionKey: "Failed to finalize image destination"])
+        }
+
+        let fm = FileManager.default
+        do {
+            if fm.fileExists(atPath: fileURL.path) {
+                _ = try fm.replaceItemAt(fileURL, withItemAt: tempURL, backupItemName: nil, options: [], resultingItemURL: nil)
+            } else {
+                try fm.moveItem(at: tempURL, to: fileURL)
+            }
+        } catch {
+            try? fm.removeItem(at: tempURL)
+            if !fm.fileExists(atPath: fileURL.path) {
+                throw error
+            }
         }
     }
 

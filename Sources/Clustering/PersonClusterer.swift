@@ -79,10 +79,14 @@ public final class PersonClusterer: Sendable {
         }
 
         // 2. Rank clusters by wedding prominence (solo portraits + couple co-presence + overall count)
+        // Strict total order with ID tie-breaker
         let ranked = clusters.sorted {
             let scoreA = Double($0.soloCount * 3 + $0.coupleCount * 2 + $0.photoIDs.count)
             let scoreB = Double($1.soloCount * 3 + $1.coupleCount * 2 + $1.photoIDs.count)
-            return scoreA > scoreB
+            if scoreA != scoreB {
+                return scoreA > scoreB
+            }
+            return $0.id < $1.id
         }
 
         var resultClusters: [PersonCluster] = []
@@ -95,7 +99,7 @@ public final class PersonClusterer: Sendable {
                 id: primaryA.id,
                 name: "Primary Person A",
                 role: .partnerA,
-                photoIDs: Array(primaryA.photoIDs),
+                photoIDs: primaryA.photoIDs.sorted(),
                 isSuggestedPrimary: true,
                 confidence: conf
             ))
@@ -110,7 +114,7 @@ public final class PersonClusterer: Sendable {
                 id: primaryB.id,
                 name: "Primary Person B",
                 role: .partnerB,
-                photoIDs: Array(primaryB.photoIDs),
+                photoIDs: primaryB.photoIDs.sorted(),
                 isSuggestedPrimary: true,
                 confidence: conf
             ))
@@ -123,7 +127,7 @@ public final class PersonClusterer: Sendable {
                     id: cluster.id,
                     name: "Key Person #\(idx + 1)",
                     role: .weddingParty,
-                    photoIDs: Array(cluster.photoIDs),
+                    photoIDs: cluster.photoIDs.sorted(),
                     isSuggestedPrimary: false,
                     confidence: 0.80
                 ))
@@ -138,9 +142,9 @@ public final class PersonClusterer: Sendable {
         if !guestPhotoIDs.isEmpty {
             resultClusters.append(PersonCluster(
                 id: "person_guests",
-                name: "Guests & Attendees",
+                name: "Wedding Guests & Family",
                 role: .guest,
-                photoIDs: Array(guestPhotoIDs),
+                photoIDs: guestPhotoIDs.sorted(),
                 isSuggestedPrimary: false,
                 confidence: 0.70
             ))

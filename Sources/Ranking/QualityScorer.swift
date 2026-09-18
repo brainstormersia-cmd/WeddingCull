@@ -62,7 +62,8 @@ public final class QualityScorer: Sendable {
             if item.metadata.isCorrupt {
                 m.overallScore = 0.0
             } else {
-                m.overallScore = max(0.01, min(1.0, overall))
+                let clamped = max(0.01, min(1.0, overall))
+                m.overallScore = round(clamped * 10000.0) / 10000.0
             }
 
             // Build factual explanatory reason

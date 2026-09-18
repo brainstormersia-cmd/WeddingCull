@@ -38,8 +38,9 @@ public final class DuplicateAndBurstDetector: Sendable {
                 }
 
                 for (_, exactGroup) in fullHashGroups where exactGroup.count > 1 {
-                    let canonical = exactGroup[0]
-                    for duplicate in exactGroup.dropFirst() {
+                    let sortedExact = exactGroup.sorted { $0.id < $1.id }
+                    let canonical = sortedExact[0]
+                    for duplicate in sortedExact.dropFirst() {
                         duplicates[duplicate.id] = canonical.id
                     }
                 }
@@ -54,11 +55,14 @@ public final class DuplicateAndBurstDetector: Sendable {
         items: [PhotoItem],
         featurePrintDistances: [String: [String: Float]] = [:]
     ) -> [BurstGroup] {
-        // Sort chronologically
+        // Sort chronologically (with strict ID tie-breaker for photos taken at identical timestamp)
         let sorted = items.sorted {
             let dateA = $0.metadata.captureDate ?? $0.fileModificationDate
             let dateB = $1.metadata.captureDate ?? $1.fileModificationDate
-            return dateA < dateB
+            if dateA != dateB {
+                return dateA < dateB
+            }
+            return $0.id < $1.id
         }
 
         var bursts: [BurstGroup] = []
@@ -119,11 +123,14 @@ public final class DuplicateAndBurstDetector: Sendable {
             return BurstGroup()
         }
 
-        // Rank members to choose recommended winner
+        // Rank members to choose recommended winner (strict total order with ID tie-breaker)
         let ranked = burstMembers.sorted { a, b in
             let scoreA = computeBurstFrameQuality(a)
             let scoreB = computeBurstFrameQuality(b)
-            return scoreA > scoreB
+            if scoreA != scoreB {
+                return scoreA > scoreB
+            }
+            return a.id < b.id
         }
 
         let winner = ranked[0]
