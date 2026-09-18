@@ -171,7 +171,8 @@ public final class MobileCLIPClassifier: ImageClassifierProtocol, @unchecked Sen
         var bestCategory: WeddingCategory = .other
         var maxSimilarity: Float = -Float.greatestFiniteMagnitude
 
-        for (category, conceptVec) in conceptEmbeddings {
+        for category in WeddingCategory.allCases {
+            guard let conceptVec = conceptEmbeddings[category] else { continue }
             let sim = Self.cosineSimilarity(normalizedEmbedding, conceptVec)
             if sim > maxSimilarity {
                 maxSimilarity = sim

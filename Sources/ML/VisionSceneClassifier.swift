@@ -46,8 +46,13 @@ public final class VisionSceneClassifier: ImageClassifierProtocol, Sendable {
             visionScores[.guestsCandid] = (visionScores[.guestsCandid] ?? 0.2) + 0.2
         }
 
-        // Find best category
-        if let best = visionScores.max(by: { $0.value < $1.value }) {
+        // Find best category (strict total order with category rawValue tie-breaker)
+        if let best = visionScores.max(by: {
+            if $0.value != $1.value {
+                return $0.value < $1.value
+            }
+            return $0.key.rawValue < $1.key.rawValue
+        }) {
             return (best.key, min(1.0, max(0.3, best.value)))
         }
 

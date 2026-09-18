@@ -194,8 +194,10 @@ public final class DiversitySelector: Sendable {
                 .sorted { a, b in
                     let scoreA = a.metrics.overallScore + (burstWinnerIDs.contains(a.id) ? 0.25 : 0.0) - (burstAlternativeIDs.contains(a.id) ? 0.35 : 0.0)
                     let scoreB = b.metrics.overallScore + (burstWinnerIDs.contains(b.id) ? 0.25 : 0.0) - (burstAlternativeIDs.contains(b.id) ? 0.35 : 0.0)
-                    if scoreA != scoreB {
-                        return scoreA > scoreB
+                    let qA = round(scoreA * 10000.0) / 10000.0
+                    let qB = round(scoreB * 10000.0) / 10000.0
+                    if qA != qB {
+                        return qA > qB
                     }
                     return a.id < b.id
                 }
@@ -244,9 +246,10 @@ public final class DiversitySelector: Sendable {
                 let quality = cand.metrics.overallScore + categoryBonus + burstBonus - burstPenalty
                 let sim = maxSimToSelected[cand.id] ?? 0.0
                 let mmrScore = (lambda * quality) - ((1.0 - lambda) * sim * 1.5)
+                let quantizedMMR = round(mmrScore * 10000.0) / 10000.0
 
-                if mmrScore > bestMMRScore || (mmrScore == bestMMRScore && (bestCandidate == nil || cand.id < bestCandidate!.id)) {
-                    bestMMRScore = mmrScore
+                if quantizedMMR > bestMMRScore || (quantizedMMR == bestMMRScore && (bestCandidate == nil || cand.id < bestCandidate!.id)) {
+                    bestMMRScore = quantizedMMR
                     bestCandidate = cand
                 }
             }
@@ -261,8 +264,10 @@ public final class DiversitySelector: Sendable {
             let unselected = remainingCandidates
                 .filter { !selectedIDs.contains($0.id) }
                 .sorted {
-                    if $0.metrics.overallScore != $1.metrics.overallScore {
-                        return $0.metrics.overallScore > $1.metrics.overallScore
+                    let scoreA = round($0.metrics.overallScore * 10000.0) / 10000.0
+                    let scoreB = round($1.metrics.overallScore * 10000.0) / 10000.0
+                    if scoreA != scoreB {
+                        return scoreA > scoreB
                     }
                     return $0.id < $1.id
                 }

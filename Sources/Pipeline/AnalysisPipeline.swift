@@ -334,14 +334,17 @@ public actor AnalysisPipeline {
             return SessionData(sourceFolderPath: sourceFolder.path, targetSelectionCount: targetCount)
         }
 
-        // Ensure deterministic chronological ordering by capture date
+        // Ensure deterministic chronological ordering by capture date (strict total order)
         items.sort {
             let dateA = $0.metadata.captureDate ?? $0.fileModificationDate
             let dateB = $1.metadata.captureDate ?? $1.fileModificationDate
-            if dateA == dateB {
+            if dateA != dateB {
+                return dateA < dateB
+            }
+            if $0.fileName != $1.fileName {
                 return $0.fileName < $1.fileName
             }
-            return dateA < dateB
+            return $0.id < $1.id
         }
 
         // Publish discovered photos immediately for progressive UI display

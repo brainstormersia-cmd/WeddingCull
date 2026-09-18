@@ -142,8 +142,10 @@ public final class DuplicateAndBurstDetector: Sendable {
         let ranked = burstMembers.sorted { a, b in
             let scoreA = computeBurstFrameQuality(a)
             let scoreB = computeBurstFrameQuality(b)
-            if scoreA != scoreB {
-                return scoreA > scoreB
+            let qA = round(scoreA * 10000.0) / 10000.0
+            let qB = round(scoreB * 10000.0) / 10000.0
+            if qA != qB {
+                return qA > qB
             }
             return a.id < b.id
         }
@@ -172,12 +174,14 @@ public final class DuplicateAndBurstDetector: Sendable {
         // 1. Face quality & sharpness take precedence
         if item.metrics.faceCount > 0 {
             score += item.metrics.faceQualityScore * 0.40
-            score += item.metrics.faceSharpnessScore * 0.30
+            let faceSharp = (item.metrics.rawFaceSharpness != nil ? min(1.0, item.metrics.rawFaceSharpness! / 500.0) : item.metrics.faceSharpnessScore)
+            score += faceSharp * 0.30
             if let eye = item.metrics.averageEyeOpenness {
                 score += eye * 0.15
             }
         } else {
-            score += item.metrics.sharpnessScore * 0.60
+            let sharp = item.metrics.rawSharpness > 0.0 ? min(1.0, item.metrics.rawSharpness / 500.0) : item.metrics.sharpnessScore
+            score += sharp * 0.60
         }
 
         // 2. Exposure & technical quality
