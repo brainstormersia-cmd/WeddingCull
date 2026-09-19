@@ -60,6 +60,23 @@ final class XMPExportTests: XCTestCase {
         XCTAssertTrue(xmp.contains("<rdf:li>Alternative</rdf:li>"))
     }
 
+    func testEditorialRatingMappingReview() {
+        var item = PhotoItem(fileName: "IMG_0002_rev.JPG", sourceURL: URL(fileURLWithPath: "/dummy/IMG_0002_rev.JPG"))
+        item.selectionState = .review
+        item.category = .couple
+
+        let (rating, label, urgency) = exporter.editorialRating(for: item.selectionState)
+        XCTAssertEqual(rating, 4)
+        XCTAssertEqual(label, "Blue")
+        XCTAssertEqual(urgency, "2")
+
+        let xmp = exporter.generateXMP(for: item)
+        XCTAssertTrue(xmp.contains("xmp:Rating=\"4\""))
+        XCTAssertTrue(xmp.contains("xmp:Label=\"Blue\""))
+        XCTAssertTrue(xmp.contains("photoshop:Urgency=\"2\""))
+        XCTAssertTrue(xmp.contains("<rdf:li>Review</rdf:li>"))
+    }
+
     func testEditorialRatingMappingRejected() {
         var item = PhotoItem(fileName: "IMG_0003.JPG", sourceURL: URL(fileURLWithPath: "/dummy/IMG_0003.JPG"))
         item.selectionState = .rejected

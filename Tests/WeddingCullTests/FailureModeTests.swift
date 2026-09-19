@@ -117,6 +117,12 @@ final class FailureModeTests: XCTestCase {
             ctx.fill(CGRect(x: index * 15, y: index * 15, width: 25, height: 25))
         }
 
+        // Add alternating high-contrast vertical bars so synthetic test image is not flagged as catastrophic blur
+        for stripe in 0..<5 {
+            ctx.setFillColor(red: (stripe % 2 == 0) ? 0.85 : 0.15, green: (stripe % 2 == 0) ? 0.85 : 0.15, blue: (stripe % 2 == 0) ? 0.85 : 0.15, alpha: 1.0)
+            ctx.fill(CGRect(x: stripe * 20, y: 0, width: 10, height: 100))
+        }
+
         guard let img = ctx.makeImage(),
               let dest = CGImageDestinationCreateWithURL(url as CFURL, "public.jpeg" as CFString, 1, nil) else {
             return

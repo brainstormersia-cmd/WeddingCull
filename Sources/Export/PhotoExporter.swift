@@ -49,9 +49,9 @@ public final class PhotoExporter: Sendable {
         case .review:
             return (4, "Blue", "2")
         case .alternative:
-            return (3, "Yellow", "3")
+            return (3, "Yellow", "2")
         case .rejected, .userRejected:
-            return (1, "Red", "4")
+            return (1, "Red", "3")
         }
     }
 

@@ -21,6 +21,7 @@ final class BurstAndTemporalSegmentationTests: XCTestCase {
             )
             item.perceptualHash = 0b1111111100000000 // Identical hash
             item.metrics.sharpnessScore = Double(i) * 0.2 + 0.3 // Frame 3 is sharpest
+            item.metrics.rawSharpness = Double(i) * 200.0 + 100.0 // Realistic varying raw sharpness
             item.metrics.overallScore = item.metrics.sharpnessScore
             items.append(item)
         }

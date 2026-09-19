@@ -218,7 +218,7 @@ public final class DuplicateAndBurstDetector: Sendable {
             // Non-face: log1p sharpness with relative within-burst normalization (0.50) and exposure (0.50) summing to 1.00
             let sharp: Double
             let curLog = log1p(max(0.0, item.metrics.rawSharpness))
-            if let ctx = burstContext {
+            if let ctx = burstContext, ctx.maxLogSharp > 0.0 {
                 let spread = ctx.maxLogSharp - ctx.minLogSharp
                 if spread > 0.18 {
                     sharp = min(1.0, max(0.0, (curLog - ctx.minLogSharp) / spread))
