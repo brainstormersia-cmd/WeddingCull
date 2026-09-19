@@ -167,39 +167,69 @@ public final class FaceIdentityRecognizer: @unchecked Sendable {
 
     /// Full result API: Distinguishes Vision execution success vs failure and provides detailed request metrics
     public func extractFacesWithIdentityResult(from cgImage: CGImage, enableFaceCaptureQuality: Bool = false) -> FaceExtractionResult {
+        let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
         let landmarksRequest = VNDetectFaceLandmarksRequest()
-        var requests: [VNRequest] = [landmarksRequest]
-        var captureQualityRequest: VNDetectFaceCaptureQualityRequest? = nil
 
-        if enableFaceCaptureQuality {
-            let cqReq = VNDetectFaceCaptureQualityRequest()
-            requests.append(cqReq)
-            captureQualityRequest = cqReq
+        var visionSucceeded = false
+        var landmarksSucceeded = false
+        var lastError: String? = nil
+
+        do {
+            try handler.perform([landmarksRequest])
+            visionSucceeded = true
+            landmarksSucceeded = true
+        } catch {
+            // If hardware scaler/CSC fails on virtualized macOS runner (e.g. AppleM2ScalerCSCDriver), retry with usesCPUOnly
+            landmarksRequest.usesCPUOnly = true
+            do {
+                try handler.perform([landmarksRequest])
+                visionSucceeded = true
+                landmarksSucceeded = true
+            } catch let retryErr {
+                lastError = retryErr.localizedDescription
+            }
         }
 
-        let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
-        do {
-            try handler.perform(requests)
-        } catch {
+        guard visionSucceeded else {
             return FaceExtractionResult(
                 faces: [],
                 visionRequestSucceeded: false,
                 landmarksRequestSucceeded: false,
                 captureQualityRequestSucceeded: false,
-                errorDescription: error.localizedDescription
+                errorDescription: lastError
             )
         }
 
+        let landmarksResults = landmarksRequest.results ?? []
+        var captureQualityObservations: [VNFaceObservation]? = nil
+        var cqSucceeded = false
+
+        if enableFaceCaptureQuality && !landmarksResults.isEmpty {
+            let cqReq = VNDetectFaceCaptureQualityRequest()
+            cqReq.inputFaceObservations = landmarksResults
+            do {
+                try handler.perform([cqReq])
+                captureQualityObservations = cqReq.results as? [VNFaceObservation]
+                cqSucceeded = true
+            } catch {
+                cqReq.usesCPUOnly = true
+                if (try? handler.perform([cqReq])) != nil {
+                    captureQualityObservations = cqReq.results as? [VNFaceObservation]
+                    cqSucceeded = true
+                }
+            }
+        }
+
         let faces = processObservations(
-            landmarksRequest.results ?? [],
-            captureQualityObservations: captureQualityRequest?.results as? [VNFaceObservation]
+            landmarksResults,
+            captureQualityObservations: captureQualityObservations
         )
 
         return FaceExtractionResult(
             faces: faces,
             visionRequestSucceeded: true,
-            landmarksRequestSucceeded: landmarksRequest.results != nil,
-            captureQualityRequestSucceeded: enableFaceCaptureQuality ? (captureQualityRequest?.results != nil) : false,
+            landmarksRequestSucceeded: landmarksSucceeded,
+            captureQualityRequestSucceeded: cqSucceeded,
             errorDescription: nil
         )
     }

@@ -470,10 +470,19 @@ struct WeddingCullFeatureExporterApp {
         let pps = Double(processedFrames) / max(0.001, elapsed)
         let completionTimestamp = isoFormatter.string(from: Date())
 
-        // 5. Emit Final Provenance Completion (earned upon successful completion)
+        // 5. Emit Final Provenance Completion (earned strictly upon 0 vision and decode failures)
+        let experimentState: String
+        if totalVisionFailures > 0 {
+            experimentState = "NOT_RUN_BLOCKED_VISION_FAILURE"
+        } else if totalDecodeFailures > 0 {
+            experimentState = "NOT_RUN_BLOCKED_DECODE_FAILURE"
+        } else {
+            experimentState = "EXECUTED_AUTHENTIC"
+        }
+
         let completionRecord = ProvenanceCompletionRecord(
             record_type: "PROVENANCE_COMPLETION",
-            experiment_state: "EXECUTED_AUTHENTIC",
+            experiment_state: experimentState,
             extractor: "WeddingCullFeatureExporter",
             git_sha: gitSha,
             platform: platform,
