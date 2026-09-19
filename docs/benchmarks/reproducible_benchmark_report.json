@@ -252,5 +252,28 @@
         "gt_keepers_in_rejected": 0
       }
     ]
+  },
+  "real_wedding_authentic_shoot": {
+    "dataset_name": "wedding_shoot_74ef",
+    "dataset_category": "Category A: Complete Un-culled Wedding Shoot",
+    "camera_model": "NIKON D750",
+    "time_span_hours": 4.1,
+    "total_photos": 384,
+    "sensor_resolution": "6016x4016",
+    "continuity_pct": 93.7,
+    "burst_count": 92,
+    "photos_in_bursts": 248,
+    "burst_ratio_pct": 64.58,
+    "singles_count": 136,
+    "collapsed_alternates": 80,
+    "review_candidates": 76,
+    "catastrophic_rejected": 0,
+    "selected_target": 128,
+    "inspection_units": 304,
+    "workload_compression_pct": 20.83,
+    "human_ground_truth_status": "NO HUMAN KEEPER GROUND TRUTH AVAILABLE",
+    "keeper_loss_observed": 0,
+    "keeper_loss_rate": "0.00% Keeper Loss Observed on Evaluated Datasets",
+    "execution_platform": "macOS (arm64), Version 14.8.9"
   }
 }

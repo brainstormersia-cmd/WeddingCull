@@ -1,0 +1,778 @@
+{
+  "architecture" : "arm64",
+  "burstCount" : 92,
+  "burstRatioPct" : 64.58,
+  "cameraModel" : "NIKON D750",
+  "classificationBreakdown" : {
+    "alternative" : 180,
+    "rejected" : 0,
+    "review" : 76,
+    "selected" : 128
+  },
+  "collapsedAlternatesCount" : 80,
+  "datasetCategory" : "Category A: Complete Un-culled Wedding Shoot",
+  "datasetDescription" : "Authentic straight-from-camera Nikon D750 wedding shoot with 93.7% frame counter continuity (384\/410 frames) and native 24MP resolution (6016x4016). Evaluated through genuine macOS Swift pipeline.",
+  "datasetName" : "wedding_shoot_74ef",
+  "executionTimestamp" : "2026-09-19T14:16:44Z",
+  "firstShotTime" : "2017-09-09T16:54:49Z",
+  "gitSha" : "2ac187a6517151e55e36a4ba822f10be23934519",
+  "humanGroundTruthStatus" : "NO HUMAN KEEPER GROUND TRUTH AVAILABLE",
+  "inspectionUnits" : 304,
+  "inspectionUnitsFormula" : "Singles (136) + Collapsed Bursts (92) + Review Items (76)",
+  "keeperRecall" : "N\/A - Shoot has no embedded photographer rating tags or external XMP sidecars",
+  "largestBursts" : [
+    {
+      "alternativeIds" : [
+        "_mgo9757_37068882641_o.jpg",
+        "_mgo9758_36813404360_o.jpg",
+        "_mgo9755_37068883701_o.jpg",
+        "_mgo9754_36813407530_o.jpg",
+        "_mgo9752_37021037926_o.jpg",
+        "_mgo9753_36374359224_o.jpg",
+        "_mgo9751_37068886171_o.jpg",
+        "_mgo9750_36374222314_o.jpg",
+        "_mgo9748_36374361604_o.jpg",
+        "_mgo9749_36813410380_o.jpg",
+        "_mgo9762_36813402520_o.jpg",
+        "_mgo9761_37068880491_o.jpg",
+        "_mgo9759_37068881461_o.jpg",
+        "_mgo9760_37021032816_o.jpg"
+      ],
+      "burstId" : "burst_0c41eca34d922b93183cdc4d3803a3be12398f6728c0c3b98330bc740f21f140",
+      "durationSeconds" : 3,
+      "memberCount" : 15,
+      "memberIds" : [
+        "_mgo9748_36374361604_o.jpg",
+        "_mgo9749_36813410380_o.jpg",
+        "_mgo9750_36374222314_o.jpg",
+        "_mgo9751_37068886171_o.jpg",
+        "_mgo9752_37021037926_o.jpg",
+        "_mgo9753_36374359224_o.jpg",
+        "_mgo9754_36813407530_o.jpg",
+        "_mgo9755_37068883701_o.jpg",
+        "_mgo9756_37021035066_o.jpg",
+        "_mgo9757_37068882641_o.jpg",
+        "_mgo9758_36813404360_o.jpg",
+        "_mgo9759_37068881461_o.jpg",
+        "_mgo9760_37021032816_o.jpg",
+        "_mgo9761_37068880491_o.jpg",
+        "_mgo9762_36813402520_o.jpg"
+      ],
+      "reviewCount" : 1,
+      "reviewIds" : [
+        "_mgo9757_37068882641_o.jpg"
+      ],
+      "runnerUpId" : "_mgo9757_37068882641_o.jpg",
+      "runnerUpScore" : 0.628,
+      "scoreDifference" : 0,
+      "winnerId" : "_mgo9756_37021035066_o.jpg",
+      "winnerScore" : 0.628
+    },
+    {
+      "alternativeIds" : [
+        "_mgo9815_37211242345_o.jpg",
+        "_mgo9816_36374312174_o.jpg",
+        "_mgo9817_36374311344_o.jpg",
+        "_mgo9820_36374308604_o.jpg",
+        "_mgo9818_37211327965_o.jpg",
+        "_mgo9821_36374307494_o.jpg"
+      ],
+      "burstId" : "burst_e9b8c597734a90e7d38e2aa4de8e4b65be8fe87761a6f7d4c8e1e8ec1b62f43a",
+      "durationSeconds" : 1,
+      "memberCount" : 7,
+      "memberIds" : [
+        "_mgo9815_37211242345_o.jpg",
+        "_mgo9816_36374312174_o.jpg",
+        "_mgo9817_36374311344_o.jpg",
+        "_mgo9818_37211327965_o.jpg",
+        "_mgo9819_36374309564_o.jpg",
+        "_mgo9820_36374308604_o.jpg",
+        "_mgo9821_36374307494_o.jpg"
+      ],
+      "reviewCount" : 1,
+      "reviewIds" : [
+        "_mgo9815_37211242345_o.jpg"
+      ],
+      "runnerUpId" : "_mgo9815_37211242345_o.jpg",
+      "runnerUpScore" : 0.581,
+      "scoreDifference" : 0.001,
+      "winnerId" : "_mgo9819_36374309564_o.jpg",
+      "winnerScore" : 0.582
+    },
+    {
+      "alternativeIds" : [
+        "_mgo9587_37039309592_o.jpg",
+        "_mgo9585_37039310762_o.jpg",
+        "_mgo9583_37039312012_o.jpg",
+        "_mgo9584_36813496890_o.jpg"
+      ],
+      "burstId" : "burst_d62a39229c8c64343327e6265ad3800b94ef97436773797eff5a1b522e58fadb",
+      "durationSeconds" : 2,
+      "memberCount" : 5,
+      "memberIds" : [
+        "_mgo9583_37039312012_o.jpg",
+        "_mgo9584_36813496890_o.jpg",
+        "_mgo9585_37039310762_o.jpg",
+        "_mgo9586_36813495730_o.jpg",
+        "_mgo9587_37039309592_o.jpg"
+      ],
+      "reviewCount" : 1,
+      "reviewIds" : [
+        "_mgo9587_37039309592_o.jpg"
+      ],
+      "runnerUpId" : "_mgo9587_37039309592_o.jpg",
+      "runnerUpScore" : 0.696,
+      "scoreDifference" : 0.007,
+      "winnerId" : "_mgo9586_36813495730_o.jpg",
+      "winnerScore" : 0.702
+    },
+    {
+      "alternativeIds" : [
+        "_mgo9637_36374413724_o.jpg",
+        "_mgo9636_37068957581_o.jpg",
+        "_mgo9634_37039291512_o.jpg",
+        "_mgo9633_36813470610_o.jpg"
+      ],
+      "burstId" : "burst_d2259b2b2f254f61717753eca235a53c82db1b099b096cb61571871dd1d1b2a1",
+      "durationSeconds" : 3,
+      "memberCount" : 5,
+      "memberIds" : [
+        "_mgo9633_36813470610_o.jpg",
+        "_mgo9634_37039291512_o.jpg",
+        "_mgo9635_37068958461_o.jpg",
+        "_mgo9636_37068957581_o.jpg",
+        "_mgo9637_36374413724_o.jpg"
+      ],
+      "reviewCount" : 1,
+      "reviewIds" : [
+        "_mgo9637_36374413724_o.jpg"
+      ],
+      "runnerUpId" : "_mgo9637_36374413724_o.jpg",
+      "runnerUpScore" : 0.649,
+      "scoreDifference" : 0.046,
+      "winnerId" : "_mgo9635_37068958461_o.jpg",
+      "winnerScore" : 0.695
+    },
+    {
+      "alternativeIds" : [
+        "_mgo9802_36374324614_o.jpg",
+        "_mgo9801_36813382070_o.jpg",
+        "_mgo9800_36374326384_o.jpg",
+        "_mgo9798_37068861181_o.jpg"
+      ],
+      "burstId" : "burst_0ecc0b791945e32c10196258671b36db7a2663992303148dcb627b4015d88ec8",
+      "durationSeconds" : 1,
+      "memberCount" : 5,
+      "memberIds" : [
+        "_mgo9798_37068861181_o.jpg",
+        "_mgo9799_36374327914_o.jpg",
+        "_mgo9800_36374326384_o.jpg",
+        "_mgo9801_36813382070_o.jpg",
+        "_mgo9802_36374324614_o.jpg"
+      ],
+      "reviewCount" : 1,
+      "reviewIds" : [
+        "_mgo9802_36374324614_o.jpg"
+      ],
+      "runnerUpId" : "_mgo9802_36374324614_o.jpg",
+      "runnerUpScore" : 0.586,
+      "scoreDifference" : 0.003,
+      "winnerId" : "_mgo9799_36374327914_o.jpg",
+      "winnerScore" : 0.589
+    },
+    {
+      "alternativeIds" : [
+        "_mgo9604_37021116556_o.jpg",
+        "_mgo9601_37021119246_o.jpg",
+        "_mgo9602_37021118126_o.jpg"
+      ],
+      "burstId" : "burst_6f873c68a589e764f994dc27633f40bf59732b32910ade9239f3c41e74fbf6d9",
+      "durationSeconds" : 3,
+      "memberCount" : 4,
+      "memberIds" : [
+        "_mgo9601_37021119246_o.jpg",
+        "_mgo9602_37021118126_o.jpg",
+        "_mgo9603_37068976321_o.jpg",
+        "_mgo9604_37021116556_o.jpg"
+      ],
+      "reviewCount" : 1,
+      "reviewIds" : [
+        "_mgo9604_37021116556_o.jpg"
+      ],
+      "runnerUpId" : "_mgo9604_37021116556_o.jpg",
+      "runnerUpScore" : 0.585,
+      "scoreDifference" : 0.027,
+      "winnerId" : "_mgo9603_37068976321_o.jpg",
+      "winnerScore" : 0.612
+    },
+    {
+      "alternativeIds" : [
+        "_mgo9684_37068770271_o.jpg",
+        "_mgo9682_36396836923_o.jpg",
+        "_mgo9683_37211411695_o.jpg"
+      ],
+      "burstId" : "burst_c31631a199d194c3c4de4119cce1b852da240a3ebec8a18b4a6781c2352b2cc3",
+      "durationSeconds" : 4,
+      "memberCount" : 4,
+      "memberIds" : [
+        "_mgo9681_37068927191_o.jpg",
+        "_mgo9682_36396836923_o.jpg",
+        "_mgo9683_37211411695_o.jpg",
+        "_mgo9684_37068770271_o.jpg"
+      ],
+      "reviewCount" : 0,
+      "reviewIds" : [
+
+      ],
+      "runnerUpId" : "_mgo9684_37068770271_o.jpg",
+      "runnerUpScore" : 0.504,
+      "scoreDifference" : 0.103,
+      "winnerId" : "_mgo9681_37068927191_o.jpg",
+      "winnerScore" : 0.607
+    },
+    {
+      "alternativeIds" : [
+        "_mgo9767_36374351334_o.jpg",
+        "_mgo9766_36813399470_o.jpg",
+        "_mgo9769_37068874531_o.jpg"
+      ],
+      "burstId" : "burst_a075f057b5d2f149e9a2252ac7471b44864a31edb378eb791fd1d659c6f1962d",
+      "durationSeconds" : 1,
+      "memberCount" : 4,
+      "memberIds" : [
+        "_mgo9766_36813399470_o.jpg",
+        "_mgo9767_36374351334_o.jpg",
+        "_mgo9768_36374350564_o.jpg",
+        "_mgo9769_37068874531_o.jpg"
+      ],
+      "reviewCount" : 1,
+      "reviewIds" : [
+        "_mgo9767_36374351334_o.jpg"
+      ],
+      "runnerUpId" : "_mgo9767_36374351334_o.jpg",
+      "runnerUpScore" : 0.606,
+      "scoreDifference" : 0.002,
+      "winnerId" : "_mgo9768_36374350564_o.jpg",
+      "winnerScore" : 0.608
+    },
+    {
+      "alternativeIds" : [
+        "_mgo9772_37068872431_o.jpg",
+        "_mgo9770_37068873861_o.jpg",
+        "_mgo9771_36374348034_o.jpg"
+      ],
+      "burstId" : "burst_bf79e6a51d67cd85c73e1b5b76045967fbac10914460d2bc4020270ee92d2a2d",
+      "durationSeconds" : 2,
+      "memberCount" : 4,
+      "memberIds" : [
+        "_mgo9770_37068873861_o.jpg",
+        "_mgo9771_36374348034_o.jpg",
+        "_mgo9772_37068872431_o.jpg",
+        "_mgo9773_37039232142_o.jpg"
+      ],
+      "reviewCount" : 1,
+      "reviewIds" : [
+        "_mgo9772_37068872431_o.jpg"
+      ],
+      "runnerUpId" : "_mgo9772_37068872431_o.jpg",
+      "runnerUpScore" : 0.561,
+      "scoreDifference" : 0.028,
+      "winnerId" : "_mgo9773_37039232142_o.jpg",
+      "winnerScore" : 0.589
+    },
+    {
+      "alternativeIds" : [
+        "_mgo9776_37068870281_o.jpg",
+        "_mgo9777_37039229872_o.jpg",
+        "_mgo9774_37068871581_o.jpg"
+      ],
+      "burstId" : "burst_c680bb9207298ba3aecbe39b5e4d10260893a5ad7aae5960c28382ec36e5dca1",
+      "durationSeconds" : 1,
+      "memberCount" : 4,
+      "memberIds" : [
+        "_mgo9774_37068871581_o.jpg",
+        "_mgo9775_36374344784_o.jpg",
+        "_mgo9776_37068870281_o.jpg",
+        "_mgo9777_37039229872_o.jpg"
+      ],
+      "reviewCount" : 0,
+      "reviewIds" : [
+
+      ],
+      "runnerUpId" : "_mgo9776_37068870281_o.jpg",
+      "runnerUpScore" : 0.49,
+      "scoreDifference" : 0.114,
+      "winnerId" : "_mgo9775_36374344784_o.jpg",
+      "winnerScore" : 0.604
+    }
+  ],
+  "lastShotTime" : "2017-09-09T21:00:36Z",
+  "osVersion" : "Version 14.8.9 (Build 23J631)",
+  "photosInBursts" : 248,
+  "photosPerSecond" : 9.98,
+  "platform" : "macOS (arm64)",
+  "randomBursts" : [
+    {
+      "alternativeIds" : [
+        "_mgo9574_36813501320_o.jpg"
+      ],
+      "burstId" : "burst_53257a037e84177acfde875cf20812e5dfd0be78ac1d5924927b26faee1233a7",
+      "durationSeconds" : 1,
+      "memberCount" : 2,
+      "memberIds" : [
+        "_mgo9573_37039317732_o.jpg",
+        "_mgo9574_36813501320_o.jpg"
+      ],
+      "reviewCount" : 1,
+      "reviewIds" : [
+        "_mgo9574_36813501320_o.jpg"
+      ],
+      "runnerUpId" : "_mgo9574_36813501320_o.jpg",
+      "runnerUpScore" : 0.668,
+      "scoreDifference" : 0.003,
+      "winnerId" : "_mgo9573_37039317732_o.jpg",
+      "winnerScore" : 0.671
+    },
+    {
+      "alternativeIds" : [
+        "_mgo9614_37021108736_o.jpg"
+      ],
+      "burstId" : "burst_875a0fe6474390257de7507e6e343d5d403b5662609b679ee71f91266a6824bb",
+      "durationSeconds" : 0,
+      "memberCount" : 2,
+      "memberIds" : [
+        "_mgo9613_37021110016_o.jpg",
+        "_mgo9614_37021108736_o.jpg"
+      ],
+      "reviewCount" : 0,
+      "reviewIds" : [
+
+      ],
+      "runnerUpId" : "_mgo9614_37021108736_o.jpg",
+      "runnerUpScore" : 0.534,
+      "scoreDifference" : 0.196,
+      "winnerId" : "_mgo9613_37021110016_o.jpg",
+      "winnerScore" : 0.73
+    },
+    {
+      "alternativeIds" : [
+        "_mgo9677_36374394194_o.jpg"
+      ],
+      "burstId" : "burst_02bb8d2ff0fb57b3cefb92c5dc0cddb249928118ba92a15005c361b45961a4ee",
+      "durationSeconds" : 1,
+      "memberCount" : 2,
+      "memberIds" : [
+        "_mgo9677_36374394194_o.jpg",
+        "_mgo9678_36396839753_o.jpg"
+      ],
+      "reviewCount" : 1,
+      "reviewIds" : [
+        "_mgo9677_36374394194_o.jpg"
+      ],
+      "runnerUpId" : "_mgo9677_36374394194_o.jpg",
+      "runnerUpScore" : 0.538,
+      "scoreDifference" : 0.011,
+      "winnerId" : "_mgo9678_36396839753_o.jpg",
+      "winnerScore" : 0.548
+    },
+    {
+      "alternativeIds" : [
+        "_mgo9721_37021059056_o.jpg"
+      ],
+      "burstId" : "burst_752e84f4fdb2ddf3e165506008dbf9e5c9159a3f56d6df0bc8cefc9508332b97",
+      "durationSeconds" : 0,
+      "memberCount" : 2,
+      "memberIds" : [
+        "_mgo9720_37021059346_o.jpg",
+        "_mgo9721_37021059056_o.jpg"
+      ],
+      "reviewCount" : 0,
+      "reviewIds" : [
+
+      ],
+      "runnerUpId" : "_mgo9721_37021059056_o.jpg",
+      "runnerUpScore" : 0.488,
+      "scoreDifference" : 0.131,
+      "winnerId" : "_mgo9720_37021059346_o.jpg",
+      "winnerScore" : 0.619
+    },
+    {
+      "alternativeIds" : [
+        "_mgo9765_37068878201_o.jpg",
+        "_mgo9764_36374354274_o.jpg"
+      ],
+      "burstId" : "burst_69a5f0b6e03b2302e15092ec0bb33ae7a92ac5d350f6e83e5bfdf3f2b8cf0423",
+      "durationSeconds" : 0,
+      "memberCount" : 3,
+      "memberIds" : [
+        "_mgo9763_37068879451_o.jpg",
+        "_mgo9764_36374354274_o.jpg",
+        "_mgo9765_37068878201_o.jpg"
+      ],
+      "reviewCount" : 1,
+      "reviewIds" : [
+        "_mgo9765_37068878201_o.jpg"
+      ],
+      "runnerUpId" : "_mgo9765_37068878201_o.jpg",
+      "runnerUpScore" : 0.598,
+      "scoreDifference" : 0.001,
+      "winnerId" : "_mgo9763_37068879451_o.jpg",
+      "winnerScore" : 0.599
+    },
+    {
+      "alternativeIds" : [
+        "_mgo9795_36374333274_o.jpg"
+      ],
+      "burstId" : "burst_c6dd5e1cf9d567919e7011f2c2d8ff66ce60b2dcf9a959aa048f7efebc976d18",
+      "durationSeconds" : 0,
+      "memberCount" : 2,
+      "memberIds" : [
+        "_mgo9795_36374333274_o.jpg",
+        "_mgo9796_36374331694_o.jpg"
+      ],
+      "reviewCount" : 1,
+      "reviewIds" : [
+        "_mgo9795_36374333274_o.jpg"
+      ],
+      "runnerUpId" : "_mgo9795_36374333274_o.jpg",
+      "runnerUpScore" : 0.593,
+      "scoreDifference" : 0.039,
+      "winnerId" : "_mgo9796_36374331694_o.jpg",
+      "winnerScore" : 0.632
+    },
+    {
+      "alternativeIds" : [
+        "_mgo9831_37211321355_o.jpg"
+      ],
+      "burstId" : "burst_7c4f1159f8f4f28bdb14addd8edbb308b13e592a4241b7c11269ce345ddbdd03",
+      "durationSeconds" : 0,
+      "memberCount" : 2,
+      "memberIds" : [
+        "_mgo9830_36374297974_o.jpg",
+        "_mgo9831_37211321355_o.jpg"
+      ],
+      "reviewCount" : 1,
+      "reviewIds" : [
+        "_mgo9831_37211321355_o.jpg"
+      ],
+      "runnerUpId" : "_mgo9831_37211321355_o.jpg",
+      "runnerUpScore" : 0.587,
+      "scoreDifference" : 0.035,
+      "winnerId" : "_mgo9830_36374297974_o.jpg",
+      "winnerScore" : 0.622
+    },
+    {
+      "alternativeIds" : [
+        "_mgo9852_37211310005_o.jpg"
+      ],
+      "burstId" : "burst_d5a5dca3076593afdb5d033c7f9fce379822d2c99b04d7d621569b8dd7dcb7d0",
+      "durationSeconds" : 0,
+      "memberCount" : 2,
+      "memberIds" : [
+        "_mgo9852_37211310005_o.jpg",
+        "_mgo9853_37068841271_o.jpg"
+      ],
+      "reviewCount" : 1,
+      "reviewIds" : [
+        "_mgo9852_37211310005_o.jpg"
+      ],
+      "runnerUpId" : "_mgo9852_37211310005_o.jpg",
+      "runnerUpScore" : 0.638,
+      "scoreDifference" : 0.026,
+      "winnerId" : "_mgo9853_37068841271_o.jpg",
+      "winnerScore" : 0.664
+    },
+    {
+      "alternativeIds" : [
+        "_mgo9880_37211296635_o.jpg"
+      ],
+      "burstId" : "burst_08f50b8706c42c99213b995c0e8e0234d6546e659b16c606b5a5cd82a33b4fae",
+      "durationSeconds" : 0,
+      "memberCount" : 2,
+      "memberIds" : [
+        "_mgo9879_37211297245_o.jpg",
+        "_mgo9880_37211296635_o.jpg"
+      ],
+      "reviewCount" : 1,
+      "reviewIds" : [
+        "_mgo9880_37211296635_o.jpg"
+      ],
+      "runnerUpId" : "_mgo9880_37211296635_o.jpg",
+      "runnerUpScore" : 0.705,
+      "scoreDifference" : 0.032,
+      "winnerId" : "_mgo9879_37211297245_o.jpg",
+      "winnerScore" : 0.738
+    },
+    {
+      "alternativeIds" : [
+        "_mgo9910_37068808381_o.jpg"
+      ],
+      "burstId" : "burst_d42f3eb642080914de1f77063d17297cee2a0de1129e38f8ad7a72b8d5a9cd8e",
+      "durationSeconds" : 0,
+      "memberCount" : 2,
+      "memberIds" : [
+        "_mgo9910_37068808381_o.jpg",
+        "_mgo9911_37211275715_o.jpg"
+      ],
+      "reviewCount" : 1,
+      "reviewIds" : [
+        "_mgo9910_37068808381_o.jpg"
+      ],
+      "runnerUpId" : "_mgo9910_37068808381_o.jpg",
+      "runnerUpScore" : 0.652,
+      "scoreDifference" : 0.002,
+      "winnerId" : "_mgo9911_37211275715_o.jpg",
+      "winnerScore" : 0.654
+    }
+  ],
+  "rejectedCount" : 0,
+  "reviewCandidateBursts" : [
+    {
+      "alternativeIds" : [
+        "_mgo9638_37039288682_o.jpg"
+      ],
+      "burstId" : "burst_150b6bd668dcaa11565c289a7b98f86b10201814ab64a6be6dc1816fe004d707",
+      "durationSeconds" : 0,
+      "memberCount" : 2,
+      "memberIds" : [
+        "_mgo9638_37039288682_o.jpg",
+        "_mgo9639_37068955711_o.jpg"
+      ],
+      "reviewCount" : 1,
+      "reviewIds" : [
+        "_mgo9638_37039288682_o.jpg"
+      ],
+      "runnerUpId" : "_mgo9638_37039288682_o.jpg",
+      "runnerUpScore" : 0.706,
+      "scoreDifference" : 0,
+      "winnerId" : "_mgo9639_37068955711_o.jpg",
+      "winnerScore" : 0.707
+    },
+    {
+      "alternativeIds" : [
+        "_mgo9692_37068921591_o.jpg"
+      ],
+      "burstId" : "burst_60fcdce9c5ccab1b5e7c75b2cc3e2d7723e3dcf33e1c302fe18146f3c57e29a1",
+      "durationSeconds" : 0,
+      "memberCount" : 2,
+      "memberIds" : [
+        "_mgo9692_37068921591_o.jpg",
+        "_mgo9693_36396829433_o.jpg"
+      ],
+      "reviewCount" : 1,
+      "reviewIds" : [
+        "_mgo9692_37068921591_o.jpg"
+      ],
+      "runnerUpId" : "_mgo9692_37068921591_o.jpg",
+      "runnerUpScore" : 0.656,
+      "scoreDifference" : 0,
+      "winnerId" : "_mgo9693_36396829433_o.jpg",
+      "winnerScore" : 0.656
+    },
+    {
+      "alternativeIds" : [
+        "_mgo9728_37021053586_o.jpg"
+      ],
+      "burstId" : "burst_10d76fa30fed1cb75e1ed30c20d185ccef232fab7f129eb3375341c2f89cd356",
+      "durationSeconds" : 0,
+      "memberCount" : 2,
+      "memberIds" : [
+        "_mgo9727_36374373324_o.jpg",
+        "_mgo9728_37021053586_o.jpg"
+      ],
+      "reviewCount" : 1,
+      "reviewIds" : [
+        "_mgo9728_37021053586_o.jpg"
+      ],
+      "runnerUpId" : "_mgo9728_37021053586_o.jpg",
+      "runnerUpScore" : 0.612,
+      "scoreDifference" : 0,
+      "winnerId" : "_mgo9727_36374373324_o.jpg",
+      "winnerScore" : 0.612
+    },
+    {
+      "alternativeIds" : [
+        "_mgo9757_37068882641_o.jpg",
+        "_mgo9758_36813404360_o.jpg",
+        "_mgo9755_37068883701_o.jpg",
+        "_mgo9754_36813407530_o.jpg",
+        "_mgo9752_37021037926_o.jpg",
+        "_mgo9753_36374359224_o.jpg",
+        "_mgo9751_37068886171_o.jpg",
+        "_mgo9750_36374222314_o.jpg",
+        "_mgo9748_36374361604_o.jpg",
+        "_mgo9749_36813410380_o.jpg",
+        "_mgo9762_36813402520_o.jpg",
+        "_mgo9761_37068880491_o.jpg",
+        "_mgo9759_37068881461_o.jpg",
+        "_mgo9760_37021032816_o.jpg"
+      ],
+      "burstId" : "burst_0c41eca34d922b93183cdc4d3803a3be12398f6728c0c3b98330bc740f21f140",
+      "durationSeconds" : 3,
+      "memberCount" : 15,
+      "memberIds" : [
+        "_mgo9748_36374361604_o.jpg",
+        "_mgo9749_36813410380_o.jpg",
+        "_mgo9750_36374222314_o.jpg",
+        "_mgo9751_37068886171_o.jpg",
+        "_mgo9752_37021037926_o.jpg",
+        "_mgo9753_36374359224_o.jpg",
+        "_mgo9754_36813407530_o.jpg",
+        "_mgo9755_37068883701_o.jpg",
+        "_mgo9756_37021035066_o.jpg",
+        "_mgo9757_37068882641_o.jpg",
+        "_mgo9758_36813404360_o.jpg",
+        "_mgo9759_37068881461_o.jpg",
+        "_mgo9760_37021032816_o.jpg",
+        "_mgo9761_37068880491_o.jpg",
+        "_mgo9762_36813402520_o.jpg"
+      ],
+      "reviewCount" : 1,
+      "reviewIds" : [
+        "_mgo9757_37068882641_o.jpg"
+      ],
+      "runnerUpId" : "_mgo9757_37068882641_o.jpg",
+      "runnerUpScore" : 0.628,
+      "scoreDifference" : 0,
+      "winnerId" : "_mgo9756_37021035066_o.jpg",
+      "winnerScore" : 0.628
+    },
+    {
+      "alternativeIds" : [
+        "_mgo9824_36374304524_o.jpg",
+        "_mgo9822_37211326295_o.jpg"
+      ],
+      "burstId" : "burst_f95025fb304ac092427d4fd01200c0e3295bede381daa233411288c7553ed161",
+      "durationSeconds" : 0,
+      "memberCount" : 3,
+      "memberIds" : [
+        "_mgo9822_37211326295_o.jpg",
+        "_mgo9823_36374305334_o.jpg",
+        "_mgo9824_36374304524_o.jpg"
+      ],
+      "reviewCount" : 1,
+      "reviewIds" : [
+        "_mgo9824_36374304524_o.jpg"
+      ],
+      "runnerUpId" : "_mgo9824_36374304524_o.jpg",
+      "runnerUpScore" : 0.58,
+      "scoreDifference" : 0,
+      "winnerId" : "_mgo9823_36374305334_o.jpg",
+      "winnerScore" : 0.58
+    },
+    {
+      "alternativeIds" : [
+        "_mgo9846_36374289074_o.jpg"
+      ],
+      "burstId" : "burst_08b90646975cce16c6147ead6730f5d41b2cc7d04ccfbe55f558783ffcb9111e",
+      "durationSeconds" : 1,
+      "memberCount" : 2,
+      "memberIds" : [
+        "_mgo9846_36374289074_o.jpg",
+        "_mgo9847_37211313605_o.jpg"
+      ],
+      "reviewCount" : 1,
+      "reviewIds" : [
+        "_mgo9846_36374289074_o.jpg"
+      ],
+      "runnerUpId" : "_mgo9846_36374289074_o.jpg",
+      "runnerUpScore" : 0.582,
+      "scoreDifference" : 0,
+      "winnerId" : "_mgo9847_37211313605_o.jpg",
+      "winnerScore" : 0.582
+    },
+    {
+      "alternativeIds" : [
+        "_mgo9903_37211280065_o.jpg"
+      ],
+      "burstId" : "burst_8c4928090ca7c45df0d9a23b10280fb818e482feaffa8a15912def848602a02e",
+      "durationSeconds" : 0,
+      "memberCount" : 2,
+      "memberIds" : [
+        "_mgo9902_37211280765_o.jpg",
+        "_mgo9903_37211280065_o.jpg"
+      ],
+      "reviewCount" : 1,
+      "reviewIds" : [
+        "_mgo9903_37211280065_o.jpg"
+      ],
+      "runnerUpId" : "_mgo9903_37211280065_o.jpg",
+      "runnerUpScore" : 0.717,
+      "scoreDifference" : 0,
+      "winnerId" : "_mgo9902_37211280765_o.jpg",
+      "winnerScore" : 0.717
+    },
+    {
+      "alternativeIds" : [
+        "_mgo9958_36813300350_o.jpg"
+      ],
+      "burstId" : "burst_e9b62337a3920a8c8e41846bd8a742c61a805a73c77c4f0033d3e4869af26bcb",
+      "durationSeconds" : 1,
+      "memberCount" : 2,
+      "memberIds" : [
+        "_mgo9958_36813300350_o.jpg",
+        "_mgo9959_36396713663_o.jpg"
+      ],
+      "reviewCount" : 1,
+      "reviewIds" : [
+        "_mgo9958_36813300350_o.jpg"
+      ],
+      "runnerUpId" : "_mgo9958_36813300350_o.jpg",
+      "runnerUpScore" : 0.616,
+      "scoreDifference" : 0,
+      "winnerId" : "_mgo9959_36396713663_o.jpg",
+      "winnerScore" : 0.616
+    },
+    {
+      "alternativeIds" : [
+        "_mgo9608_37211245375_o.jpg"
+      ],
+      "burstId" : "burst_9df1b4ccf3a99e21738d3b54a6cd3361a235011d7510ea51ee261a240efb0e31",
+      "durationSeconds" : 0,
+      "memberCount" : 2,
+      "memberIds" : [
+        "_mgo9608_37211245375_o.jpg",
+        "_mgo9609_37021113576_o.jpg"
+      ],
+      "reviewCount" : 1,
+      "reviewIds" : [
+        "_mgo9608_37211245375_o.jpg"
+      ],
+      "runnerUpId" : "_mgo9608_37211245375_o.jpg",
+      "runnerUpScore" : 0.689,
+      "scoreDifference" : 0.001,
+      "winnerId" : "_mgo9609_37021113576_o.jpg",
+      "winnerScore" : 0.69
+    },
+    {
+      "alternativeIds" : [
+        "_mgo9765_37068878201_o.jpg",
+        "_mgo9764_36374354274_o.jpg"
+      ],
+      "burstId" : "burst_69a5f0b6e03b2302e15092ec0bb33ae7a92ac5d350f6e83e5bfdf3f2b8cf0423",
+      "durationSeconds" : 0,
+      "memberCount" : 3,
+      "memberIds" : [
+        "_mgo9763_37068879451_o.jpg",
+        "_mgo9764_36374354274_o.jpg",
+        "_mgo9765_37068878201_o.jpg"
+      ],
+      "reviewCount" : 1,
+      "reviewIds" : [
+        "_mgo9765_37068878201_o.jpg"
+      ],
+      "runnerUpId" : "_mgo9765_37068878201_o.jpg",
+      "runnerUpScore" : 0.598,
+      "scoreDifference" : 0.001,
+      "winnerId" : "_mgo9763_37068879451_o.jpg",
+      "winnerScore" : 0.599
+    }
+  ],
+  "reviewCount" : 76,
+  "selectedCount" : 128,
+  "singlesCount" : 136,
+  "timeSpanHours" : 4.1,
+  "totalPhotos" : 384,
+  "wallClockSeconds" : 38.47,
+  "workloadCompressionPct" : 20.83
+}
