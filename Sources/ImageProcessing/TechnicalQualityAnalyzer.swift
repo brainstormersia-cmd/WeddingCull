@@ -102,8 +102,8 @@ public final class TechnicalQualityAnalyzer: Sendable {
         let stdDev = sqrt(varianceSum / totalPixels)
         let contrastProxy = max(0.0, min(1.0, stdDev / 64.0))
 
-        let isSevereUnderexposed = meanLuminance < 0.15 && shadowClipping > 0.35
-        let isSevereOverexposed = meanLuminance > 0.85 && highlightClipping > 0.35
+        let isSevereUnderexposed = meanLuminance < 0.05 && shadowClipping > 0.80
+        let isSevereOverexposed = meanLuminance > 0.95 && highlightClipping > 0.80
 
         // 2. Sharpness via 3x3 Laplacian filter:
         // [  0,  1,  0 ]

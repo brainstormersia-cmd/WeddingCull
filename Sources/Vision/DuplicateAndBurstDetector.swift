@@ -143,9 +143,12 @@ public final class DuplicateAndBurstDetector: Sendable {
         }
 
         // Rank members to choose recommended winner (strict total order with ID tie-breaker)
+        let logSharps = burstMembers.map { log1p(max(0.0, $0.metrics.rawSharpness)) }
+        let burstCtx = (minLogSharp: logSharps.min() ?? 0.0, maxLogSharp: logSharps.max() ?? 0.0)
+
         let ranked = burstMembers.sorted { a, b in
-            let scoreA = computeBurstFrameQuality(a)
-            let scoreB = computeBurstFrameQuality(b)
+            let scoreA = computeBurstFrameQuality(a, burstContext: burstCtx)
+            let scoreB = computeBurstFrameQuality(b, burstContext: burstCtx)
             let qA = round(scoreA * 10000.0) / 10000.0
             let qB = round(scoreB * 10000.0) / 10000.0
             if qA != qB {
@@ -172,7 +175,10 @@ public final class DuplicateAndBurstDetector: Sendable {
         )
     }
 
-    public func computeBurstFrameQuality(_ item: PhotoItem) -> Double {
+    public func computeBurstFrameQuality(
+        _ item: PhotoItem,
+        burstContext: (minLogSharp: Double, maxLogSharp: Double)? = nil
+    ) -> Double {
         var score: Double = 0.0
 
         // 1. Face quality & sharpness take precedence
@@ -190,10 +196,18 @@ public final class DuplicateAndBurstDetector: Sendable {
             // Exposure & technical quality (0.15, summing to 1.00 with face metrics)
             score += item.metrics.exposureScore * 0.15
         } else {
-            // Non-face: balanced sharpness (0.70) and exposure (0.30) summing to 1.00
-            let sharp = item.metrics.rawSharpness > 0.0 ? min(1.0, item.metrics.rawSharpness / 500.0) : item.metrics.sharpnessScore
-            score += sharp * 0.70
-            score += item.metrics.exposureScore * 0.30
+            // Non-face: log1p sharpness with relative within-burst normalization (0.50) and exposure (0.50) summing to 1.00
+            let sharp: Double
+            let curLog = log1p(max(0.0, item.metrics.rawSharpness))
+            if let ctx = burstContext, (ctx.maxLogSharp - ctx.minLogSharp) > 0.18 {
+                sharp = (curLog - ctx.minLogSharp) / (ctx.maxLogSharp - ctx.minLogSharp)
+            } else if item.metrics.rawSharpness > 0.0 {
+                sharp = min(1.0, curLog / log1p(2500.0))
+            } else {
+                sharp = item.metrics.sharpnessScore
+            }
+            score += sharp * 0.50
+            score += item.metrics.exposureScore * 0.50
         }
 
         // Penalize severe clipping or low quality

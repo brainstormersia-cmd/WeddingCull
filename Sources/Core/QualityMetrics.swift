@@ -81,6 +81,11 @@ public struct QualityMetrics: Codable, Sendable, Equatable {
     }
 
     public var isTechnicallyLowQuality: Bool {
-        return sharpnessScore < 0.25 || exposureScore < 0.2 || (faceCount > 0 && faceSharpnessScore < 0.2)
+        // Reserved strictly for catastrophic unrecoverable defects:
+        // 1. Extreme blur (rawSharpness < 12.0) - out of focus smear / camera shake
+        // 2. Catastrophic blackout (isSevereUnderexposed)
+        // 3. Catastrophic whiteout (isSevereOverexposed)
+        let extremeBlur = rawSharpness > 0.0 && rawSharpness < 12.0
+        return extremeBlur || isSevereUnderexposed || isSevereOverexposed
     }
 }

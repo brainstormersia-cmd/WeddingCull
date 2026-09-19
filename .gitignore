@@ -25,3 +25,5 @@ __pycache__/
 *.crdownload
 .weddingcull.local.json
 downloaded_features/
+tests/fixtures/
+Tests/fixtures/
