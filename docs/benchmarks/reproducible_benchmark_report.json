@@ -1,0 +1,248 @@
+{
+  "timestamp": "2026-09-19T12:35:00Z",
+  "benchmark_environment": {
+    "os": "macOS / Windows Hybrid Verified",
+    "feature_provenance": "EXECUTED_AUTHENTIC",
+    "swift_commit": "a6ac3f9"
+  },
+  "photo_triage_authentic_validation": {
+    "pairwise": {
+      "overall_accuracy": 51.66,
+      "correct_pairs": 233,
+      "total_pairs": 451,
+      "both_faces_accuracy": 54.39,
+      "both_faces_count": 171,
+      "no_faces_accuracy": 49.8,
+      "no_faces_count": 249,
+      "mixed_faces_accuracy": 51.61,
+      "mixed_faces_count": 31
+    },
+    "stratified_recall": {
+      "size_2": {
+        "series_count": 122,
+        "top1_recall": 55.74,
+        "top2_recall": 100.0,
+        "top3_recall": 100.0
+      },
+      "size_3": {
+        "series_count": 45,
+        "top1_recall": 37.78,
+        "top2_recall": 68.89,
+        "top3_recall": 100.0
+      },
+      "size_4_5": {
+        "series_count": 25,
+        "top1_recall": 12.0,
+        "top2_recall": 44.0,
+        "top3_recall": 80.0
+      },
+      "size_6_plus": {
+        "series_count": 3,
+        "top1_recall": 0.0,
+        "top2_recall": 0.0,
+        "top3_recall": 0.0
+      },
+      "all_sizes": {
+        "series_count": 195,
+        "top1_recall": 45.13,
+        "top2_recall": 84.1,
+        "top3_recall": 95.9
+      }
+    },
+    "safety_production": {
+      "rejected_count": 1,
+      "rejected_pct": 0.2,
+      "keepers_lost": 0,
+      "keeper_loss_rate": 0.0,
+      "reject_precision": 100.0,
+      "false_reject_keeper_rate": 0.0,
+      "rejected_ids": [
+        "000540-01.JPG"
+      ],
+      "lost_keeper_ids": []
+    },
+    "safety_old": {
+      "rejected_count": 39,
+      "rejected_pct": 7.75,
+      "keepers_lost": 14,
+      "keeper_loss_rate": 7.18,
+      "reject_precision": 64.1,
+      "false_reject_keeper_rate": 35.9,
+      "rejected_ids": [
+        "000015-01.JPG",
+        "000540-01.JPG",
+        "000659-02.JPG",
+        "000670-01.JPG",
+        "000670-02.JPG",
+        "000813-01.JPG",
+        "000850-02.JPG",
+        "000926-03.JPG",
+        "001785-01.JPG",
+        "002432-02.JPG",
+        "002452-01.JPG",
+        "002493-02.JPG",
+        "002495-01.JPG",
+        "002502-01.JPG",
+        "002502-03.JPG",
+        "002502-04.JPG",
+        "002863-01.JPG",
+        "002863-02.JPG",
+        "002982-01.JPG",
+        "002982-02.JPG",
+        "003093-01.JPG",
+        "003093-02.JPG",
+        "003514-02.JPG",
+        "003927-01.JPG",
+        "003927-02.JPG",
+        "003927-03.JPG",
+        "003927-04.JPG",
+        "003935-01.JPG",
+        "003935-02.JPG",
+        "003940-03.JPG",
+        "003940-04.JPG",
+        "004077-02.JPG",
+        "004382-01.JPG",
+        "004482-02.JPG",
+        "005245-01.JPG",
+        "005245-02.JPG",
+        "005245-03.JPG",
+        "005917-01.JPG",
+        "005917-02.JPG"
+      ],
+      "lost_keeper_ids": [
+        "000670-02.JPG",
+        "000926-03.JPG",
+        "001785-01.JPG",
+        "002432-02.JPG",
+        "002502-03.JPG",
+        "002863-02.JPG",
+        "002982-02.JPG",
+        "003093-01.JPG",
+        "003514-02.JPG",
+        "003927-01.JPG",
+        "003935-01.JPG",
+        "003940-03.JPG",
+        "005245-01.JPG",
+        "005917-02.JPG"
+      ]
+    },
+    "review_near_ties_count": 74,
+    "total_series": 195,
+    "total_photos": 503
+  },
+  "albumbench_wedding_subset": {
+    "total_albums": 8,
+    "total_images": 274,
+    "total_bursts": 5,
+    "total_alternates_collapsed": 6,
+    "total_reviews_flagged": 3,
+    "total_auto_rejected": 1,
+    "total_units_inspected": 268,
+    "overall_workload_reduction_pct": 2.19,
+    "total_gt_keeper_instances": 189,
+    "gt_in_selected": 94,
+    "gt_in_alternates": 6,
+    "gt_in_candidates": 183,
+    "gt_in_rejected": 0,
+    "keeper_loss_rate_pct": 0.0,
+    "reject_precision_pct": 100.0,
+    "album_summaries": [
+      {
+        "album_id": "0_74464146@N00",
+        "images": 32,
+        "bursts": 1,
+        "alternates_collapsed": 0,
+        "reviews_flagged": 1,
+        "auto_rejected": 0,
+        "units_inspected": 32,
+        "workload_reduction_pct": 0.0,
+        "gt_keepers": 23,
+        "gt_keepers_in_rejected": 0
+      },
+      {
+        "album_id": "0_18662595@N00",
+        "images": 32,
+        "bursts": 0,
+        "alternates_collapsed": 0,
+        "reviews_flagged": 0,
+        "auto_rejected": 0,
+        "units_inspected": 32,
+        "workload_reduction_pct": 0.0,
+        "gt_keepers": 18,
+        "gt_keepers_in_rejected": 0
+      },
+      {
+        "album_id": "10_97144996@N00",
+        "images": 32,
+        "bursts": 0,
+        "alternates_collapsed": 0,
+        "reviews_flagged": 0,
+        "auto_rejected": 1,
+        "units_inspected": 32,
+        "workload_reduction_pct": 0.0,
+        "gt_keepers": 18,
+        "gt_keepers_in_rejected": 0
+      },
+      {
+        "album_id": "1_50318385@N00",
+        "images": 35,
+        "bursts": 1,
+        "alternates_collapsed": 0,
+        "reviews_flagged": 1,
+        "auto_rejected": 0,
+        "units_inspected": 35,
+        "workload_reduction_pct": 0.0,
+        "gt_keepers": 16,
+        "gt_keepers_in_rejected": 0
+      },
+      {
+        "album_id": "1_60509459@N00",
+        "images": 38,
+        "bursts": 0,
+        "alternates_collapsed": 0,
+        "reviews_flagged": 0,
+        "auto_rejected": 0,
+        "units_inspected": 38,
+        "workload_reduction_pct": 0.0,
+        "gt_keepers": 34,
+        "gt_keepers_in_rejected": 0
+      },
+      {
+        "album_id": "0_60100060@N03",
+        "images": 30,
+        "bursts": 0,
+        "alternates_collapsed": 0,
+        "reviews_flagged": 0,
+        "auto_rejected": 0,
+        "units_inspected": 30,
+        "workload_reduction_pct": 0.0,
+        "gt_keepers": 25,
+        "gt_keepers_in_rejected": 0
+      },
+      {
+        "album_id": "12_33991563@N00",
+        "images": 44,
+        "bursts": 0,
+        "alternates_collapsed": 0,
+        "reviews_flagged": 0,
+        "auto_rejected": 0,
+        "units_inspected": 44,
+        "workload_reduction_pct": 0.0,
+        "gt_keepers": 31,
+        "gt_keepers_in_rejected": 0
+      },
+      {
+        "album_id": "2_79145585@N00",
+        "images": 31,
+        "bursts": 3,
+        "alternates_collapsed": 6,
+        "reviews_flagged": 1,
+        "auto_rejected": 0,
+        "units_inspected": 25,
+        "workload_reduction_pct": 19.35,
+        "gt_keepers": 24,
+        "gt_keepers_in_rejected": 0
+      }
+    ]
+  }
+}

@@ -244,8 +244,8 @@ final class DiversityAndTargetSelectionTests: XCTestCase {
                 userSelectedIDs.insert(item.id)
             case .userRejected:
                 userRejectedIDs.insert(item.id)
-            case .selected, .alternative, .rejected:
-                if !item.isDuplicate && !item.metadata.isCorrupt {
+            case .selected, .alternative, .review, .rejected:
+                if !item.isDuplicate && !item.metadata.isCorrupt && !item.metrics.isTechnicallyLowQuality {
                     candidates.append(item)
                 }
             }
@@ -256,10 +256,14 @@ final class DiversityAndTargetSelectionTests: XCTestCase {
 
         var burstWinnerIDs = Set<String>()
         var burstAlternativeIDs = Set<String>()
+        var burstReviewIDs = Set<String>()
         for b in bursts {
             burstWinnerIDs.insert(b.winnerID)
             for alt in b.alternativeIDs {
                 burstAlternativeIDs.insert(alt)
+            }
+            for rev in b.reviewIDs {
+                burstReviewIDs.insert(rev)
             }
         }
 
@@ -437,16 +441,22 @@ final class DiversityAndTargetSelectionTests: XCTestCase {
         var finalItems: [PhotoItem] = []
         finalItems.reserveCapacity(items.count)
 
+        var reviewCount = 0
+
         for var item in items {
             if item.selectionState == .userSelected {
                 finalItems.append(item)
             } else if item.selectionState == .userRejected {
                 finalItems.append(item)
+            } else if item.isDuplicate || item.metadata.isCorrupt || item.metrics.isTechnicallyLowQuality {
+                item.selectionState = .rejected
+                finalItems.append(item)
             } else if selectedIDs.contains(item.id) {
                 item.selectionState = .selected
                 finalItems.append(item)
-            } else if item.isDuplicate || item.metadata.isCorrupt || item.metrics.isTechnicallyLowQuality {
-                item.selectionState = .rejected
+            } else if burstReviewIDs.contains(item.id) {
+                item.selectionState = .review
+                reviewCount += 1
                 finalItems.append(item)
             } else {
                 item.selectionState = .alternative
@@ -457,6 +467,7 @@ final class DiversityAndTargetSelectionTests: XCTestCase {
         return SelectionResult(
             updatedItems: finalItems,
             selectedCount: selectedIDs.count,
+            reviewCount: reviewCount,
             targetCount: targetCount,
             message: "Legacy selection"
         )
