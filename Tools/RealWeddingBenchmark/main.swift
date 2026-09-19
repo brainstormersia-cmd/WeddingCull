@@ -238,7 +238,7 @@ struct RealWeddingBenchmarkMain {
             )
             
             // Perceptual dHash
-            let phash = PerceptualHash.compute(from: previewCG)
+            let phash = PerceptualHash.computeDHash(from: previewCG)
             dHashValues[pid] = phash
             
             var m = QualityMetrics()
@@ -255,16 +255,15 @@ struct RealWeddingBenchmarkMain {
             m.isSevereUnderexposed = tech.isSevereUnderexposed
             m.isSevereOverexposed = tech.isSevereOverexposed
             m.exposureScore = expScore
-            m.isTechnicallyLowQuality = tech.isTechnicallyLowQuality
             
             var meta = PhotoMetadata()
             meta.captureDate = captureDate
             meta.cameraModel = camModel
             meta.width = pxWidth
             meta.height = pxHeight
-            meta.fileSizeBytes = (try? fileManager.attributesOfItem(atPath: url.path)[.size] as? Int64) ?? 0
+            let fileSize = (try? fileManager.attributesOfItem(atPath: url.path)[.size] as? Int64) ?? 0
             
-            var item = PhotoItem(id: pid, fileName: pid, sourceURL: url, metrics: m)
+            var item = PhotoItem(id: pid, fileName: pid, sourceURL: url, fileSizeBytes: fileSize, metrics: m)
             item.metadata = meta
             item.perceptualHash = phash
             items.append(item)
