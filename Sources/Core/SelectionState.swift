@@ -3,6 +3,7 @@ import Foundation
 public enum SelectionState: String, Codable, Sendable, CaseIterable {
     case selected
     case alternative
+    case review
     case rejected
     case userSelected
     case userRejected
@@ -11,7 +12,7 @@ public enum SelectionState: String, Codable, Sendable, CaseIterable {
         switch self {
         case .userSelected, .userRejected:
             return true
-        case .selected, .alternative, .rejected:
+        case .selected, .alternative, .review, .rejected:
             return false
         }
     }
@@ -20,7 +21,7 @@ public enum SelectionState: String, Codable, Sendable, CaseIterable {
         switch self {
         case .selected, .userSelected:
             return true
-        case .alternative, .rejected, .userRejected:
+        case .alternative, .review, .rejected, .userRejected:
             return false
         }
     }
@@ -31,6 +32,8 @@ public enum SelectionState: String, Codable, Sendable, CaseIterable {
             return "Selected"
         case .alternative:
             return "Alternative"
+        case .review:
+            return "Review"
         case .rejected:
             return "Rejected"
         case .userSelected:
@@ -46,6 +49,8 @@ public enum SelectionState: String, Codable, Sendable, CaseIterable {
             return "green"
         case .alternative:
             return "orange"
+        case .review:
+            return "blue"
         case .rejected, .userRejected:
             return "gray"
         }

@@ -15,6 +15,7 @@ public struct SidebarView: View {
             Section("Raccolte smart") {
                 albumRow(title: "Tutte", icon: "photo.on.rectangle", count: appState.session.photos.count, filter: .smartAlbum("all"))
                 albumRow(title: "Selezionate", icon: "checkmark.circle.fill", color: .green, count: appState.session.photos.filter { $0.selectionState.isIncludedInFinal }.count, filter: .smartAlbum("selected"))
+                albumRow(title: "Da Revisionare", icon: "questionmark.circle", color: .blue, count: appState.session.photos.filter { $0.selectionState == .review }.count, filter: .smartAlbum("review"))
                 albumRow(title: "Alternative", icon: "arrow.triangle.swap", color: .orange, count: appState.session.photos.filter { $0.selectionState == .alternative }.count, filter: .smartAlbum("alternative"))
                 albumRow(title: "Scartate", icon: "xmark.circle", color: .gray, count: appState.session.photos.filter { $0.selectionState == .rejected || $0.selectionState == .userRejected }.count, filter: .smartAlbum("rejected"))
                 albumRow(title: "Duplicati", icon: "doc.on.doc", count: appState.session.photos.filter { $0.isDuplicate }.count, filter: .smartAlbum("duplicates"))

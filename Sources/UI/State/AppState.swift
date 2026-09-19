@@ -53,6 +53,8 @@ public final class AppState: ObservableObject {
                 return session.photos
             case "selected":
                 return session.photos.filter { $0.selectionState.isIncludedInFinal }
+            case "review":
+                return session.photos.filter { $0.selectionState == .review }
             case "alternative":
                 return session.photos.filter { $0.selectionState == .alternative }
             case "rejected":

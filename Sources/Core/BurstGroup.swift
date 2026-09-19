@@ -6,6 +6,7 @@ public struct BurstGroup: Identifiable, Codable, Sendable, Equatable {
     public var memberIDs: [String]
     public var winnerID: String
     public var alternativeIDs: [String]
+    public var reviewIDs: [String]
     public var timeRangeSeconds: Double
     public var averageSimilarity: Double
 
@@ -15,6 +16,7 @@ public struct BurstGroup: Identifiable, Codable, Sendable, Equatable {
         memberIDs: [String] = [],
         winnerID: String = "",
         alternativeIDs: [String] = [],
+        reviewIDs: [String] = [],
         timeRangeSeconds: Double = 0.0,
         averageSimilarity: Double = 0.0
     ) {
@@ -23,6 +25,7 @@ public struct BurstGroup: Identifiable, Codable, Sendable, Equatable {
         self.memberIDs = memberIDs
         self.winnerID = winnerID
         self.alternativeIDs = alternativeIDs
+        self.reviewIDs = reviewIDs
         self.timeRangeSeconds = timeRangeSeconds
         self.averageSimilarity = averageSimilarity
     }

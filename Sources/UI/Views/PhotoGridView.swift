@@ -164,6 +164,10 @@ public struct PhotoGridView: View {
             Image(systemName: "checkmark.circle.fill")
                 .foregroundColor(.green)
                 .background(Circle().fill(Color.white))
+        case .review:
+            Image(systemName: "questionmark.circle.fill")
+                .foregroundColor(.blue)
+                .background(Circle().fill(Color.white))
         case .alternative:
             Image(systemName: "arrow.triangle.swap")
                 .font(.system(size: 11))

@@ -46,10 +46,12 @@ public final class PhotoExporter: Sendable {
         switch state {
         case .selected, .userSelected:
             return (5, "Green", "1")
+        case .review:
+            return (4, "Blue", "2")
         case .alternative:
-            return (3, "Yellow", "2")
+            return (3, "Yellow", "3")
         case .rejected, .userRejected:
-            return (1, "Red", "3")
+            return (1, "Red", "4")
         }
     }
 

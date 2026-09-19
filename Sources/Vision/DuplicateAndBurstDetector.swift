@@ -143,8 +143,15 @@ public final class DuplicateAndBurstDetector: Sendable {
         }
 
         // Rank members to choose recommended winner (strict total order with ID tie-breaker)
-        let logSharps = burstMembers.map { log1p(max(0.0, $0.metrics.rawSharpness)) }
-        let burstCtx = (minLogSharp: logSharps.min() ?? 0.0, maxLogSharp: logSharps.max() ?? 0.0)
+        // Compute relative sharpness context strictly on non-face members to avoid contamination from faces
+        let nonFaceMembers = burstMembers.filter { $0.metrics.faceCount == 0 }
+        let burstCtx: (minLogSharp: Double, maxLogSharp: Double)?
+        if !nonFaceMembers.isEmpty {
+            let logSharps = nonFaceMembers.map { log1p(max(0.0, $0.metrics.rawSharpness)) }
+            burstCtx = (minLogSharp: logSharps.min() ?? 0.0, maxLogSharp: logSharps.max() ?? 0.0)
+        } else {
+            burstCtx = nil
+        }
 
         let ranked = burstMembers.sorted { a, b in
             let scoreA = computeBurstFrameQuality(a, burstContext: burstCtx)
@@ -158,7 +165,18 @@ public final class DuplicateAndBurstDetector: Sendable {
         }
 
         let winner = ranked[0]
+        let winnerScore = computeBurstFrameQuality(winner, burstContext: burstCtx)
         let alternatives = ranked.dropFirst().map { $0.id }
+        var reviewCandidates: [String] = []
+
+        // Ambiguity check: if runner-up is within 0.05 of the winner and not low quality, flag for review
+        if ranked.count > 1 {
+            let runnerUp = ranked[1]
+            let runnerUpScore = computeBurstFrameQuality(runnerUp, burstContext: burstCtx)
+            if abs(winnerScore - runnerUpScore) <= 0.05 && !runnerUp.metrics.isTechnicallyLowQuality {
+                reviewCandidates.append(runnerUp.id)
+            }
+        }
 
         let firstDate = burstMembers.first?.metadata.captureDate ?? Date()
         let lastDate = burstMembers.last?.metadata.captureDate ?? Date()
@@ -170,6 +188,7 @@ public final class DuplicateAndBurstDetector: Sendable {
             memberIDs: burstMembers.map { $0.id },
             winnerID: winner.id,
             alternativeIDs: alternatives,
+            reviewIDs: reviewCandidates,
             timeRangeSeconds: duration,
             averageSimilarity: 0.9
         )
@@ -199,8 +218,14 @@ public final class DuplicateAndBurstDetector: Sendable {
             // Non-face: log1p sharpness with relative within-burst normalization (0.50) and exposure (0.50) summing to 1.00
             let sharp: Double
             let curLog = log1p(max(0.0, item.metrics.rawSharpness))
-            if let ctx = burstContext, (ctx.maxLogSharp - ctx.minLogSharp) > 0.18 {
-                sharp = (curLog - ctx.minLogSharp) / (ctx.maxLogSharp - ctx.minLogSharp)
+            if let ctx = burstContext {
+                let spread = ctx.maxLogSharp - ctx.minLogSharp
+                if spread > 0.18 {
+                    sharp = min(1.0, max(0.0, (curLog - ctx.minLogSharp) / spread))
+                } else {
+                    // Spread is negligible (<= ~20%): sharpness is considered equivalent across burst frames
+                    sharp = 0.50
+                }
             } else if item.metrics.rawSharpness > 0.0 {
                 sharp = min(1.0, curLog / log1p(2500.0))
             } else {
