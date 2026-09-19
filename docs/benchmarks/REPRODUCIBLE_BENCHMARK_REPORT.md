@@ -61,21 +61,22 @@
 
 - **Dataset**: `wedding_shoot_74ef` (Category A: Complete Un-culled Wedding Shoot)
 - **Sensor & Continuity**: Nikon D750, uniform native resolution (6016x4016, 24.16 MP), 384 frames present out of 410 camera counter span (**93.7% continuity**), single afternoon/evening event (4.1 hours).
-- **Execution Platform**: Apple Silicon arm64 macOS 14.8.9, genuine Swift production pipeline (`RealWeddingBenchmark`).
+- **Execution Platform**: Apple Silicon arm64 macOS 14.8.9, native Swift benchmark using production components (`RealWeddingBenchmark`).
 - **Autonomous Burst Discovery**: 92 burst sequences discovered by `DuplicateAndBurstDetector.detectBursts()` across 248 photos (**64.58% burst ratio**).
 - **Singles**: 136 photos (35.42%).
 - **Alternates Collapsed**: 80 burst alternates safely collapsed into stacks (20.83%).
 - **Review Items Flagged**: 76 near-ties ($\le 0.05$ score gap) preserved in `.review` rather than auto-culled.
 - **Catastrophic Auto-Rejections**: 0 (0.0%).
 - **Inspection Units**: **304** units (136 singles + 92 burst winners + 76 review items), down from 384 input photos.
-- **Measured Workload Compression**: **20.83%**.
-- **Human Ground Truth Status**: `NO HUMAN KEEPER GROUND TRUTH AVAILABLE` (no embedded rating tags or external XMP sidecars).
+- **Measured Inspection-Unit Compression**: **20.83%** (measured inspection-unit compression on `wedding_shoot_74ef`, not time saving).
+- **Safety & Ground Truth Status**: 0 photos auto-rejected; human keeper loss is unmeasurable because no human keeper ground truth is available (no embedded rating tags or external XMP sidecars).
+- **Data Safety vs Inspection**: WeddingCull ensures no permanent data deletion (all non-selected and alternate frames remain intact on disk in non-destructive stacks), but "no keeper missed during inspection" cannot be confirmed without human ground truth.
 - **Detailed Audit**: See [`REAL_WEDDING_BENCHMARK_REPORT.md`](REAL_WEDDING_BENCHMARK_REPORT.md).
 
 ## 4. Status of the 80% Workload Reduction Claim
 
 1. **Pre-curated Datasets (AlbumBench - Category C)**: AlbumBench consists of Flickr wedding albums that have ALREADY been culled by photographers before upload (photographers discarded ~95% of their burst frames). Therefore, AlbumBench only offers ~2.19% workload reduction on average (up to 19.35% on burst-heavy albums).
-2. **Authentic Complete Un-culled Shoot (`wedding_shoot_74ef` - Category A)**: Evaluated through the native macOS Swift pipeline, achieving **20.83% workload compression** with zero risk of missed keepers (76 near-ties preserved for human review).
+2. **Authentic Complete Un-culled Shoot (`wedding_shoot_74ef` - Category A)**: Evaluated through a native Swift benchmark using production components, achieving **20.83% measured inspection-unit compression on `wedding_shoot_74ef`** (not time saving). 0 photos auto-rejected; human keeper loss is unmeasurable because no human keeper ground truth is available (76 near-ties preserved for human review). WeddingCull guarantees no permanent data deletion via non-destructive grouping, which is strictly distinguished from "no keeper missed during inspection".
 3. **The 80% Figure is a Product Target, Not a Universal Fact**: Manual culling workload compression is strictly bounded by the event's burst ratio and review conservatism:
    $$\text{Workload Compression} \le \text{Burst Ratio} \times (1 - \text{Review Rate})$$
    In a shoot with 35.4% single shots and 19.8% near-tie review candidates, 20.83% represents the exact mathematically safe compression achievable without risking keepers. Reaching 75–80% workload reduction requires either an ultra-rapid burst shoot (>85% burst ratio, e.g. continuous high-speed sports/wedding action) or narrower review thresholds once model confidence is further validated on annotated un-culled shoots.

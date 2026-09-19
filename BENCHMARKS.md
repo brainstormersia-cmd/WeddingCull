@@ -67,7 +67,7 @@
 ## Quality & Real-World Wedding Shoot Benchmarks
 
 For scientific accuracy, burst selection, and culling workload metrics on real wedding photography, see:
-- [Real Wedding Shoot Benchmark (`wedding_shoot_74ef`)](docs/benchmarks/REAL_WEDDING_BENCHMARK_REPORT.md): 384 straight-from-camera Nikon D750 frames (93.7% continuity), 64.58% burst ratio, 20.83% measured workload compression, 0 keepers rejected.
+- [Real Wedding Shoot Benchmark (`wedding_shoot_74ef`)](docs/benchmarks/REAL_WEDDING_BENCHMARK_REPORT.md): 384 straight-from-camera Nikon D750 frames (93.7% continuity), 64.58% burst ratio, 20.83% measured inspection-unit compression; 0 photos auto-rejected; human keeper loss is unmeasurable because no human keeper ground truth is available.
 - [Reproducible Benchmark Suite Report](docs/benchmarks/REPRODUCIBLE_BENCHMARK_REPORT.md): Authentic Apple Vision feature validation across 195 Photo Triage series (503 photos) and AlbumBench (8 wedding albums, 274 photos). 0.00% Keeper Loss Rate.
 - [Unculled Wedding Simulation Analysis](docs/benchmarks/UNCULLED_WEDDING_BENCHMARK_REPORT.md): Synthetic composite scenario documentation and methodology audit.
 

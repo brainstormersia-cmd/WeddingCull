@@ -1,6 +1,7 @@
 # Real Wedding Benchmark Report (Authentic Shoot)
 
 **Execution Provenance:**
+- **Pipeline Type:** Native Swift benchmark using production components (`RealWeddingBenchmark`: `PreviewPipeline`, `TechnicalQualityAnalyzer`, `FaceIdentityRecognizer`, `DuplicateAndBurstDetector`, `DiversitySelector`). Note: not the full `AnalysisPipeline.runAnalysis()` orchestrator as it does not execute full scene semantic classification or person clustering.
 - **Platform:** macOS (arm64), Version 14.8.9 (Build 23J631)
 - **Git SHA:** `2ac187a6517151e55e36a4ba822f10be23934519`
 - **Timestamp:** 2026-09-19T14:16:44Z
@@ -17,7 +18,10 @@
 | **Total Photos** | 384 |
 | **Sensor Native Resolution** | 6016 x 4016 (24.16 MP) |
 | **Camera Counter Continuity** | 384 present / 410 frame span (**93.7% continuity**) |
-| **Human Ground Truth** | `NO HUMAN KEEPER GROUND TRUTH AVAILABLE` |
+| **Safety & Ground Truth** | **0 photos auto-rejected; human keeper loss is unmeasurable because no human keeper ground truth is available.** |
+
+> [!NOTE]
+> **Data Safety vs Inspection**: WeddingCull guarantees **no permanent data deletion** because all non-selected and alternate frames remain intact on disk in non-destructive stacks. However, "no permanent data deletion" is strictly distinct from "no keeper missed during inspection", which cannot be measured on this shoot due to the absence of human keeper annotations.
 
 ## 2. Autonomously Discovered Workload Reduction
 
@@ -39,7 +43,7 @@
 
 - **Inspection Units Formula:** `Singles (136) + Collapsed Bursts (92) + Review Items (76)`
 - **Total Inspection Units:** **304** photos (down from 384)
-- **Measured Workload Compression:** **20.83%**
+- **Measured Inspection-Unit Compression:** **20.83%** (measured inspection-unit compression on `wedding_shoot_74ef`, not time saving)
 
 ## 3. Burst Audit: Top 10 Largest Bursts
 

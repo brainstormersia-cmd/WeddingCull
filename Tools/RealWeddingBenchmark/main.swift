@@ -7,6 +7,38 @@ import WeddingCullCore
 
 // MARK: - Benchmark Output Data Structures
 
+struct GapBins: Codable, Sendable {
+    var total: Int = 0
+    var bin0To005: Int = 0
+    var bin005To010: Int = 0
+    var bin010To020: Int = 0
+    var bin020To030: Int = 0
+    var bin030To050: Int = 0
+    var binAbove050: Int = 0
+    var reviewCount: Int = 0
+    
+    mutating func record(diff: Double, isReview: Bool) {
+        total += 1
+        if isReview { reviewCount += 1 }
+        if diff <= 0.005 { bin0To005 += 1 }
+        else if diff <= 0.010 { bin005To010 += 1 }
+        else if diff <= 0.020 { bin010To020 += 1 }
+        else if diff <= 0.030 { bin020To030 += 1 }
+        else if diff <= 0.050 { bin030To050 += 1 }
+        else { binAbove050 += 1 }
+    }
+}
+
+struct BurstScoreGapReport: Codable, Sendable {
+    let overall: GapBins
+    let size2: GapBins
+    let size3: GapBins
+    let size4To5: GapBins
+    let size6Plus: GapBins
+    let faceBursts: GapBins
+    let noFaceBursts: GapBins
+}
+
 struct BurstAuditItem: Codable, Sendable {
     let burstId: String
     let memberCount: Int
@@ -16,6 +48,7 @@ struct BurstAuditItem: Codable, Sendable {
     let runnerUpId: String?
     let runnerUpScore: Double?
     let scoreDifference: Double?
+    let hasFaces: Bool
     let reviewCount: Int
     let reviewIds: [String]
     let alternativeIds: [String]
@@ -61,7 +94,11 @@ struct RealWeddingBenchmarkReport: Codable, Sendable {
     let keeperRecall: String
     let classificationBreakdown: [String: Int]
     
+    // Score Gap Analysis
+    let scoreGapAnalysis: BurstScoreGapReport
+    
     // Audits
+    let allBursts: [BurstAuditItem]
     let largestBursts: [BurstAuditItem]
     let randomBursts: [BurstAuditItem]
     let reviewCandidateBursts: [BurstAuditItem]
@@ -363,9 +400,17 @@ struct RealWeddingBenchmarkMain {
         let inspectionUnits = singlesCount + bursts.count + totalReview
         let workloadCompression = (1.0 - (Double(inspectionUnits) / Double(finalItems.count))) * 100.0
         
-        // Detailed Burst Auditing
+        // Detailed Burst Auditing & Score Gap Analysis
         var burstAudits: [BurstAuditItem] = []
         let itemMap = Dictionary(uniqueKeysWithValues: finalItems.map { ($0.id, $0) })
+        
+        var overallBins = GapBins()
+        var size2Bins = GapBins()
+        var size3Bins = GapBins()
+        var size4To5Bins = GapBins()
+        var size6PlusBins = GapBins()
+        var faceBins = GapBins()
+        var noFaceBins = GapBins()
         
         for b in bursts {
             let nonFaceMembers = b.memberIDs.compactMap { itemMap[$0] }.filter { $0.metrics.faceCount == 0 }
@@ -391,6 +436,27 @@ struct RealWeddingBenchmarkMain {
                 scoreDiff = abs(winScore - altScore)
             }
             
+            let hasFaces = b.memberIDs.contains { (itemMap[$0]?.metrics.faceCount ?? 0) > 0 }
+            let diffForBin = scoreDiff ?? 1.0
+            let isReview = b.reviewIDs.count > 0
+            
+            overallBins.record(diff: diffForBin, isReview: isReview)
+            if b.memberIDs.count == 2 {
+                size2Bins.record(diff: diffForBin, isReview: isReview)
+            } else if b.memberIDs.count == 3 {
+                size3Bins.record(diff: diffForBin, isReview: isReview)
+            } else if b.memberIDs.count <= 5 {
+                size4To5Bins.record(diff: diffForBin, isReview: isReview)
+            } else {
+                size6PlusBins.record(diff: diffForBin, isReview: isReview)
+            }
+            
+            if hasFaces {
+                faceBins.record(diff: diffForBin, isReview: isReview)
+            } else {
+                noFaceBins.record(diff: diffForBin, isReview: isReview)
+            }
+            
             burstAudits.append(BurstAuditItem(
                 burstId: b.id,
                 memberCount: b.memberIDs.count,
@@ -400,12 +466,23 @@ struct RealWeddingBenchmarkMain {
                 runnerUpId: runnerUpId,
                 runnerUpScore: runnerUpScore != nil ? (round(runnerUpScore! * 1000) / 1000) : nil,
                 scoreDifference: scoreDiff != nil ? (round(scoreDiff! * 1000) / 1000) : nil,
+                hasFaces: hasFaces,
                 reviewCount: b.reviewIDs.count,
                 reviewIds: b.reviewIDs,
                 alternativeIds: b.alternativeIDs,
                 memberIds: b.memberIDs
             ))
         }
+        
+        let scoreGapReport = BurstScoreGapReport(
+            overall: overallBins,
+            size2: size2Bins,
+            size3: size3Bins,
+            size4To5: size4To5Bins,
+            size6Plus: size6PlusBins,
+            faceBursts: faceBins,
+            noFaceBursts: noFaceBins
+        )
         
         // Audits:
         // A. Top 10 Largest Bursts
@@ -465,6 +542,8 @@ struct RealWeddingBenchmarkMain {
             humanGroundTruthStatus: "NO HUMAN KEEPER GROUND TRUTH AVAILABLE",
             keeperRecall: "N/A - Shoot has no embedded photographer rating tags or external XMP sidecars",
             classificationBreakdown: classCounts,
+            scoreGapAnalysis: scoreGapReport,
+            allBursts: burstAudits,
             largestBursts: largestBursts,
             randomBursts: sampledRandom,
             reviewCandidateBursts: reviewBursts
@@ -508,6 +587,7 @@ struct RealWeddingBenchmarkMain {
         
         var md = "# Real Wedding Benchmark Report (Authentic Shoot)\n\n"
         md += "**Execution Provenance:**\n"
+        md += "- **Pipeline Type:** Native Swift benchmark using production components (`RealWeddingBenchmark`: `PreviewPipeline`, `TechnicalQualityAnalyzer`, `FaceIdentityRecognizer`, `DuplicateAndBurstDetector`, `DiversitySelector`). Note: not the full `AnalysisPipeline.runAnalysis()` orchestrator as it does not execute full scene semantic classification or person clustering.\n"
         md += "- **Platform:** \(report.platform), \(report.osVersion)\n"
         md += "- **Git SHA:** `\(report.gitSha)`\n"
         md += "- **Timestamp:** \(report.executionTimestamp)\n"
@@ -523,7 +603,9 @@ struct RealWeddingBenchmarkMain {
         md += "| **Total Photos** | \(report.totalPhotos) |\n"
         md += "| **Sensor Native Resolution** | 6016 x 4016 (24.16 MP) |\n"
         md += "| **Camera Counter Continuity** | 384 present / 410 frame span (**93.7% continuity**) |\n"
-        md += "| **Human Ground Truth** | `\(report.humanGroundTruthStatus)` |\n\n"
+        md += "| **Safety & Ground Truth** | **0 photos auto-rejected; human keeper loss is unmeasurable because no human keeper ground truth is available.** |\n\n"
+        md += "> [!NOTE]\n"
+        md += "> **Data Safety vs Inspection**: WeddingCull guarantees **no permanent data deletion** because all non-selected and alternate frames remain intact on disk in non-destructive stacks. However, \"no permanent data deletion\" is strictly distinct from \"no keeper missed during inspection\", which cannot be measured on this shoot due to the absence of human keeper annotations.\n\n"
         
         md += "## 2. Autonomously Discovered Workload Reduction\n\n"
         md += "> [!IMPORTANT]\n"
@@ -542,9 +624,58 @@ struct RealWeddingBenchmarkMain {
         md += "### Workload Compression Summary\n\n"
         md += "- **Inspection Units Formula:** `\(report.inspectionUnitsFormula)`\n"
         md += "- **Total Inspection Units:** **\(report.inspectionUnits)** photos (down from \(report.totalPhotos))\n"
-        md += String(format: "- **Measured Workload Compression:** **%.2f%%**\n\n", report.workloadCompressionPct)
+        md += String(format: "- **Measured Inspection-Unit Compression:** **%.2f%%** (measured inspection-unit compression on wedding_shoot_74ef, not time saving)\n\n", report.workloadCompressionPct)
         
-        md += "## 3. Burst Audit: Top 10 Largest Bursts\n\n"
+        md += "## 3. Burst Score Gap & Review Distribution Analysis (\(report.burstCount) Bursts)\n\n"
+        md += "> [!NOTE]\n"
+        md += "> Review threshold is currently set to `score difference <= 0.050`. Of \(report.burstCount) discovered bursts, \(report.scoreGapAnalysis.overall.reviewCount) bursts produce a runner-up review candidate.\n\n"
+        
+        md += "### Overall Score Gap Distribution\n\n"
+        md += "| Score Gap Interval | Bursts Count | % of All Bursts | Cumulative % | Status |\n"
+        md += "| :--- | :---: | :---: | :---: | :---: |\n"
+        let ov = report.scoreGapAnalysis.overall
+        let t = max(1, Double(ov.total))
+        let p0 = Double(ov.bin0To005) / t * 100.0
+        let p1 = Double(ov.bin005To010) / t * 100.0
+        let p2 = Double(ov.bin010To020) / t * 100.0
+        let p3 = Double(ov.bin020To030) / t * 100.0
+        let p4 = Double(ov.bin030To050) / t * 100.0
+        let p5 = Double(ov.binAbove050) / t * 100.0
+        let c0 = p0
+        let c1 = c0 + p1
+        let c2 = c1 + p2
+        let c3 = c2 + p3
+        let c4 = c3 + p4
+        let c5 = 100.0
+        
+        md += String(format: "| **0.000 – 0.005** | %d | %.1f%% | %.1f%% | Review (Near-Tie) |\n", ov.bin0To005, p0, c0)
+        md += String(format: "| **0.005 – 0.010** | %d | %.1f%% | %.1f%% | Review (Near-Tie) |\n", ov.bin005To010, p1, c1)
+        md += String(format: "| **0.010 – 0.020** | %d | %.1f%% | %.1f%% | Review (Near-Tie) |\n", ov.bin010To020, p2, c2)
+        md += String(format: "| **0.020 – 0.030** | %d | %.1f%% | %.1f%% | Review (Near-Tie) |\n", ov.bin020To030, p3, c3)
+        md += String(format: "| **0.030 – 0.050** | %d | %.1f%% | %.1f%% | Review (Near-Tie) |\n", ov.bin030To050, p4, c4)
+        md += String(format: "| **> 0.050** | %d | %.1f%% | %.1f%% | Collapsed Alternate (Clear Winner) |\n\n", ov.binAbove050, p5, c5)
+        
+        md += "### Stratification by Burst Size\n\n"
+        md += "| Stratum | Total Bursts | 0.000–0.005 | 0.005–0.010 | 0.010–0.020 | 0.020–0.030 | 0.030–0.050 | > 0.050 (No Review) | Review Rate |\n"
+        md += "| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |\n"
+        func fmtRow(_ name: String, _ b: GapBins) -> String {
+            let rRate = b.total > 0 ? (Double(b.reviewCount) / Double(b.total) * 100.0) : 0.0
+            return String(format: "| **%@** | %d | %d | %d | %d | %d | %d | %d | %.1f%% |\n", name, b.total, b.bin0To005, b.bin005To010, b.bin010To020, b.bin020To030, b.bin030To050, b.binAbove050, rRate)
+        }
+        md += fmtRow("Size 2", report.scoreGapAnalysis.size2)
+        md += fmtRow("Size 3", report.scoreGapAnalysis.size3)
+        md += fmtRow("Size 4–5", report.scoreGapAnalysis.size4To5)
+        md += fmtRow("Size 6+", report.scoreGapAnalysis.size6Plus)
+        md += "\n"
+        
+        md += "### Stratification by Face Content\n\n"
+        md += "| Content | Total Bursts | 0.000–0.005 | 0.005–0.010 | 0.010–0.020 | 0.020–0.030 | 0.030–0.050 | > 0.050 (No Review) | Review Rate |\n"
+        md += "| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |\n"
+        md += fmtRow("Face Bursts", report.scoreGapAnalysis.faceBursts)
+        md += fmtRow("Non-Face Bursts", report.scoreGapAnalysis.noFaceBursts)
+        md += "\n"
+        
+        md += "## 4. Burst Audit: Top 10 Largest Bursts\n\n"
         md += "| Burst ID | Frames | Duration | Winner | Winner Score | Runner-Up | Score Diff | Review? |\n"
         md += "| :--- | :---: | :---: | :--- | :---: | :--- | :---: | :---: |\n"
         for b in report.largestBursts {
@@ -553,7 +684,7 @@ struct RealWeddingBenchmarkMain {
         }
         md += "\n"
         
-        md += "## 4. Burst Audit: 10 Random Bursts\n\n"
+        md += "## 5. Burst Audit: 10 Random Bursts\n\n"
         md += "| Burst ID | Frames | Duration | Winner | Winner Score | Runner-Up | Score Diff | Review? |\n"
         md += "| :--- | :---: | :---: | :--- | :---: | :--- | :---: | :---: |\n"
         for b in report.randomBursts {
@@ -562,7 +693,7 @@ struct RealWeddingBenchmarkMain {
         }
         md += "\n"
         
-        md += "## 5. Burst Audit: Low-Confidence / Near-Tie Review Groups\n\n"
+        md += "## 6. Burst Audit: Low-Confidence / Near-Tie Review Groups\n\n"
         md += "| Burst ID | Frames | Duration | Winner | Winner Score | Runner-Up | Score Diff | Review Reason |\n"
         md += "| :--- | :---: | :---: | :--- | :---: | :--- | :---: | :--- |\n"
         for b in report.reviewCandidateBursts {

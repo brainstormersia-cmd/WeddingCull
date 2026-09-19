@@ -32,12 +32,15 @@ The Princeton authors partitioned photo series strictly by series ID. There is *
 
 | Split | Series Count | Pairs Count | Images Count | Review JSONs Available |
 | :--- | :---: | :---: | :---: | :---: |
-| **Train** | 4,560 | 12,075 | ~12,300 | 4,560 (100%) |
-| **Validation** | 195 | 483 | ~688 | 195 (100%) |
+| **Train** | 4,560 | 12,075 | 12,485 | 4,560 (100%) |
+| **Validation** | 195 | 483 | 503 | 195 (100%) |
 | **Test** | 967 | 2,585 | 2,555 | 0 (Held-out benchmark) |
 | **Overlap** | **0** | **0** | **0** | - |
 
 > [!IMPORTANT]
+> **Verified Validation Image Count (503 vs historical ~688)**:
+> The exact, empirical sum of `SERIES_SIZE` across the 195 validation series in `train_val_series.mat` is exactly **503 photographs** (122 of size 2, 45 of size 3, 25 of size 4–5, 3 of size 6+). All 503 photographs have been verified to exist on disk in `train_val_imgs/` and were processed with Apple Vision. The previous figure `~688` was an early inaccurate estimate calculated from the dataset-wide mean series size (~3.5 photos/series) before the complete `SERIES_SIZE` field of the MAT file was fully parsed.
+>
 > **No Series Leakage**: Images from the same series never cross train, validation, or test partitions.
 > All machine learning models must be trained on `Train`, calibrated on `Validation`, and evaluated on `Test` or untouched holdout validation.
 
