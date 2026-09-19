@@ -368,20 +368,27 @@ struct RealWeddingBenchmarkMain {
         let itemMap = Dictionary(uniqueKeysWithValues: finalItems.map { ($0.id, $0) })
         
         for b in bursts {
-            let winScore = itemMap[b.winnerID]?.metrics.overallScore ?? 0.0
+            let nonFaceMembers = b.memberIDs.compactMap { itemMap[$0] }.filter { $0.metrics.faceCount == 0 }
+            let burstCtx: (minLogSharp: Double, maxLogSharp: Double)?
+            if !nonFaceMembers.isEmpty {
+                let logSharps = nonFaceMembers.map { log1p(max(0.0, $0.metrics.rawSharpness)) }
+                burstCtx = (minLogSharp: logSharps.min() ?? 0.0, maxLogSharp: logSharps.max() ?? 0.0)
+            } else {
+                burstCtx = nil
+            }
+            
+            let winItem = itemMap[b.winnerID]
+            let winScore = winItem != nil ? duplicateDetector.computeBurstFrameQuality(winItem!, burstContext: burstCtx) : 0.0
+            
             var runnerUpId: String? = nil
             var runnerUpScore: Double? = nil
             var scoreDiff: Double? = nil
             
-            let sortedMembers = b.memberIDs
-                .compactMap { itemMap[$0] }
-                .sorted { $0.metrics.overallScore > $1.metrics.overallScore }
-            
-            if sortedMembers.count > 1 {
-                let r = sortedMembers[1]
-                runnerUpId = r.id
-                runnerUpScore = r.metrics.overallScore
-                scoreDiff = abs(winScore - r.metrics.overallScore)
+            if let firstAltId = b.alternativeIDs.first, let altItem = itemMap[firstAltId] {
+                runnerUpId = firstAltId
+                let altScore = duplicateDetector.computeBurstFrameQuality(altItem, burstContext: burstCtx)
+                runnerUpScore = altScore
+                scoreDiff = abs(winScore - altScore)
             }
             
             burstAudits.append(BurstAuditItem(
