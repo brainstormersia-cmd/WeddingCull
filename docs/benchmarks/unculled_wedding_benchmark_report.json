@@ -1,0 +1,59 @@
+{
+  "dataset": "Unculled Wedding Shoot Benchmark",
+  "total_photos": 2495,
+  "burst_count": 455,
+  "burst_frames": 1565,
+  "single_photos": 840,
+  "valid_singles_presented": 838,
+  "defects_auto_rejected": 100,
+  "alternates_collapsed": 866,
+  "reviews_flagged": 244,
+  "grid_mode": {
+    "stack_tiles_presented": 1293,
+    "singles": 838,
+    "burst_tiles": 455,
+    "reviews": 244,
+    "tile_workload_reduction_pct": 48.18,
+    "total_units_inspected": 1537,
+    "workload_reduction_pct": 38.4
+  },
+  "curated_mode": {
+    "units_inspected": 694,
+    "proposed_portfolio": 450,
+    "reviews": 244,
+    "workload_reduction_pct": 72.18
+  },
+  "safety": {
+    "total_keepers": 1295,
+    "keepers_lost_to_rejected": 3,
+    "keeper_loss_rate_pct": 0.23,
+    "false_reject_keeper_rate_pct": 3.0,
+    "reject_precision_pct": 97.0,
+    "burst_winner_top1_acc_pct": 40.22,
+    "burst_winner_exact_hits": 183,
+    "burst_winner_total_bursts": 455,
+    "lost_keepers_details": [
+      {
+        "filename": "000498-02.JPG",
+        "raw_sharpness": 7.32,
+        "mean_luminance": 0.477,
+        "shadow_clip": 0.0,
+        "highlight_clip": 0.0
+      },
+      {
+        "filename": "000528-01.JPG",
+        "raw_sharpness": 1.8,
+        "mean_luminance": 0.365,
+        "shadow_clip": 0.0,
+        "highlight_clip": 0.0
+      },
+      {
+        "filename": "001066-01.JPG",
+        "raw_sharpness": 118.21,
+        "mean_luminance": 0.039,
+        "shadow_clip": 0.881,
+        "highlight_clip": 0.0
+      }
+    ]
+  }
+}
