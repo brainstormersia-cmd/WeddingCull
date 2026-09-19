@@ -9,7 +9,7 @@ public struct DuplicateResult: Sendable {
 public final class DuplicateAndBurstDetector: Sendable {
     public let enableFaceCaptureQuality: Bool
 
-    public init(enableFaceCaptureQuality: Bool = false) {
+    public init(enableFaceCaptureQuality: Bool = true) {
         self.enableFaceCaptureQuality = enableFaceCaptureQuality
     }
 
@@ -187,13 +187,14 @@ public final class DuplicateAndBurstDetector: Sendable {
             if let eye = item.metrics.averageEyeOpenness {
                 score += eye * 0.15
             }
+            // Exposure & technical quality (0.15, summing to 1.00 with face metrics)
+            score += item.metrics.exposureScore * 0.15
         } else {
+            // Non-face: balanced sharpness (0.70) and exposure (0.30) summing to 1.00
             let sharp = item.metrics.rawSharpness > 0.0 ? min(1.0, item.metrics.rawSharpness / 500.0) : item.metrics.sharpnessScore
-            score += sharp * 0.60
+            score += sharp * 0.70
+            score += item.metrics.exposureScore * 0.30
         }
-
-        // 2. Exposure & technical quality
-        score += item.metrics.exposureScore * 0.15
 
         // Penalize severe clipping or low quality
         if item.metrics.isSevereUnderexposed || item.metrics.isSevereOverexposed {

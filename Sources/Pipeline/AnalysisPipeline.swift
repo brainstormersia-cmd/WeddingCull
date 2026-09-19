@@ -413,7 +413,7 @@ public actor AnalysisPipeline {
         stageBWorkers: Int? = nil,
         queueCapacity: Int = 8,
         forceVisionFallback: Bool = false,
-        enableFaceCaptureQuality: Bool = false
+        enableFaceCaptureQuality: Bool = true
     ) {
         self.hardware = hardware
         self.previewPipeline = previewPipeline ?? PreviewPipeline(customCacheDirectory: customCacheDir)
@@ -897,7 +897,7 @@ public actor AnalysisPipeline {
         faceInputMaxPixelSize: Int,
         sceneInputMaxPixelSize: Int,
         expectedBackend: String? = nil,
-        enableFaceCaptureQuality: Bool = false,
+        enableFaceCaptureQuality: Bool = true,
         onThumbnailReady: (@Sendable (String) -> Void)? = nil
     ) async throws -> StageAOutput {
         try await coordinator.waitIfPaused()
@@ -992,20 +992,11 @@ public actor AnalysisPipeline {
 
                     // Face Detection & Identity Landmarks
                     let tFaceStart = CFAbsoluteTimeGetCurrent()
-                    let faceHandler = VNImageRequestHandler(cgImage: faceCG, options: [:])
-                    let faceRequest = VNDetectFaceLandmarksRequest()
-                    var faceRequests: [VNRequest] = [faceRequest]
-                    var captureQualityRequest: VNDetectFaceCaptureQualityRequest? = nil
-                    if enableFaceCaptureQuality {
-                        let cqReq = VNDetectFaceCaptureQualityRequest()
-                        faceRequests.append(cqReq)
-                        captureQualityRequest = cqReq
-                    }
-                    try? faceHandler.perform(faceRequests)
-                    let faces = faceRecognizer.processObservations(
-                        faceRequest.results ?? [],
-                        captureQualityObservations: captureQualityRequest?.results as? [VNFaceObservation]
+                    let faceResult = faceRecognizer.extractFacesWithIdentityResult(
+                        from: faceCG,
+                        enableFaceCaptureQuality: enableFaceCaptureQuality
                     )
+                    let faces = faceResult.faces
                     var facesWithSharpness: [FaceInstance] = []
                     var faceSharpnessValues: [Double] = []
                     for face in faces {
@@ -1214,7 +1205,7 @@ public actor AnalysisPipeline {
         faceInputMaxPixelSize: Int,
         sceneInputMaxPixelSize: Int,
         classifierGate: AsyncSemaphore? = nil,
-        enableFaceCaptureQuality: Bool = false,
+        enableFaceCaptureQuality: Bool = true,
         onThumbnailReady: (@Sendable (String) -> Void)? = nil
     ) async throws -> PhotoAnalysisResult {
         try await coordinator.waitIfPaused()
