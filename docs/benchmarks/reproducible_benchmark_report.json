@@ -20,33 +20,33 @@
     "stratified_recall": {
       "size_2": {
         "series_count": 122,
-        "top1_recall": 55.74,
+        "top1_recall": 50.82,
         "top2_recall": 100.0,
         "top3_recall": 100.0
       },
       "size_3": {
         "series_count": 45,
-        "top1_recall": 37.78,
-        "top2_recall": 68.89,
+        "top1_recall": 44.44,
+        "top2_recall": 71.11,
         "top3_recall": 100.0
       },
       "size_4_5": {
         "series_count": 25,
-        "top1_recall": 12.0,
-        "top2_recall": 44.0,
-        "top3_recall": 80.0
+        "top1_recall": 32.0,
+        "top2_recall": 64.0,
+        "top3_recall": 88.0
       },
       "size_6_plus": {
         "series_count": 3,
-        "top1_recall": 0.0,
-        "top2_recall": 0.0,
-        "top3_recall": 0.0
+        "top1_recall": 66.67,
+        "top2_recall": 100.0,
+        "top3_recall": 100.0
       },
       "all_sizes": {
         "series_count": 195,
-        "top1_recall": 45.13,
-        "top2_recall": 84.1,
-        "top3_recall": 95.9
+        "top1_recall": 47.18,
+        "top2_recall": 88.72,
+        "top3_recall": 98.46
       }
     },
     "safety_production": {
@@ -64,10 +64,10 @@
     "safety_old": {
       "rejected_count": 39,
       "rejected_pct": 7.75,
-      "keepers_lost": 14,
-      "keeper_loss_rate": 7.18,
-      "reject_precision": 64.1,
-      "false_reject_keeper_rate": 35.9,
+      "keepers_lost": 12,
+      "keeper_loss_rate": 6.15,
+      "reject_precision": 69.23,
+      "false_reject_keeper_rate": 30.77,
       "rejected_ids": [
         "000015-01.JPG",
         "000540-01.JPG",
@@ -111,17 +111,15 @@
       ],
       "lost_keeper_ids": [
         "000670-02.JPG",
-        "000926-03.JPG",
         "001785-01.JPG",
-        "002432-02.JPG",
-        "002502-03.JPG",
-        "002863-02.JPG",
+        "002502-04.JPG",
+        "002863-01.JPG",
         "002982-02.JPG",
         "003093-01.JPG",
-        "003514-02.JPG",
         "003927-01.JPG",
         "003935-01.JPG",
-        "003940-03.JPG",
+        "004077-02.JPG",
+        "004482-02.JPG",
         "005245-01.JPG",
         "005917-02.JPG"
       ]

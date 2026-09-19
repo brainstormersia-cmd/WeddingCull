@@ -1,5 +1,7 @@
 {
-  "dataset": "Unculled Wedding Shoot Benchmark",
+  "dataset": "Synthetic Composite Simulation (Diagnostic Only - NOT Authentic Shoot)",
+  "benchmark_status": "SIMULATION_DIAGNOSTIC_ONLY",
+  "empirical_80pct_proof_status": "BLOCKED_PENDING_AUTHENTIC_UNCULLED_SHOOT",
   "total_photos": 2495,
   "burst_count": 455,
   "burst_frames": 1565,
