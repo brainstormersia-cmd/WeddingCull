@@ -270,10 +270,21 @@
     "catastrophic_rejected": 0,
     "selected_target": 128,
     "inspection_units": 304,
+    "inspection_unit_compression_pct": 20.83,
     "workload_compression_pct": 20.83,
     "human_ground_truth_status": "NO HUMAN KEEPER GROUND TRUTH AVAILABLE",
-    "keeper_loss_observed": 0,
-    "keeper_loss_rate": "0.00% Keeper Loss Observed on Evaluated Datasets",
-    "execution_platform": "macOS (arm64), Version 14.8.9"
+    "safety_statement": "0 photos auto-rejected; human keeper loss is unmeasurable because no human keeper ground truth is available.",
+    "data_safety_distinction": "No permanent data deletion is guaranteed via non-destructive grouping, which is distinct from 'no keeper missed during inspection'.",
+    "score_gap_distribution": {
+      "bin_0_005": 33,
+      "bin_005_010": 11,
+      "bin_010_020": 10,
+      "bin_020_030": 7,
+      "bin_030_050": 15,
+      "bin_above_050": 16,
+      "face_bursts_review_rate_pct": 75.8,
+      "non_face_bursts_review_rate_pct": 96.7
+    },
+    "execution_platform": "macOS (arm64), Version 14.8.9, native Swift benchmark using production components"
   }
 }

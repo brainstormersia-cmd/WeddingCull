@@ -3,9 +3,9 @@
 **Execution Provenance:**
 - **Pipeline Type:** Native Swift benchmark using production components (`RealWeddingBenchmark`: `PreviewPipeline`, `TechnicalQualityAnalyzer`, `FaceIdentityRecognizer`, `DuplicateAndBurstDetector`, `DiversitySelector`). Note: not the full `AnalysisPipeline.runAnalysis()` orchestrator as it does not execute full scene semantic classification or person clustering.
 - **Platform:** macOS (arm64), Version 14.8.9 (Build 23J631)
-- **Git SHA:** `2ac187a6517151e55e36a4ba822f10be23934519`
-- **Timestamp:** 2026-09-19T14:16:44Z
-- **Throughput:** 9.98 photos/sec (38.47s wall-clock)
+- **Git SHA:** `64dc9a410acd9a8cf0e30ad2eb25da482c3944cc`
+- **Timestamp:** 2026-09-19T14:50:15Z
+- **Throughput:** 9.66 photos/sec (39.75s wall-clock)
 
 ## 1. Dataset Classification & Profile
 
@@ -43,9 +43,41 @@
 
 - **Inspection Units Formula:** `Singles (136) + Collapsed Bursts (92) + Review Items (76)`
 - **Total Inspection Units:** **304** photos (down from 384)
-- **Measured Inspection-Unit Compression:** **20.83%** (measured inspection-unit compression on `wedding_shoot_74ef`, not time saving)
+- **Measured Inspection-Unit Compression:** **20.83%** (measured inspection-unit compression on wedding_shoot_74ef, not time saving)
 
-## 3. Burst Audit: Top 10 Largest Bursts
+## 3. Burst Score Gap & Review Distribution Analysis (92 Bursts)
+
+> [!NOTE]
+> Review threshold is currently set to `score difference <= 0.050`. Of 92 discovered bursts, 76 bursts produce a runner-up review candidate.
+
+### Overall Score Gap Distribution
+
+| Score Gap Interval | Bursts Count | % of All Bursts | Cumulative % | Status |
+| :--- | :---: | :---: | :---: | :---: |
+| **0.000 – 0.005** | 33 | 35.9% | 35.9% | Review (Near-Tie) |
+| **0.005 – 0.010** | 11 | 12.0% | 47.8% | Review (Near-Tie) |
+| **0.010 – 0.020** | 10 | 10.9% | 58.7% | Review (Near-Tie) |
+| **0.020 – 0.030** | 7 | 7.6% | 66.3% | Review (Near-Tie) |
+| **0.030 – 0.050** | 15 | 16.3% | 82.6% | Review (Near-Tie) |
+| **> 0.050** | 16 | 17.4% | 100.0% | Collapsed Alternate (Clear Winner) |
+
+### Stratification by Burst Size
+
+| Stratum | Total Bursts | 0.000–0.005 | 0.005–0.010 | 0.010–0.020 | 0.020–0.030 | 0.030–0.050 | > 0.050 (No Review) | Review Rate |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| **Size 2** | 60 | 22 | 9 | 6 | 4 | 9 | 10 | 83.3% |
+| **Size 3** | 17 | 5 | 1 | 2 | 1 | 4 | 4 | 76.5% |
+| **Size 4–5** | 13 | 4 | 1 | 2 | 2 | 2 | 2 | 84.6% |
+| **Size 6+** | 2 | 2 | 0 | 0 | 0 | 0 | 0 | 100.0% |
+
+### Stratification by Face Content
+
+| Content | Total Bursts | 0.000–0.005 | 0.005–0.010 | 0.010–0.020 | 0.020–0.030 | 0.030–0.050 | > 0.050 (No Review) | Review Rate |
+| :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| **Face Bursts** | 62 | 11 | 5 | 9 | 7 | 15 | 15 | 75.8% |
+| **Non-Face Bursts** | 30 | 22 | 6 | 1 | 0 | 0 | 1 | 96.7% |
+
+## 4. Burst Audit: Top 10 Largest Bursts
 
 | Burst ID | Frames | Duration | Winner | Winner Score | Runner-Up | Score Diff | Review? |
 | :--- | :---: | :---: | :--- | :---: | :--- | :---: | :---: |
@@ -60,7 +92,7 @@
 | `burst_bf79e6a5` | 4 | 2.0s | `_mgo9773_37039232142_o.jpg` | 0.589 | `_mgo9772_37068872431_o.jpg` | 0.028 | YES ⚠️ |
 | `burst_c680bb92` | 4 | 1.0s | `_mgo9775_36374344784_o.jpg` | 0.604 | `_mgo9776_37068870281_o.jpg` | 0.114 | No |
 
-## 4. Burst Audit: 10 Random Bursts
+## 5. Burst Audit: 10 Random Bursts
 
 | Burst ID | Frames | Duration | Winner | Winner Score | Runner-Up | Score Diff | Review? |
 | :--- | :---: | :---: | :--- | :---: | :--- | :---: | :---: |
@@ -75,7 +107,7 @@
 | `burst_08f50b87` | 2 | 0.0s | `_mgo9879_37211297245_o.jpg` | 0.738 | `_mgo9880_37211296635_o.jpg` | 0.032 | YES ⚠️ |
 | `burst_d42f3eb6` | 2 | 0.0s | `_mgo9911_37211275715_o.jpg` | 0.654 | `_mgo9910_37068808381_o.jpg` | 0.002 | YES ⚠️ |
 
-## 5. Burst Audit: Low-Confidence / Near-Tie Review Groups
+## 6. Burst Audit: Low-Confidence / Near-Tie Review Groups
 
 | Burst ID | Frames | Duration | Winner | Winner Score | Runner-Up | Score Diff | Review Reason |
 | :--- | :---: | :---: | :--- | :---: | :--- | :---: | :--- |

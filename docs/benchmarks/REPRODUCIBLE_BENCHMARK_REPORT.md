@@ -70,8 +70,8 @@
 - **Inspection Units**: **304** units (136 singles + 92 burst winners + 76 review items), down from 384 input photos.
 - **Measured Inspection-Unit Compression**: **20.83%** (measured inspection-unit compression on `wedding_shoot_74ef`, not time saving).
 - **Safety & Ground Truth Status**: 0 photos auto-rejected; human keeper loss is unmeasurable because no human keeper ground truth is available (no embedded rating tags or external XMP sidecars).
-- **Data Safety vs Inspection**: WeddingCull ensures no permanent data deletion (all non-selected and alternate frames remain intact on disk in non-destructive stacks), but "no keeper missed during inspection" cannot be confirmed without human ground truth.
-- **Detailed Audit**: See [`REAL_WEDDING_BENCHMARK_REPORT.md`](REAL_WEDDING_BENCHMARK_REPORT.md).
+- **Review Score Gap Distribution (76 Reviews / 92 Bursts)**: 0.000–0.005: 33 (35.9%), 0.005–0.010: 11 (12.0%), 0.010–0.020: 10 (10.9%), 0.020–0.030: 7 (7.6%), 0.030–0.050: 15 (16.3%), >0.050: 16 (17.4%). For non-face bursts (N=30), 22 have gap $\le 0.005$ (96.7% review rate) because negligible sharpness spread assigns equivalent sharpness (0.50) while consecutive frames have nearly identical exposure.
+- **Detailed Audit & Stratification Tables**: See [`REAL_WEDDING_BENCHMARK_REPORT.md`](REAL_WEDDING_BENCHMARK_REPORT.md).
 
 ## 4. Status of the 80% Workload Reduction Claim
 
