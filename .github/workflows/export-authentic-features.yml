@@ -2,16 +2,37 @@ name: Export Authentic Photo Triage Features
 
 on:
   workflow_dispatch:
-    inputs:
-      prefer_train:
-        description: 'Export Train/Dev instead of Val'
-        required: false
-        default: false
-        type: boolean
 
 jobs:
+  package-validation:
+    name: Package Validation on Local Windows Host
+    runs-on: [self-hosted, windows, dataset-host]
+    timeout-minutes: 15
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Prepare Validation Bundle
+        shell: powershell
+        run: |
+          if (Test-Path "X:\WeddingCullDatasets\transfer\PhotoTriageValidation.zip") {
+            Copy-Item "X:\WeddingCullDatasets\transfer\PhotoTriageValidation.zip" "PhotoTriageValidation.zip"
+          } else {
+            python scripts/build_transfer_bundle.py
+            Copy-Item "X:\WeddingCullDatasets\transfer\PhotoTriageValidation.zip" "PhotoTriageValidation.zip"
+          }
+          Write-Host "Validation bundle ready: $((Get-Item PhotoTriageValidation.zip).Length / 1MB) MB"
+
+      - name: Upload Validation Bundle Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: photo-triage-validation-bundle
+          path: PhotoTriageValidation.zip
+          retention-days: 1
+
   export-authentic-features:
     name: Export Authentic Features on macOS (Apple Silicon)
+    needs: package-validation
     runs-on: macos-14
     timeout-minutes: 60
     steps:
@@ -29,23 +50,24 @@ jobs:
           chmod +x ./scripts/*.sh
           ./scripts/bootstrap.sh
 
+      - name: Download Validation Bundle Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: photo-triage-validation-bundle
+
       - name: Unpack Validation Dataset Bundle
         run: |
-          mkdir -p datasets/PhotoTriageValidation
-          if [ -f "PhotoTriageValidation.zip" ]; then
-            unzip -q PhotoTriageValidation.zip -d datasets/
-          fi
+          mkdir -p datasets
+          unzip -q PhotoTriageValidation.zip -d datasets/
+          ls -la datasets/PhotoTriageValidation
 
       - name: Run Production WeddingCullFeatureExporter
         run: |
           export WEDDINGCULL_GIT_SHA=${{ github.sha }}
-          if [ -d "datasets/PhotoTriageValidation" ] && [ "$(ls -A datasets/PhotoTriageValidation)" ]; then
-            swift run WeddingCullFeatureExporter \
-              --dataset datasets/PhotoTriageValidation \
-              --output artifacts/photo_triage_val_features_authentic.jsonl
-          else
-            echo "::warning ::PhotoTriageValidation bundle not present on runner. Awaiting bundle transfer."
-          fi
+          mkdir -p artifacts
+          swift run -c release WeddingCullFeatureExporter \
+            --dataset datasets/PhotoTriageValidation \
+            --output artifacts/photo_triage_val_features_authentic.jsonl
 
       - name: Upload Authentic Feature Cache Artifact
         uses: actions/upload-artifact@v4
