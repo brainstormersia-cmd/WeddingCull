@@ -121,9 +121,13 @@ struct WeddingCullFeatureExporterApp {
             return nil
         }
 
-        guard let datasetRoot = getArg("--dataset") ?? getArg("--dataset-root") else {
-            print("Usage: WeddingCullFeatureExporter --dataset <dataset_path> --output <output.jsonl> [--prefer-train]")
-            print("Example: WeddingCullFeatureExporter --dataset X:/WeddingCullDatasets/raw/PhotoTriage --output photo_triage_val_features_authentic.jsonl")
+        let manifestArg = getArg("--manifest")
+        let imagesDirArg = getArg("--images-dir")
+        let datasetRoot = getArg("--dataset") ?? getArg("--dataset-root")
+
+        guard manifestArg != nil || datasetRoot != nil else {
+            print("Usage: WeddingCullFeatureExporter [--manifest <manifest.json> --images-dir <images_path>] | [--dataset <dataset_path>] --output <output.jsonl> [--prefer-train]")
+            print("Example: WeddingCullFeatureExporter --manifest manifests/photo_triage_dev_select.json --images-dir datasets/PhotoTriage/train_val/train_val_imgs --output photo_triage_dev_select_features_authentic.jsonl")
             exit(1)
         }
 
@@ -131,9 +135,14 @@ struct WeddingCullFeatureExporterApp {
         let preferTrain = args.contains("--prefer-train")
 
         print("=== WeddingCull Authentic Feature Exporter ===")
-        print("Dataset Root: \(datasetRoot)")
+        if let m = manifestArg {
+            print("Manifest Path: \(m)")
+            print("Images Directory: \(imagesDirArg ?? "None (using paths in manifest)")")
+        } else if let d = datasetRoot {
+            print("Dataset Root: \(d)")
+            print("Prefer Train: \(preferTrain)")
+        }
         print("Output Path: \(outputPath)")
-        print("Prefer Train: \(preferTrain)")
 
         // 1. Mandatory Git SHA Audit
         var detectedGitSha = ProcessInfo.processInfo.environment["WEDDINGCULL_GIT_SHA"]
@@ -175,22 +184,87 @@ struct WeddingCullFeatureExporterApp {
         let isoFormatter = ISO8601DateFormatter()
         let startTimestamp = isoFormatter.string(from: Date())
 
-        // 2. Load Dataset via Direct PhotoTriageAdapter
-        let adapter = PhotoTriageAdapter()
-        let rootURL = URL(fileURLWithPath: datasetRoot)
-        let inspection = adapter.inspect(rootURL: rootURL)
-        guard inspection.isAvailable else {
-            print("ERROR: Dataset inspection failed: \(inspection.statusMessage)")
-            exit(2)
-        }
-
+        // 2. Load Dataset via Manifest or Direct PhotoTriageAdapter
         let dataset: RealSeriesBenchmarkDataset
-        do {
-            dataset = try adapter.loadDataset(from: rootURL)
-            print("Loaded dataset: \(dataset.dataset_name) (\(dataset.total_series) series, \(dataset.total_frames) frames)")
-        } catch {
-            print("ERROR: Failed to load dataset: \(error)")
-            exit(3)
+        if let manifestPath = manifestArg {
+            let mURL = URL(fileURLWithPath: manifestPath)
+            guard let mData = try? Data(contentsOf: mURL),
+                  let mJson = try? JSONSerialization.jsonObject(with: mData) as? [String: Any],
+                  let seriesDict = mJson["series"] as? [String: [String: Any]] else {
+                print("ERROR: Failed to load manifest at \(manifestPath)")
+                exit(2)
+            }
+
+            let splitName = (mJson["split_name"] as? String) ?? (mJson["dataset_name"] as? String) ?? mURL.deletingPathExtension().lastPathComponent
+            let resolvedImagesDir = imagesDirArg.map { URL(fileURLWithPath: $0) }
+
+            var realSeries: [RealPhotoSeries] = []
+            var totalFrameCount = 0
+
+            for (sid, sData) in seriesDict.sorted(by: { Int($0.key) ?? 0 < Int($1.key) ?? 0 }) {
+                var frames: [RealSeriesFrame] = []
+                if let photoList = sData["photos"] as? [Any] {
+                    for pItem in photoList {
+                        let filename: String
+                        var specificPath: String? = nil
+                        if let pDict = pItem as? [String: Any] {
+                            filename = (pDict["filename"] as? String) ?? ""
+                            specificPath = (pDict["path"] as? String) ?? (pDict["image_path"] as? String)
+                        } else if let pStr = pItem as? String {
+                            filename = pStr
+                        } else {
+                            continue
+                        }
+                        guard !filename.isEmpty else { continue }
+
+                        let finalImagePath: String
+                        if let spec = specificPath, FileManager.default.fileExists(atPath: spec) {
+                            finalImagePath = spec
+                        } else if let imgDir = resolvedImagesDir {
+                            finalImagePath = imgDir.appendingPathComponent(filename).path
+                        } else {
+                            finalImagePath = filename
+                        }
+
+                        frames.append(RealSeriesFrame(photo_id: filename, image_path: finalImagePath))
+                        totalFrameCount += 1
+                    }
+                }
+                realSeries.append(RealPhotoSeries(
+                    series_id: sid,
+                    scene_type: "burst",
+                    description: nil,
+                    frames: frames,
+                    ground_truth: SeriesGroundTruth(total_comparisons: 0, pairwise_preferences: [])
+                ))
+            }
+
+            dataset = RealSeriesBenchmarkDataset(
+                version: "2.0",
+                dataset_name: "Photo Triage (\(splitName))",
+                description: "Authentic feature export from manifest: \(manifestPath)",
+                total_series: realSeries.count,
+                total_frames: totalFrameCount,
+                series: realSeries
+            )
+            print("Loaded manifest dataset: \(dataset.dataset_name) (\(dataset.total_series) series, \(dataset.total_frames) frames)")
+        } else if let dRoot = datasetRoot {
+            let adapter = PhotoTriageAdapter()
+            let rootURL = URL(fileURLWithPath: dRoot)
+            let inspection = adapter.inspect(rootURL: rootURL)
+            guard inspection.isAvailable else {
+                print("ERROR: Dataset inspection failed: \(inspection.statusMessage)")
+                exit(2)
+            }
+            do {
+                dataset = try adapter.loadDataset(from: rootURL)
+                print("Loaded dataset: \(dataset.dataset_name) (\(dataset.total_series) series, \(dataset.total_frames) frames)")
+            } catch {
+                print("ERROR: Failed to load dataset: \(error)")
+                exit(3)
+            }
+        } else {
+            fatalError("Unreachable")
         }
 
         // 3. Initialize Analyzers

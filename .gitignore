@@ -27,3 +27,5 @@ __pycache__/
 downloaded_features/
 tests/fixtures/
 Tests/fixtures/
+models/
+external/

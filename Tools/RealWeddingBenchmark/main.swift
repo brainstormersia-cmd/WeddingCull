@@ -55,6 +55,20 @@ struct BurstAuditItem: Codable, Sendable {
     let memberIds: [String]
 }
 
+struct StageTiming: Codable, Sendable {
+    let name: String
+    let seconds: Double
+    let percentage: Double
+    let msPerPhoto: Double
+}
+
+struct BenchmarkProfilerReport: Codable, Sendable {
+    let totalWallClockSeconds: Double
+    let peakMemoryMB: Double
+    let photosPerSecond: Double
+    let stages: [StageTiming]
+}
+
 struct RealWeddingBenchmarkReport: Codable, Sendable {
     let datasetName: String
     let datasetCategory: String
@@ -102,7 +116,29 @@ struct RealWeddingBenchmarkReport: Codable, Sendable {
     let largestBursts: [BurstAuditItem]
     let randomBursts: [BurstAuditItem]
     let reviewCandidateBursts: [BurstAuditItem]
+
+    // High-Resolution Profiling
+    let profilerReport: BenchmarkProfilerReport?
 }
+
+#if canImport(Darwin)
+import Darwin
+func getPeakMemoryMB() -> Double {
+    var info = mach_task_basic_info()
+    var count = mach_msg_type_number_t(MemoryLayout<mach_task_basic_info>.size / MemoryLayout<natural_t>.size)
+    let kerr: kern_return_t = withUnsafeMutablePointer(to: &info) {
+        $0.withMemoryRebound(to: integer_t.self, capacity: Int(count)) {
+            task_info(mach_task_self_, task_flavor_t(MACH_TASK_BASIC_INFO), $0, &count)
+        }
+    }
+    if kerr == KERN_SUCCESS {
+        return Double(info.resident_size_max) / (1024.0 * 1024.0)
+    }
+    return 0.0
+}
+#else
+func getPeakMemoryMB() -> Double { return 0.0 }
+#endif
 
 @main
 struct RealWeddingBenchmarkMain {
@@ -178,6 +214,7 @@ struct RealWeddingBenchmarkMain {
         print("Git SHA: \(gitSha)")
         
         // 1. Discover Files
+        let tDiscStart = CFAbsoluteTimeGetCurrent()
         let importer = PhotoImporter()
         let fileURLs: [URL]
         do {
@@ -187,6 +224,7 @@ struct RealWeddingBenchmarkMain {
             print("❌ Failed to discover files: \(error)")
             exit(3)
         }
+        let tDiscovery = CFAbsoluteTimeGetCurrent() - tDiscStart
         
         guard !fileURLs.isEmpty else {
             print("❌ No valid image files found in \(folderURL.path)")
@@ -206,6 +244,13 @@ struct RealWeddingBenchmarkMain {
         var items: [PhotoItem] = []
         var dHashValues: [String: UInt64] = [:]
         
+        var tExif: Double = 0.0
+        var tDecode: Double = 0.0
+        var tTechnical: Double = 0.0
+        var tVision: Double = 0.0
+        var tCropSharpness: Double = 0.0
+        var tPhash: Double = 0.0
+        
         for (idx, url) in fileURLs.enumerated() {
             let pid = url.lastPathComponent
             if (idx + 1) % 50 == 0 || (idx + 1) == fileURLs.count {
@@ -213,6 +258,7 @@ struct RealWeddingBenchmarkMain {
             }
             
             // Extract EXIF Metadata
+            let tExif0 = CFAbsoluteTimeGetCurrent()
             var captureDate: Date? = nil
             var camModel = "Unknown"
             var pxWidth = 0
@@ -236,8 +282,11 @@ struct RealWeddingBenchmarkMain {
                     }
                 }
             }
+            tExif += (CFAbsoluteTimeGetCurrent() - tExif0)
             
+            let tDec0 = CFAbsoluteTimeGetCurrent()
             guard let previewCG = PreviewPipeline.decodeProductionPreview(from: url, maxPixelSize: 1000) else {
+                tDecode += (CFAbsoluteTimeGetCurrent() - tDec0)
                 var badMeta = PhotoMetadata()
                 badMeta.isCorrupt = true
                 var item = PhotoItem(id: pid, fileName: pid, sourceURL: url)
@@ -246,20 +295,28 @@ struct RealWeddingBenchmarkMain {
                 items.append(item)
                 continue
             }
+            tDecode += (CFAbsoluteTimeGetCurrent() - tDec0)
             
             // Technical Analysis (Laplacian, luminance, clipping)
+            let tTech0 = CFAbsoluteTimeGetCurrent()
             let tech = qualityAnalyzer.analyze(cgImage: previewCG)
+            tTechnical += (CFAbsoluteTimeGetCurrent() - tTech0)
             
             // Apple Vision Face Recognition
+            let tVis0 = CFAbsoluteTimeGetCurrent()
             let faceResult = faceRecognizer.extractFacesWithIdentityResult(from: previewCG, enableFaceCaptureQuality: true)
             let faces = faceResult.faces
+            tVision += (CFAbsoluteTimeGetCurrent() - tVis0)
             
             // Face Sharpness
+            let tCrop0 = CFAbsoluteTimeGetCurrent()
             var faceSharpnesses: [Double] = []
             for face in faces {
                 let cropSharp = qualityAnalyzer.computeRegionSharpness(cgImage: previewCG, normalizedRect: face.boundingBox)
                 faceSharpnesses.append(cropSharp)
             }
+            tCropSharpness += (CFAbsoluteTimeGetCurrent() - tCrop0)
+            
             let avgFaceSharp = faceSharpnesses.isEmpty ? nil : (faceSharpnesses.reduce(0.0, +) / Double(faceSharpnesses.count))
             let avgConf = faces.isEmpty ? 0.8 : (faces.reduce(0.0) { $0 + $1.detectionConfidence } / Double(faces.count))
             let validCQs = faces.compactMap { $0.faceCaptureQuality }
@@ -275,7 +332,9 @@ struct RealWeddingBenchmarkMain {
             )
             
             // Perceptual dHash
+            let tPhash0 = CFAbsoluteTimeGetCurrent()
             let phash = PerceptualHash.computeDHash(from: previewCG)
+            tPhash += (CFAbsoluteTimeGetCurrent() - tPhash0)
             dHashValues[pid] = phash
             
             var m = QualityMetrics()
@@ -310,6 +369,7 @@ struct RealWeddingBenchmarkMain {
         
         // 4. Autonomous Burst & Duplicate Discovery
         print("⚡ Running DuplicateAndBurstDetector...")
+        let tBurstStart = CFAbsoluteTimeGetCurrent()
         let exactDuplicates = duplicateDetector.detectExactDuplicates(items: items)
         for (index, item) in items.enumerated() {
             if let canonID = exactDuplicates[item.id] {
@@ -332,10 +392,12 @@ struct RealWeddingBenchmarkMain {
                 }
             }
         }
+        let tBurstGrouping = CFAbsoluteTimeGetCurrent() - tBurstStart
         
         print("✅ Detected \(bursts.count) bursts across \(items.count) photos.")
         
         // 5. Temporal Segmentation & Quality Scoring
+        let tSegStart = CFAbsoluteTimeGetCurrent()
         let segments = segmenter.segment(items: items)
         for seg in segments {
             for (index, item) in items.enumerated() {
@@ -344,10 +406,14 @@ struct RealWeddingBenchmarkMain {
                 }
             }
         }
+        let tSegmentation = CFAbsoluteTimeGetCurrent() - tSegStart
         
+        let tScorStart = CFAbsoluteTimeGetCurrent()
         items = scorer.scorePhotos(items: items)
+        let tScoring = CFAbsoluteTimeGetCurrent() - tScorStart
         
         // 6. Production Diversity Selector
+        let tSelStart = CFAbsoluteTimeGetCurrent()
         let target = targetSelectionCount ?? max(1, items.count / 3)
         let selection = selector.selectPhotos(
             items: items,
@@ -356,6 +422,7 @@ struct RealWeddingBenchmarkMain {
             targetCount: target
         )
         let finalItems = selection.updatedItems
+        let tSelection = CFAbsoluteTimeGetCurrent() - tSelStart
         
         let tElapsed = max(0.001, CFAbsoluteTimeGetCurrent() - tStart)
         let pps = Double(finalItems.count) / tElapsed
@@ -512,6 +579,28 @@ struct RealWeddingBenchmarkMain {
         let durationHours = (dates.count >= 2) ? (dates.last!.timeIntervalSince(dates.first!) / 3600.0) : 0.0
         let cameraModel = finalItems.compactMap { $0.metadata.cameraModel }.first ?? "Nikon D750"
         
+        let nPhotos = Double(max(1, finalItems.count))
+        let stages: [StageTiming] = [
+            StageTiming(name: "File Discovery", seconds: round(tDiscovery * 1000) / 1000, percentage: round((tDiscovery / tElapsed) * 10000) / 100, msPerPhoto: round((tDiscovery / nPhotos) * 100000) / 100),
+            StageTiming(name: "EXIF Metadata Parsing", seconds: round(tExif * 1000) / 1000, percentage: round((tExif / tElapsed) * 10000) / 100, msPerPhoto: round((tExif / nPhotos) * 100000) / 100),
+            StageTiming(name: "Preview Decode (1000px)", seconds: round(tDecode * 1000) / 1000, percentage: round((tDecode / tElapsed) * 10000) / 100, msPerPhoto: round((tDecode / nPhotos) * 100000) / 100),
+            StageTiming(name: "Technical Quality Analysis", seconds: round(tTechnical * 1000) / 1000, percentage: round((tTechnical / tElapsed) * 10000) / 100, msPerPhoto: round((tTechnical / nPhotos) * 100000) / 100),
+            StageTiming(name: "Vision Face Block (Detection/FCQ/Eyes)", seconds: round(tVision * 1000) / 1000, percentage: round((tVision / tElapsed) * 10000) / 100, msPerPhoto: round((tVision / nPhotos) * 100000) / 100),
+            StageTiming(name: "Face Crop Sharpness", seconds: round(tCropSharpness * 1000) / 1000, percentage: round((tCropSharpness / tElapsed) * 10000) / 100, msPerPhoto: round((tCropSharpness / nPhotos) * 100000) / 100),
+            StageTiming(name: "Perceptual Hash (dHash)", seconds: round(tPhash * 1000) / 1000, percentage: round((tPhash / tElapsed) * 10000) / 100, msPerPhoto: round((tPhash / nPhotos) * 100000) / 100),
+            StageTiming(name: "Burst & Duplicate Grouping", seconds: round(tBurstGrouping * 1000) / 1000, percentage: round((tBurstGrouping / tElapsed) * 10000) / 100, msPerPhoto: round((tBurstGrouping / nPhotos) * 100000) / 100),
+            StageTiming(name: "Temporal Segmentation", seconds: round(tSegmentation * 1000) / 1000, percentage: round((tSegmentation / tElapsed) * 10000) / 100, msPerPhoto: round((tSegmentation / nPhotos) * 100000) / 100),
+            StageTiming(name: "Global Quality Scoring", seconds: round(tScoring * 1000) / 1000, percentage: round((tScoring / tElapsed) * 10000) / 100, msPerPhoto: round((tScoring / nPhotos) * 100000) / 100),
+            StageTiming(name: "Diversity Selection", seconds: round(tSelection * 1000) / 1000, percentage: round((tSelection / tElapsed) * 10000) / 100, msPerPhoto: round((tSelection / nPhotos) * 100000) / 100)
+        ]
+        let peakMem = getPeakMemoryMB()
+        let profilerReport = BenchmarkProfilerReport(
+            totalWallClockSeconds: round(tElapsed * 100) / 100,
+            peakMemoryMB: round(peakMem * 100) / 100,
+            photosPerSecond: round(pps * 100) / 100,
+            stages: stages
+        )
+        
         let report = RealWeddingBenchmarkReport(
             datasetName: "wedding_shoot_74ef",
             datasetCategory: "Category A: Complete Un-culled Wedding Shoot",
@@ -546,7 +635,8 @@ struct RealWeddingBenchmarkMain {
             allBursts: burstAudits,
             largestBursts: largestBursts,
             randomBursts: sampledRandom,
-            reviewCandidateBursts: reviewBursts
+            reviewCandidateBursts: reviewBursts,
+            profilerReport: profilerReport
         )
         
         // Print Summary to Console
@@ -557,6 +647,15 @@ struct RealWeddingBenchmarkMain {
         print("Camera: \(report.cameraModel) | Duration: \(report.timeSpanHours) hours")
         print("Total Photos: \(report.totalPhotos)")
         print("Throughput: \(report.photosPerSecond) photos/sec (\(report.wallClockSeconds)s wall-clock)")
+        print(String(format: "Peak Resident Memory: %.1f MB", peakMem))
+        print("\n--- Wall-Clock Stage Breakdown ---")
+        print(String(format: "%-45s | %8s | %6s | %10s", "Stage Name", "Time (s)", "% Total", "ms / Photo"))
+        print(String(repeating: "-", count: 75))
+        for st in stages {
+            print(String(format: "%-45s | %7.3fs | %5.1f%% | %8.2fms", st.name, st.seconds, st.percentage, st.msPerPhoto))
+        }
+        print(String(repeating: "-", count: 75))
+        print(String(format: "%-45s | %7.3fs | 100.0%% | %8.2fms", "Total Pipeline Wall Clock", report.wallClockSeconds, (report.wallClockSeconds / nPhotos) * 1000.0))
         print("----------------------------------------------------")
         print("Autonomous Bursts Discovered: \(report.burstCount) bursts (\(report.photosInBursts) photos, \(report.burstRatioPct)% of shoot)")
         print("Single Photos: \(report.singlesCount)")
