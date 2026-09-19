@@ -1,0 +1,80 @@
+name: Run Real Wedding Benchmark
+
+on:
+  workflow_dispatch:
+
+jobs:
+  package-wedding:
+    name: Package Wedding Shoot on Local Windows Host
+    runs-on: [self-hosted, windows, dataset-host]
+    timeout-minutes: 15
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Prepare Wedding Bundle
+        shell: powershell
+        run: |
+          if (Test-Path "X:\WeddingCullDatasets\transfer\WeddingShoot74ef.zip") {
+            Copy-Item "X:\WeddingCullDatasets\transfer\WeddingShoot74ef.zip" "WeddingShoot74ef.zip"
+          } else {
+            Write-Error "X:\WeddingCullDatasets\transfer\WeddingShoot74ef.zip not found!"
+            exit 1
+          }
+          Write-Host "Wedding bundle ready: $((Get-Item WeddingShoot74ef.zip).Length / 1MB) MB"
+
+      - name: Upload Wedding Bundle Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: wedding-shoot-74ef-bundle
+          path: WeddingShoot74ef.zip
+          retention-days: 1
+
+  run-benchmark:
+    name: Run Real Wedding Benchmark on macOS (Apple Silicon)
+    needs: package-wedding
+    runs-on: macos-14
+    timeout-minutes: 60
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Audit Native macOS Environment
+        run: |
+          echo "=== NATIVE MACOS HARDWARE AUDIT ==="
+          uname -m
+          sw_vers
+
+      - name: Setup Environment
+        run: |
+          chmod +x ./scripts/*.sh
+          ./scripts/bootstrap.sh
+
+      - name: Download Wedding Bundle Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: wedding-shoot-74ef-bundle
+
+      - name: Unpack Wedding Dataset Bundle
+        run: |
+          mkdir -p datasets/wedding
+          unzip -q WeddingShoot74ef.zip -d datasets/wedding/
+          ls -la datasets/wedding/WeddingShoot74ef
+
+      - name: Run Production RealWeddingBenchmark
+        run: |
+          export WEDDINGCULL_GIT_SHA=${{ github.sha }}
+          mkdir -p artifacts docs/benchmarks
+          swift run -c release RealWeddingBenchmark \
+            --dataset datasets/wedding/WeddingShoot74ef \
+            --output-json artifacts/real_wedding_benchmark_report.json \
+            --output-md docs/benchmarks/REAL_WEDDING_BENCHMARK_REPORT.md
+
+      - name: Upload Benchmark Results Artifact
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: real-wedding-benchmark-report
+          path: |
+            artifacts/real_wedding_benchmark_report.json
+            docs/benchmarks/REAL_WEDDING_BENCHMARK_REPORT.md

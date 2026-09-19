@@ -137,7 +137,7 @@ def evaluate_photo_triage(series_list, features, pairlist_ranks=None):
         "mixed_faces": {"correct": 0, "total": 0}
     }
 
-    # Burst size stratification: 2, 3, 4-5, 6+
+    # Stratified definitions and tracking
     strata_definitions = {
         "size_2": lambda n: n == 2,
         "size_3": lambda n: n == 3,
@@ -145,7 +145,7 @@ def evaluate_photo_triage(series_list, features, pairlist_ranks=None):
         "size_6_plus": lambda n: n >= 6,
         "all_sizes": lambda n: True
     }
-    strata_counts = {k: {"series": 0, "top1": 0, "top2": 0, "top3": 0} for k in strata_definitions}
+    strata_counts = {k: {"series": 0, "top1": 0, "top2": 0, "top3": 0, "gt_ranks": [], "pred_ranks": []} for k in strata_definitions}
 
     # Ground truth tracking for keepers & safety using raw crowd votes
     photo_truth = {}
@@ -156,17 +156,20 @@ def evaluate_photo_triage(series_list, features, pairlist_ranks=None):
         pids = [p["filename"] if isinstance(p, dict) else p for p in s.get("photos", [])]
         burst_size = len(pids)
 
-        # Ground truth winner: Official Bradley-Terry model rank 1 from Photo Triage pairlist
+        # Ground truth ranks from manifest / pairlist
+        photo_gt_ranks = {}
+        for p in s.get("photos", []):
+            if isinstance(p, dict) and p.get("series_rank") is not None:
+                photo_gt_ranks[p["filename"]] = p["series_rank"]
         if pairlist_ranks and sid in pairlist_ranks:
             s_ranks = pairlist_ranks[sid]
-            def get_rank(f):
-                idx = int(f.split("-")[1].split(".")[0])
-                return s_ranks.get(idx, 999)
-            ranked_gt = sorted(pids, key=get_rank)
-            preferred_winner = ranked_gt[0] if ranked_gt else None
-        else:
-            pref_order = s.get("ranked_photos_preferred_order") or []
-            preferred_winner = pref_order[0] if pref_order else None
+            for pid in pids:
+                idx = int(pid.split("-")[1].split(".")[0])
+                if idx in s_ranks:
+                    photo_gt_ranks[pid] = s_ranks[idx]
+
+        ranked_gt = sorted(pids, key=lambda f: photo_gt_ranks.get(f, 999))
+        preferred_winner = ranked_gt[0] if ranked_gt else None
 
         # Non-face members context
         non_face_sharps = [
@@ -200,10 +203,15 @@ def evaluate_photo_triage(series_list, features, pairlist_ranks=None):
             if abs(s_top - s_runner) <= 0.05 and not runner_low_q:
                 review_candidate_pairs += 1
 
+        chosen_gt_rank = photo_gt_ranks.get(ranked[0], 1) if ranked else 1
+        gt_pred_rank = (ranked.index(preferred_winner) + 1) if (preferred_winner and preferred_winner in ranked) else len(ranked)
+
         # Stratified series stats
         for s_key, predicate in strata_definitions.items():
             if predicate(burst_size):
                 strata_counts[s_key]["series"] += 1
+                strata_counts[s_key]["gt_ranks"].append(chosen_gt_rank)
+                strata_counts[s_key]["pred_ranks"].append(gt_pred_rank)
                 if ranked and preferred_winner:
                     if ranked[0] == preferred_winner:
                         strata_counts[s_key]["top1"] += 1
@@ -258,11 +266,15 @@ def evaluate_photo_triage(series_list, features, pairlist_ranks=None):
     for s_key, counts in strata_counts.items():
         n_s = counts["series"]
         if n_s == 0: continue
+        gt_r = counts["gt_ranks"]
+        pred_r = counts["pred_ranks"]
         stratified_results[s_key] = {
             "series_count": n_s,
             "top1_recall": round(counts["top1"] / n_s * 100, 2),
             "top2_recall": round(counts["top2"] / n_s * 100, 2),
-            "top3_recall": round(counts["top3"] / n_s * 100, 2)
+            "top3_recall": round(counts["top3"] / n_s * 100, 2),
+            "mean_gt_rank": round(sum(gt_r) / len(gt_r), 3) if gt_r else 1.0,
+            "mean_pred_rank": round(sum(pred_r) / len(pred_r), 3) if pred_r else 1.0
         }
 
     # Safety & Catastrophic Auto-Rejection Evaluation
@@ -650,8 +662,8 @@ def generate_reports(pt_results, alb_results):
     md_lines.append("")
     md_lines.append("### Stratified Burst Recall")
     md_lines.append("")
-    md_lines.append("| Burst Size Stratum | Series Count | Top-1 Recall | Top-2 Recall | Top-3 Recall |")
-    md_lines.append("|:---|:---:|:---:|:---:|:---:|")
+    md_lines.append("| Burst Size Stratum | Series Count | Top-1 Recall | Top-2 Recall | Top-3 Recall | Mean GT Rank (Winner) | Mean Pred Rank (GT #1) |")
+    md_lines.append("|:---|:---:|:---:|:---:|:---:|:---:|:---:|")
     for s_key, s_data in pt_results["stratified_recall"].items():
         name_map = {
             "size_2": "Size 2",
@@ -661,7 +673,7 @@ def generate_reports(pt_results, alb_results):
             "all_sizes": "**All Series**"
         }
         name = name_map.get(s_key, s_key)
-        md_lines.append(f"| {name} | {s_data['series_count']} | {s_data['top1_recall']}% | {s_data['top2_recall']}% | {s_data['top3_recall']}% |")
+        md_lines.append(f"| {name} | {s_data['series_count']} | {s_data['top1_recall']}% | {s_data['top2_recall']}% | {s_data['top3_recall']}% | {s_data['mean_gt_rank']} | {s_data['mean_pred_rank']} |")
 
     md_lines.append("")
     md_lines.append("### Production Safety & Catastrophic Rejection")
@@ -704,7 +716,7 @@ def generate_reports(pt_results, alb_results):
     md_lines.append("")
     md_lines.append("1. **Pre-curated Datasets (AlbumBench)**: AlbumBench consists of Flickr wedding albums that have ALREADY been culled by photographers before upload (photographers discarded ~95% of their burst frames). Therefore, AlbumBench only offers ~2.19% workload reduction on average (up to 22.6% on burst-heavy albums).")
     md_lines.append("2. **Authentic Un-culled Event Shoot Required (CURRENT BLOCKER)**: Demonstrating an authentic ~80% manual culling workload reduction requires a genuine, complete un-culled wedding shoot catalog (2,000–3,000 raw photos from the same event) preserving original capture timestamps, continuous camera burst sequences, and matched ground-truth selections from the photographer. Because such an authentic, un-culled same-event dataset is not yet present in the benchmark suite, declaring the 80% workload reduction claim as empirically demonstrated is **BLOCKED**. Composite simulations must not be used as proof.")
-    md_lines.append("3. **Zero Keeper Loss Guaranteed**: On both Photo Triage (195 validation series) and AlbumBench (8 real wedding albums), the hardened production rules achieved **0.00% Keeper Loss Rate** (0 of 195 Photo Triage keepers lost, 0 of 189 AlbumBench keepers lost).")
+    md_lines.append("3. **Zero Keeper Loss Observed on Evaluated Datasets**: On both Photo Triage (195 validation series) and AlbumBench (8 real wedding albums), the hardened production rules achieved **0.00% Keeper Loss Rate** (0 of 195 Photo Triage keepers lost, 0 of 189 AlbumBench keepers lost).")
 
     md_path = "docs/benchmarks/REPRODUCIBLE_BENCHMARK_REPORT.md"
     with open(md_path, "w", encoding="utf-8") as f:

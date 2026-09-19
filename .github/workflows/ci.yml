@@ -36,9 +36,10 @@ jobs:
         run: |
           ./scripts/test.sh --unit-only
 
-      - name: Build Feature Exporter on Apple Silicon
+      - name: Build Feature Exporter & Real Wedding Benchmark on Apple Silicon
         run: |
           swift build -c release --product WeddingCullFeatureExporter
+          swift build -c release --product RealWeddingBenchmark
 
       - name: Upload Test Results and Screenshots (arm64)
         uses: actions/upload-artifact@v4

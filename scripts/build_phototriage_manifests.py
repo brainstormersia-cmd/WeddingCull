@@ -26,10 +26,12 @@ def load_mat_ranks(mat_path):
     for i in range(series_arr.shape[1]):
         elem = series_arr[0, i]
         sid = int(elem['SERIES_ID'][0, 0][0, 0])
+        size = int(elem['SERIES_SIZE'][0, 0][0, 0])
         # RANK is array of 1-based ranks corresponding to photo 1, 2, ...
-        rank_arr = elem['RANK'][0, 0][0]
-        bt_arr = elem['Bradley_Terry'][0, 0][0]
+        rank_arr = elem['RANK'][0, 0].flatten()
+        bt_arr = elem['Bradley_Terry'][0, 0].flatten()
         ranks_by_series[sid] = {
+            "size": size,
             "ranks": [int(r) for r in rank_arr],
             "bradley_terry": [float(b) for b in bt_arr]
         }
@@ -151,20 +153,25 @@ def build_split(split_name, pairlist_path, imgs_dir, reviews_dir, mat_ranks):
         # Build series photo list and preferred order from mat_ranks
         mat_info = mat_ranks.get(sid, {})
         rank_list = mat_info.get("ranks", [])
+        bt_list = mat_info.get("bradley_terry", [])
+        mat_size = mat_info.get("size", 0)
         
         # In Photo Triage, photo indices are 1, 2, ...
-        sorted_indices = sorted(all_photo_indices)
+        all_indices = set(range(1, mat_size + 1)).union(all_photo_indices)
+        sorted_indices = sorted(all_indices)
         photo_records = []
         for idx in sorted_indices:
             fname = f"{sid:06d}-{idx:02d}.JPG"
             fpath = os.path.join(imgs_dir, fname)
             rnk = rank_list[idx - 1] if (idx - 1 < len(rank_list)) else None
+            bt = bt_list[idx - 1] if (idx - 1 < len(bt_list)) else None
             photo_records.append({
                 "photo_index": idx,
                 "filename": fname,
                 "path": fpath,
                 "exists_on_disk": os.path.exists(fpath),
-                "series_rank": rnk
+                "series_rank": rnk,
+                "bradley_terry": bt
             })
 
         # Rank-ordered photos (1st place, 2nd place, ...)

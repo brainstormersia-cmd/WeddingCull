@@ -18,7 +18,8 @@ let package = Package(
         .executable(name: "ReleaseRawValidator", targets: ["ReleaseRawValidator"]),
         .executable(name: "MobileCLIPValidator", targets: ["MobileCLIPValidator"]),
         .executable(name: "QualityBenchmarkV2", targets: ["QualityBenchmarkV2"]),
-        .executable(name: "WeddingCullFeatureExporter", targets: ["WeddingCullFeatureExporter"])
+        .executable(name: "WeddingCullFeatureExporter", targets: ["WeddingCullFeatureExporter"]),
+        .executable(name: "RealWeddingBenchmark", targets: ["RealWeddingBenchmark"])
     ],
     targets: [
         .target(
@@ -81,6 +82,11 @@ let package = Package(
             name: "WeddingCullFeatureExporter",
             dependencies: ["WeddingCullCore"],
             path: "Tools/WeddingCullFeatureExporter"
+        ),
+        .executableTarget(
+            name: "RealWeddingBenchmark",
+            dependencies: ["WeddingCullCore"],
+            path: "Tools/RealWeddingBenchmark"
         ),
         .testTarget(
             name: "WeddingCullTests",

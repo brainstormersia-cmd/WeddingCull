@@ -22,31 +22,41 @@
         "series_count": 122,
         "top1_recall": 50.82,
         "top2_recall": 100.0,
-        "top3_recall": 100.0
+        "top3_recall": 100.0,
+        "mean_gt_rank": 1.492,
+        "mean_pred_rank": 1.492
       },
       "size_3": {
         "series_count": 45,
         "top1_recall": 44.44,
         "top2_recall": 71.11,
-        "top3_recall": 100.0
+        "top3_recall": 100.0,
+        "mean_gt_rank": 1.733,
+        "mean_pred_rank": 1.844
       },
       "size_4_5": {
         "series_count": 25,
         "top1_recall": 32.0,
         "top2_recall": 64.0,
-        "top3_recall": 88.0
+        "top3_recall": 88.0,
+        "mean_gt_rank": 2.36,
+        "mean_pred_rank": 2.16
       },
       "size_6_plus": {
         "series_count": 3,
         "top1_recall": 66.67,
         "top2_recall": 100.0,
-        "top3_recall": 100.0
+        "top3_recall": 100.0,
+        "mean_gt_rank": 1.333,
+        "mean_pred_rank": 1.333
       },
       "all_sizes": {
         "series_count": 195,
         "top1_recall": 47.18,
         "top2_recall": 88.72,
-        "top3_recall": 98.46
+        "top3_recall": 98.46,
+        "mean_gt_rank": 1.656,
+        "mean_pred_rank": 1.656
       }
     },
     "safety_production": {

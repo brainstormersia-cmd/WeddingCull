@@ -93,13 +93,13 @@ def setup_runner(run_dir):
         sys.exit(res.returncode)
     print("Runner configured successfully.")
 
-def run_once(run_dir):
+def run_once(run_dir, workflow_file="export-authentic-features.yml"):
     print("Starting runner with --once...")
     run_cmd = [os.path.join(run_dir, "run.cmd"), "--once"]
     proc = subprocess.Popen(run_cmd, cwd=run_dir, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
     time.sleep(5)
-    print("Dispatching export-authentic-features.yml...")
-    dispatch_workflow()
+    print(f"Dispatching {workflow_file}...")
+    dispatch_workflow(workflow_file=workflow_file)
     print("Waiting for runner to execute job...")
     while True:
         line = proc.stdout.readline()
@@ -127,11 +127,25 @@ def cleanup_runner(run_dir):
 
 if __name__ == "__main__":
     run_dir = RUNNER_DIR
-    action = sys.argv[1] if len(sys.argv) > 1 else "run"
+    action = "run"
+    wf = "export-authentic-features.yml"
+    
+    args = sys.argv[1:]
+    i = 0
+    while i < len(args):
+        if args[i] == "--workflow" and i + 1 < len(args):
+            wf = args[i+1]
+            i += 2
+        elif args[i] in ("run", "clean"):
+            action = args[i]
+            i += 1
+        else:
+            i += 1
+
     if action == "run":
         try:
             setup_runner(run_dir)
-            ret = run_once(run_dir)
+            ret = run_once(run_dir, workflow_file=wf)
         finally:
             cleanup_runner(run_dir)
     elif action == "clean":
