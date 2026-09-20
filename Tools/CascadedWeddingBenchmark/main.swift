@@ -138,66 +138,68 @@ struct CascadedWeddingBenchmarkApp {
         precandidates.reserveCapacity(fileURLs.count)
         
         for (idx, url) in fileURLs.enumerated() {
-            let pid = url.lastPathComponent
-            if (idx + 1) % 100 == 0 || (idx + 1) == fileURLs.count {
-                print("   Pass 0: Read metadata & thumbnail dHash for \(idx + 1)/\(fileURLs.count)...")
-            }
-            
-            let tM0 = CFAbsoluteTimeGetCurrent()
-            var captureDate: Date? = nil
-            var camModel = "Unknown"
-            var pxWidth = 0
-            var pxHeight = 0
-            var thumbCG: CGImage? = nil
-            
-            if let imgSource = CGImageSourceCreateWithURL(url as CFURL, nil) {
-                if let props = CGImageSourceCopyPropertiesAtIndex(imgSource, 0, nil) as? [CFString: Any] {
-                    if let w = props[kCGImagePropertyPixelWidth] as? Int { pxWidth = w }
-                    if let h = props[kCGImagePropertyPixelHeight] as? Int { pxHeight = h }
-                    if let exif = props[kCGImagePropertyExifDictionary] as? [CFString: Any] {
-                        if let dtStr = exif[kCGImagePropertyExifDateTimeOriginal] as? String {
-                            let df = DateFormatter()
-                            df.dateFormat = "yyyy:MM:dd HH:mm:ss"
-                            captureDate = df.date(from: dtStr)
-                        }
-                    }
-                    if let tiff = props[kCGImagePropertyTIFFDictionary] as? [CFString: Any] {
-                        if let mod = tiff[kCGImagePropertyTIFFModel] as? String {
-                            camModel = mod
-                        }
-                    }
+            autoreleasepool {
+                let pid = url.lastPathComponent
+                if (idx + 1) % 100 == 0 || (idx + 1) == fileURLs.count {
+                    print("   Pass 0: Read metadata & thumbnail dHash for \(idx + 1)/\(fileURLs.count)...")
                 }
                 
-                // Fast thumbnail decode for dHash (max pixel size 160)
-                let thumbOpts: [CFString: Any] = [
-                    kCGImageSourceCreateThumbnailFromImageAlways: true,
-                    kCGImageSourceCreateThumbnailWithTransform: true,
-                    kCGImageSourceThumbnailMaxPixelSize: 160
-                ]
-                thumbCG = CGImageSourceCreateThumbnailAtIndex(imgSource, 0, thumbOpts as CFDictionary)
+                let tM0 = CFAbsoluteTimeGetCurrent()
+                var captureDate: Date? = nil
+                var camModel = "Unknown"
+                var pxWidth = 0
+                var pxHeight = 0
+                var thumbCG: CGImage? = nil
+                
+                if let imgSource = CGImageSourceCreateWithURL(url as CFURL, nil) {
+                    if let props = CGImageSourceCopyPropertiesAtIndex(imgSource, 0, nil) as? [CFString: Any] {
+                        if let w = props[kCGImagePropertyPixelWidth] as? Int { pxWidth = w }
+                        if let h = props[kCGImagePropertyPixelHeight] as? Int { pxHeight = h }
+                        if let exif = props[kCGImagePropertyExifDictionary] as? [CFString: Any] {
+                            if let dtStr = exif[kCGImagePropertyExifDateTimeOriginal] as? String {
+                                let df = DateFormatter()
+                                df.dateFormat = "yyyy:MM:dd HH:mm:ss"
+                                captureDate = df.date(from: dtStr)
+                            }
+                        }
+                        if let tiff = props[kCGImagePropertyTIFFDictionary] as? [CFString: Any] {
+                            if let mod = tiff[kCGImagePropertyTIFFModel] as? String {
+                                camModel = mod
+                            }
+                        }
+                    }
+                    
+                    // Fast thumbnail decode for dHash (max pixel size 160)
+                    let thumbOpts: [CFString: Any] = [
+                        kCGImageSourceCreateThumbnailFromImageAlways: true,
+                        kCGImageSourceCreateThumbnailWithTransform: true,
+                        kCGImageSourceThumbnailMaxPixelSize: 160
+                    ]
+                    thumbCG = CGImageSourceCreateThumbnailAtIndex(imgSource, 0, thumbOpts as CFDictionary)
+                }
+                tPass0Metadata += (CFAbsoluteTimeGetCurrent() - tM0)
+                
+                let tTh0 = CFAbsoluteTimeGetCurrent()
+                let hashVal: UInt64
+                if let thumb = thumbCG {
+                    hashVal = PerceptualHash.computeDHash(from: thumb)
+                } else if let preview = PreviewPipeline.decodeProductionPreview(from: url, maxPixelSize: 160) {
+                    hashVal = PerceptualHash.computeDHash(from: preview)
+                } else {
+                    hashVal = 0
+                }
+                tPass0ThumbnailDHash += (CFAbsoluteTimeGetCurrent() - tTh0)
+                
+                precandidates.append(Precandidate(
+                    id: pid,
+                    url: url,
+                    captureDate: captureDate,
+                    camModel: camModel,
+                    pxWidth: pxWidth,
+                    pxHeight: pxHeight,
+                    dHash: hashVal
+                ))
             }
-            tPass0Metadata += (CFAbsoluteTimeGetCurrent() - tM0)
-            
-            let tTh0 = CFAbsoluteTimeGetCurrent()
-            let hashVal: UInt64
-            if let thumb = thumbCG {
-                hashVal = PerceptualHash.computeDHash(from: thumb)
-            } else if let preview = PreviewPipeline.decodeProductionPreview(from: url, maxPixelSize: 160) {
-                hashVal = PerceptualHash.computeDHash(from: preview)
-            } else {
-                hashVal = 0
-            }
-            tPass0ThumbnailDHash += (CFAbsoluteTimeGetCurrent() - tTh0)
-            
-            precandidates.append(Precandidate(
-                id: pid,
-                url: url,
-                captureDate: captureDate,
-                camModel: camModel,
-                pxWidth: pxWidth,
-                pxHeight: pxHeight,
-                dHash: hashVal
-            ))
         }
         
         // --- Pass 1: Autonomous Burst Pre-Clustering (O(n) on metadata + dHash) ---
