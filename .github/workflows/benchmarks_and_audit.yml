@@ -1,0 +1,94 @@
+name: Native Benchmarks and Canonical Audit
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+jobs:
+  native-macos-benchmark:
+    name: Native Apple Silicon Benchmarks & Audit
+    runs-on: macos-14
+    timeout-minutes: 60
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Audit Native macOS Environment
+        run: |
+          echo "=== NATIVE MACOS HARDWARE & ARCHITECTURE AUDIT ==="
+          ARCH=$(uname -m)
+          echo "Architecture: $ARCH"
+          if [ "$ARCH" != "arm64" ]; then
+            echo "ERROR: Expected arm64 runner, got $ARCH"
+            exit 1
+          fi
+          sw_vers
+          system_profiler SPHardwareDataType
+
+      - name: Setup Environment
+        run: |
+          chmod +x ./scripts/*.sh
+          ./scripts/bootstrap.sh
+
+      - name: Execute Native ProductionBaselineEvaluator
+        run: |
+          export WEDDINGCULL_GIT_SHA=${{ github.sha }}
+          mkdir -p artifacts
+          swift run -c release ProductionBaselineEvaluator \
+            --manifest manifests/photo_triage_val.json \
+            --features manifests/photo_triage_val_features_authentic.jsonl \
+            --output artifacts/phototriage_canonical_swift_baseline.json
+
+      - name: Download Wedding Shoot 74ef Bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: wedding-shoot-74ef-bundle
+          run-id: 35449721318
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+        continue-on-error: true
+
+      - name: Unpack Wedding Dataset Bundle
+        id: unpack_wedding
+        run: |
+          if [ -f "WeddingShoot74ef.zip" ]; then
+            mkdir -p datasets/wedding
+            unzip -q WeddingShoot74ef.zip -d datasets/wedding/
+            ls -la datasets/wedding/WeddingShoot74ef
+            echo "dataset_available=true" >> $GITHUB_ENV
+          else
+            echo "WARNING: WeddingShoot74ef.zip not available from artifact download."
+            echo "dataset_available=false" >> $GITHUB_ENV
+          fi
+
+      - name: Run Unified Baseline vs Cascaded Benchmark
+        if: env.dataset_available == 'true'
+        run: |
+          export WEDDINGCULL_GIT_SHA=${{ github.sha }}
+          DATASET_PATH="datasets/wedding/WeddingShoot74ef"
+          
+          echo "=== WARM-UP RUN: Production Baseline ==="
+          swift run -c release RealWeddingBenchmark --dataset "$DATASET_PATH" --output-json artifacts/baseline_warmup.json
+          
+          echo "=== MEASURED RUNS: Production Baseline (3 iterations) ==="
+          for i in 1 2 3; do
+            echo "--- Baseline Run $i ---"
+            swift run -c release RealWeddingBenchmark --dataset "$DATASET_PATH" --output-json "artifacts/baseline_run_${i}.json"
+          done
+          
+          echo "=== WARM-UP RUN: Cascaded Progressive Pipeline ==="
+          swift run -c release CascadedWeddingBenchmark --dataset "$DATASET_PATH" --output-json artifacts/cascaded_warmup.json
+          
+          echo "=== MEASURED RUNS: Cascaded Progressive Pipeline (3 iterations) ==="
+          for i in 1 2 3; do
+            echo "--- Cascaded Run $i ---"
+            swift run -c release CascadedWeddingBenchmark --dataset "$DATASET_PATH" --output-json "artifacts/cascaded_run_${i}.json"
+          done
+
+      - name: Upload Canonical Audit & Benchmark Artifacts
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: canonical-audit-and-benchmark-results
+          path: artifacts/*.json

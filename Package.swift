@@ -20,7 +20,8 @@ let package = Package(
         .executable(name: "QualityBenchmarkV2", targets: ["QualityBenchmarkV2"]),
         .executable(name: "WeddingCullFeatureExporter", targets: ["WeddingCullFeatureExporter"]),
         .executable(name: "RealWeddingBenchmark", targets: ["RealWeddingBenchmark"]),
-        .executable(name: "CascadedWeddingBenchmark", targets: ["CascadedWeddingBenchmark"])
+        .executable(name: "CascadedWeddingBenchmark", targets: ["CascadedWeddingBenchmark"]),
+        .executable(name: "ProductionBaselineEvaluator", targets: ["ProductionBaselineEvaluator"])
     ],
     targets: [
         .target(
@@ -93,6 +94,11 @@ let package = Package(
             name: "CascadedWeddingBenchmark",
             dependencies: ["WeddingCullCore"],
             path: "Tools/CascadedWeddingBenchmark"
+        ),
+        .executableTarget(
+            name: "ProductionBaselineEvaluator",
+            dependencies: ["WeddingCullCore"],
+            path: "Tools/ProductionBaselineEvaluator"
         ),
         .testTarget(
             name: "WeddingCullTests",
