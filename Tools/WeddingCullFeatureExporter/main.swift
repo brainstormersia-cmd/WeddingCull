@@ -318,7 +318,7 @@ struct WeddingCullFeatureExporterApp {
             apple_vision_requested: true,
             apple_vision_framework_linked: appleVisionLinked,
             feature_schema_version: "1.0",
-            dataset_root: datasetRoot,
+            dataset_root: datasetRoot ?? "",
             dataset_name: dataset.dataset_name,
             total_series: dataset.total_series,
             total_frames: dataset.total_frames,

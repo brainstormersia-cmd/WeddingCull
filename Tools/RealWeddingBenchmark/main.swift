@@ -303,12 +303,14 @@ struct RealWeddingBenchmarkMain {
             let faces = faceResult.faces
             tVision += (CFAbsoluteTimeGetCurrent() - tVis0)
             
-            // Face Sharpness
+            // Face Sharpness (nested autoreleasepool to release intermediate crop CGImages promptly)
             let tCrop0 = CFAbsoluteTimeGetCurrent()
             var faceSharpnesses: [Double] = []
             for face in faces {
-                let cropSharp = qualityAnalyzer.computeRegionSharpness(cgImage: previewCG, normalizedRect: face.boundingBox)
-                faceSharpnesses.append(cropSharp)
+                autoreleasepool {
+                    let cropSharp = qualityAnalyzer.computeRegionSharpness(cgImage: previewCG, normalizedRect: face.boundingBox)
+                    faceSharpnesses.append(cropSharp)
+                }
             }
             tCropSharpness += (CFAbsoluteTimeGetCurrent() - tCrop0)
             
@@ -326,9 +328,12 @@ struct RealWeddingBenchmarkMain {
                 highlightClipping: tech.highlightClipping
             )
             
-            // Perceptual dHash
+            // Perceptual dHash (nested autoreleasepool for 9x8 CGContext)
             let tPhash0 = CFAbsoluteTimeGetCurrent()
-            let phash = PerceptualHash.computeDHash(from: previewCG)
+            var phash: UInt64? = nil
+            autoreleasepool {
+                phash = PerceptualHash.computeDHash(from: previewCG)
+            }
             tPhash += (CFAbsoluteTimeGetCurrent() - tPhash0)
             dHashValues[pid] = phash
             

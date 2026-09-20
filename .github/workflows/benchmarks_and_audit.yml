@@ -79,23 +79,11 @@ jobs:
           DATASET_PATH="datasets/wedding/WeddingShoot74ef"
           mkdir -p artifacts docs/benchmarks
           
-          echo "=== WARM-UP RUN: Production Baseline ==="
-          swift run -c release RealWeddingBenchmark --dataset "$DATASET_PATH" --output-json artifacts/baseline_warmup.json
+          echo "=== Production Baseline Benchmark ==="
+          swift run -c release RealWeddingBenchmark --dataset "$DATASET_PATH" --output-json "artifacts/baseline_run.json"
           
-          echo "=== MEASURED RUNS: Production Baseline (3 iterations) ==="
-          for i in 1 2 3; do
-            echo "--- Baseline Run $i ---"
-            swift run -c release RealWeddingBenchmark --dataset "$DATASET_PATH" --output-json "artifacts/baseline_run_${i}.json"
-          done
-          
-          echo "=== WARM-UP RUN: Cascaded Progressive Pipeline ==="
-          swift run -c release CascadedWeddingBenchmark --dataset "$DATASET_PATH" --output-json artifacts/cascaded_warmup.json
-          
-          echo "=== MEASURED RUNS: Cascaded Progressive Pipeline (3 iterations) ==="
-          for i in 1 2 3; do
-            echo "--- Cascaded Run $i ---"
-            swift run -c release CascadedWeddingBenchmark --dataset "$DATASET_PATH" --output-json "artifacts/cascaded_run_${i}.json"
-          done
+          echo "=== Cascaded Progressive Pipeline Benchmark ==="
+          swift run -c release CascadedWeddingBenchmark --dataset "$DATASET_PATH" --output-json "artifacts/cascaded_run.json"
 
       - name: Upload Canonical Audit & Benchmark Artifacts
         uses: actions/upload-artifact@v4

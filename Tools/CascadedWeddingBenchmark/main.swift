@@ -307,8 +307,10 @@ struct CascadedWeddingBenchmarkApp {
                 let tCrop = CFAbsoluteTimeGetCurrent()
                 var faceSharpnesses: [Double] = []
                 for face in faces {
-                    let cropSharp = qualityAnalyzer.computeRegionSharpness(cgImage: previewCG, normalizedRect: face.boundingBox)
-                    faceSharpnesses.append(cropSharp)
+                    autoreleasepool {
+                        let cropSharp = qualityAnalyzer.computeRegionSharpness(cgImage: previewCG, normalizedRect: face.boundingBox)
+                        faceSharpnesses.append(cropSharp)
+                    }
                 }
                 tPass2BurstCropSharp += (CFAbsoluteTimeGetCurrent() - tCrop)
                 

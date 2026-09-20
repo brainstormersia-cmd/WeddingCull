@@ -170,6 +170,14 @@ public final class FaceIdentityRecognizer: @unchecked Sendable {
         let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
         let landmarksRequest = VNDetectFaceLandmarksRequest()
 
+        // On virtualized CI runners, GPU scaler drivers (AppleM2ScalerCSCDriver) can trigger
+        // a hard SIGSEGV that cannot be caught as a Swift Error. Force CPU-only proactively.
+        let isCI = ProcessInfo.processInfo.environment["GITHUB_ACTIONS"] != nil ||
+                   ProcessInfo.processInfo.environment["CI"] != nil
+        if isCI {
+            landmarksRequest.usesCPUOnly = true
+        }
+
         var visionSucceeded = false
         var landmarksSucceeded = false
         var lastError: String? = nil
@@ -180,13 +188,17 @@ public final class FaceIdentityRecognizer: @unchecked Sendable {
             landmarksSucceeded = true
         } catch {
             // If hardware scaler/CSC fails on virtualized macOS runner (e.g. AppleM2ScalerCSCDriver), retry with usesCPUOnly
-            landmarksRequest.usesCPUOnly = true
-            do {
-                try handler.perform([landmarksRequest])
-                visionSucceeded = true
-                landmarksSucceeded = true
-            } catch let retryErr {
-                lastError = retryErr.localizedDescription
+            if !isCI {
+                landmarksRequest.usesCPUOnly = true
+                do {
+                    try handler.perform([landmarksRequest])
+                    visionSucceeded = true
+                    landmarksSucceeded = true
+                } catch let retryErr {
+                    lastError = retryErr.localizedDescription
+                }
+            } else {
+                lastError = error.localizedDescription
             }
         }
 
@@ -207,15 +219,20 @@ public final class FaceIdentityRecognizer: @unchecked Sendable {
         if enableFaceCaptureQuality && !landmarksResults.isEmpty {
             let cqReq = VNDetectFaceCaptureQualityRequest()
             cqReq.inputFaceObservations = landmarksResults
+            if isCI {
+                cqReq.usesCPUOnly = true
+            }
             do {
                 try handler.perform([cqReq])
                 captureQualityObservations = cqReq.results as? [VNFaceObservation]
                 cqSucceeded = true
             } catch {
-                cqReq.usesCPUOnly = true
-                if (try? handler.perform([cqReq])) != nil {
-                    captureQualityObservations = cqReq.results as? [VNFaceObservation]
-                    cqSucceeded = true
+                if !isCI {
+                    cqReq.usesCPUOnly = true
+                    if (try? handler.perform([cqReq])) != nil {
+                        captureQualityObservations = cqReq.results as? [VNFaceObservation]
+                        cqSucceeded = true
+                    }
                 }
             }
         }
