@@ -235,7 +235,7 @@ struct WeddingCullFeatureExporterApp {
                     scene_type: "burst",
                     description: nil,
                     frames: frames,
-                    ground_truth: SeriesGroundTruth(total_comparisons: 0, pairwise_preferences: [])
+                    ground_truth: SeriesGroundTruth()
                 ))
             }
 
