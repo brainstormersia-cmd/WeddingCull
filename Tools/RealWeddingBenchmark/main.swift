@@ -252,17 +252,18 @@ struct RealWeddingBenchmarkMain {
         var tPhash: Double = 0.0
         
         for (idx, url) in fileURLs.enumerated() {
-            let pid = url.lastPathComponent
-            if (idx + 1) % 50 == 0 || (idx + 1) == fileURLs.count {
-                print("   Processed \(idx + 1)/\(fileURLs.count) photos...")
-            }
-            
-            // Extract EXIF Metadata
-            let tExif0 = CFAbsoluteTimeGetCurrent()
-            var captureDate: Date? = nil
-            var camModel = "Unknown"
-            var pxWidth = 0
-            var pxHeight = 0
+            autoreleasepool {
+                let pid = url.lastPathComponent
+                if (idx + 1) % 50 == 0 || (idx + 1) == fileURLs.count {
+                    print("   Processed \(idx + 1)/\(fileURLs.count) photos...")
+                }
+                
+                // Extract EXIF Metadata
+                let tExif0 = CFAbsoluteTimeGetCurrent()
+                var captureDate: Date? = nil
+                var camModel = "Unknown"
+                var pxWidth = 0
+                var pxHeight = 0
             
             if let imgSource = CGImageSourceCreateWithURL(url as CFURL, nil) {
                 if let props = CGImageSourceCopyPropertiesAtIndex(imgSource, 0, nil) as? [CFString: Any] {
@@ -293,7 +294,7 @@ struct RealWeddingBenchmarkMain {
                 item.metadata = badMeta
                 item.selectionState = .rejected
                 items.append(item)
-                continue
+                return
             }
             tDecode += (CFAbsoluteTimeGetCurrent() - tDec0)
             
@@ -363,6 +364,7 @@ struct RealWeddingBenchmarkMain {
             item.metadata = meta
             item.perceptualHash = phash
             items.append(item)
+            }
         }
         
         print("✅ Analyzed all \(items.count) photos.")

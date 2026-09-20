@@ -283,7 +283,8 @@ struct CascadedWeddingBenchmarkApp {
         print("   Running deep analysis on \(photosInBurstCandidates) burst photos...")
         for bGroup in burstGroups {
             for cand in bGroup {
-                let tDec = CFAbsoluteTimeGetCurrent()
+                autoreleasepool {
+                    let tDec = CFAbsoluteTimeGetCurrent()
                 guard let previewCG = PreviewPipeline.decodeProductionPreview(from: cand.url, maxPixelSize: 1000) else {
                     tPass2BurstPreviews += (CFAbsoluteTimeGetCurrent() - tDec)
                     continue
@@ -351,60 +352,63 @@ struct CascadedWeddingBenchmarkApp {
                 item.metadata = meta
                 item.perceptualHash = cand.dHash
                 analyzedItems.append(item)
+                }
             }
         }
         
         // 2b. Efficient Analysis on Isolated Singles (600px preview + fast technical check)
         print("   Running streamlined analysis on \(isolatedSingles.count) isolated singles...")
         for cand in isolatedSingles {
-            let tS0 = CFAbsoluteTimeGetCurrent()
-            guard let previewCG = PreviewPipeline.decodeProductionPreview(from: cand.url, maxPixelSize: 600) else {
+            autoreleasepool {
+                let tS0 = CFAbsoluteTimeGetCurrent()
+                guard let previewCG = PreviewPipeline.decodeProductionPreview(from: cand.url, maxPixelSize: 600) else {
+                    tPass2SinglesAnalysis += (CFAbsoluteTimeGetCurrent() - tS0)
+                    return
+                }
+                fullPreviewDecodesCount += 1
+                
+                let tech = qualityAnalyzer.analyze(cgImage: previewCG)
+                let expScore = QualityScorer.computeExposureScore(
+                    meanLuminance: tech.meanLuminance,
+                    shadowClipping: tech.shadowClipping,
+                    highlightClipping: tech.highlightClipping
+                )
+                
+                // Apple Vision face detection
+                let faceResult = faceRecognizer.extractFacesWithIdentityResult(from: previewCG, enableFaceCaptureQuality: true)
+                faceAnalysesRunCount += 1
+                let faces = faceResult.faces
+                let validCQs = faces.compactMap { $0.faceCaptureQuality }
+                let avgCQ = validCQs.isEmpty ? nil : (validCQs.reduce(0.0, +) / Double(validCQs.count))
+                
+                var m = QualityMetrics()
+                m.rawSharpness = tech.rawSharpness
+                m.faceCount = faces.count
+                m.rawFaceCaptureQuality = avgCQ
+                m.faceCaptureQualityScore = avgCQ
+                m.meanLuminance = tech.meanLuminance
+                m.shadowClipping = tech.shadowClipping
+                m.highlightClipping = tech.highlightClipping
+                m.exposureScore = expScore
+                m.contrastScore = tech.contrastProxy
+                m.dynamicRangeScore = tech.dynamicRangeProxy
+                m.isSevereUnderexposed = tech.isSevereUnderexposed
+                m.isSevereOverexposed = tech.isSevereOverexposed
+                
+                var meta = PhotoMetadata()
+                meta.pixelWidth = cand.pxWidth
+                meta.pixelHeight = cand.pxHeight
+                meta.captureDate = cand.captureDate
+                meta.cameraModel = cand.camModel
+                
+                var item = PhotoItem(id: cand.id, fileName: cand.id, sourceURL: cand.url)
+                item.metrics = m
+                item.metadata = meta
+                item.perceptualHash = cand.dHash
+                analyzedItems.append(item)
+                
                 tPass2SinglesAnalysis += (CFAbsoluteTimeGetCurrent() - tS0)
-                continue
             }
-            fullPreviewDecodesCount += 1
-            
-            let tech = qualityAnalyzer.analyze(cgImage: previewCG)
-            let expScore = QualityScorer.computeExposureScore(
-                meanLuminance: tech.meanLuminance,
-                shadowClipping: tech.shadowClipping,
-                highlightClipping: tech.highlightClipping
-            )
-            
-            // Apple Vision face detection
-            let faceResult = faceRecognizer.extractFacesWithIdentityResult(from: previewCG, enableFaceCaptureQuality: true)
-            faceAnalysesRunCount += 1
-            let faces = faceResult.faces
-            let validCQs = faces.compactMap { $0.faceCaptureQuality }
-            let avgCQ = validCQs.isEmpty ? nil : (validCQs.reduce(0.0, +) / Double(validCQs.count))
-            
-            var m = QualityMetrics()
-            m.rawSharpness = tech.rawSharpness
-            m.faceCount = faces.count
-            m.rawFaceCaptureQuality = avgCQ
-            m.faceCaptureQualityScore = avgCQ
-            m.meanLuminance = tech.meanLuminance
-            m.shadowClipping = tech.shadowClipping
-            m.highlightClipping = tech.highlightClipping
-            m.exposureScore = expScore
-            m.contrastScore = tech.contrastProxy
-            m.dynamicRangeScore = tech.dynamicRangeProxy
-            m.isSevereUnderexposed = tech.isSevereUnderexposed
-            m.isSevereOverexposed = tech.isSevereOverexposed
-            
-            var meta = PhotoMetadata()
-            meta.pixelWidth = cand.pxWidth
-            meta.pixelHeight = cand.pxHeight
-            meta.captureDate = cand.captureDate
-            meta.cameraModel = cand.camModel
-            
-            var item = PhotoItem(id: cand.id, fileName: cand.id, sourceURL: cand.url)
-            item.metrics = m
-            item.metadata = meta
-            item.perceptualHash = cand.dHash
-            analyzedItems.append(item)
-            
-            tPass2SinglesAnalysis += (CFAbsoluteTimeGetCurrent() - tS0)
         }
         
         // --- Pass 3: Burst Ranking & Selective Semantic Escalation ---
