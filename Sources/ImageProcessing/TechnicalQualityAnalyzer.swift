@@ -27,18 +27,17 @@ public final class TechnicalQualityAnalyzer: Sendable {
         let width = max(16, Int(Double(origWidth) * scale))
         let height = max(16, Int(Double(origHeight) * scale))
 
-        var grayBuffer = [UInt8](repeating: 0, count: width * height)
         let colorSpace = CGColorSpaceCreateDeviceGray()
 
         guard let context = CGContext(
-            data: &grayBuffer,
+            data: nil,
             width: width,
             height: height,
             bitsPerComponent: 8,
             bytesPerRow: width,
             space: colorSpace,
             bitmapInfo: CGImageAlphaInfo.none.rawValue
-        ) else {
+        ), let dataPtr = context.data else {
             return TechnicalQualityResult(
                 rawSharpness: 0.0,
                 meanLuminance: 0.5,
@@ -54,6 +53,8 @@ public final class TechnicalQualityAnalyzer: Sendable {
 
         context.interpolationQuality = .medium
         context.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
+
+        let grayBuffer = UnsafeBufferPointer(start: dataPtr.assumingMemoryBound(to: UInt8.self), count: width * height)
 
         // 1. Exposure & Contrast metrics
         var sumLuminance: Double = 0.0

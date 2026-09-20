@@ -7,23 +7,24 @@ public struct PerceptualHash: Sendable {
         let width = 9
         let height = 8
 
-        var rawData = [UInt8](repeating: 0, count: width * height)
         let colorSpace = CGColorSpaceCreateDeviceGray()
 
         guard let context = CGContext(
-            data: &rawData,
+            data: nil,
             width: width,
             height: height,
             bitsPerComponent: 8,
             bytesPerRow: width,
             space: colorSpace,
             bitmapInfo: CGImageAlphaInfo.none.rawValue
-        ) else {
+        ), let dataPtr = context.data else {
             return nil
         }
 
         context.interpolationQuality = .medium
         context.draw(cgImage, in: CGRect(x: 0, y: 0, width: width, height: height))
+
+        let rawData = UnsafeBufferPointer(start: dataPtr.assumingMemoryBound(to: UInt8.self), count: width * height)
 
         var hash: UInt64 = 0
         for row in 0..<height {
