@@ -136,8 +136,8 @@ struct ProductionBaselineEvaluatorApp {
                     metrics.shadowClipping = (feat["shadowClipping"] as? Double) ?? 0.0
                     metrics.highlightClipping = (feat["highlightClipping"] as? Double) ?? 0.0
                     metrics.exposureScore = (feat["exposureScore"] as? Double) ?? 0.5
-                    metrics.contrastScore = (feat["contrast"] as? Double) ?? 0.5
-                    metrics.dynamicRangeScore = (feat["dynamicRange"] as? Double) ?? 0.5
+                    metrics.contrastProxy = (feat["contrast"] as? Double) ?? 0.5
+                    metrics.dynamicRangeProxy = (feat["dynamicRange"] as? Double) ?? 0.5
                     metrics.isSevereUnderexposed = (feat["severeUnderexposure"] as? Bool) ?? false
                     metrics.isSevereOverexposed = (feat["severeOverexposure"] as? Bool) ?? false
                 }
